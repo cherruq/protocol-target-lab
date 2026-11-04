@@ -68,7 +68,7 @@ impl Settings {
             .into(),
             data: value("PLAB_DATA_DIR", "/var/lib/protocol-target-lab").into(),
             listen: value("PLAB_LISTEN", "0.0.0.0:18000"),
-            image: value("PLAB_HTTP_IMAGE", "protocol-target-lab/http:0.1.0"),
+            image: value("PLAB_HTTP_IMAGE", "protocol-target-lab/http:0.2.0"),
         })
     }
     pub fn lock(&self, name: &str) -> Result<File> {
@@ -191,7 +191,7 @@ mod tests {
         let i = &mut d.instances[0];
         i.enabled = true;
         i.applied_config = Some(i.config.clone());
-        i.config.response_body = "unapplied".into();
+        i.config.response_length = 128;
         save(&s.config, &d).unwrap();
         let loaded = load(&s).unwrap();
         assert!(loaded.instances[0].enabled);
@@ -200,10 +200,10 @@ mod tests {
                 .applied_config
                 .as_ref()
                 .unwrap()
-                .response_body,
-            "hello"
+                .response_length,
+            64
         );
-        assert_eq!(loaded.instances[0].config.response_body, "unapplied");
+        assert_eq!(loaded.instances[0].config.response_length, 128);
     }
     #[test]
     fn deployment_mismatch_cannot_claim_resources() {

@@ -17,8 +17,8 @@ install -m 0644 workers/http/server.py "$context/workers/http/server.py"
 install -m 0644 images/http/Dockerfile "$context/Dockerfile"
 docker build --network=none --pull=false --build-arg "BASE_IMAGE=$base_image" \
     --label org.opencontainers.image.title=protocol-target-lab-http \
-    --label org.opencontainers.image.version=0.1.0 \
+    --label org.opencontainers.image.version=0.2.0 \
     --label org.opencontainers.image.licenses=MIT \
-    --tag protocol-target-lab/http:0.1.0 "$context"
+    --tag protocol-target-lab/http:0.2.0 "$context"
 mkdir -p dist
-docker image inspect protocol-target-lab/http:0.1.0 > dist/http-image-inspect.json
+docker image inspect protocol-target-lab/http:0.2.0 > dist/http-image-inspect.json

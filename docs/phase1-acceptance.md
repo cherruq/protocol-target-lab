@@ -1,6 +1,8 @@
 # HTTP phase acceptance
 
-Date: 2026-11-04. Scope: the native Rust manager with embedded Web UI, one Docker HTTP target, and Ubuntu 24.04 amd64 deb installation. Other protocol adapters remain future work.
+Historical baseline: version 0.1.0, verified 2026-11-04. Current HTTP options and methods are described in [HTTP target](http.md).
+
+Scope: the native Rust manager with embedded Web UI, one Docker HTTP target, and Ubuntu 24.04 amd64 deb installation. Other protocol adapters remain future work.
 
 ## Delivered behavior
 

@@ -5,15 +5,24 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-
-type Config = { bind_ip: string; port: number; response_body: string };
+import {
+  defaults,
+  isLegacyConfig,
+  normalizeConfig,
+  sameGeneratedConfig,
+  sameStoredConfig,
+  supportedMethods,
+  validateConfig,
+  type Config,
+  type StoredConfig,
+} from "./config";
 type Instance = {
   id: string;
   protocol_id: string;
   runtime: string;
   enabled: boolean;
-  config: Config;
-  applied_config: Config | null;
+  config: StoredConfig;
+  applied_config: StoredConfig | null;
   status: string;
   container_id: string | null;
   error: string | null;
@@ -37,12 +46,7 @@ type Protocol = {
   implementation: string;
   version: string;
   available: boolean;
-};
-
-const defaults: Config = {
-  bind_ip: "0.0.0.0",
-  port: 18090,
-  response_body: "hello",
+  supported_methods?: string[];
 };
 const statusNames: Record<string, string> = {
   stopped: "已停止",
@@ -222,20 +226,62 @@ function ConfigFields({
           />
         </label>
       </div>
-      <label htmlFor={`${prefix}-body`}>
-        固定响应正文
-        <textarea
-          id={`${prefix}-body`}
-          value={config.response_body}
-          onChange={(event) =>
-            onChange({ ...config, response_body: event.target.value })
-          }
-          rows={3}
-          maxLength={65536}
-          disabled={disabled}
-        />
-        <span className="field-help">GET 返回此内容，POST 回显请求正文。</span>
-      </label>
+      <div className="field-row response-fields">
+        <label htmlFor={`${prefix}-length`}>
+          响应长度（字节）
+          <input
+            id={`${prefix}-length`}
+            type="number"
+            min="0"
+            max="1048576"
+            step="1"
+            value={
+              Number.isFinite(config.response_length)
+                ? config.response_length
+                : ""
+            }
+            onChange={(event) =>
+              onChange({
+                ...config,
+                response_length: event.currentTarget.valueAsNumber,
+              })
+            }
+            required
+            disabled={disabled}
+          />
+          <span className="field-help">0～1048576 字节；0 表示空正文。</span>
+        </label>
+        <label htmlFor={`${prefix}-mode`}>
+          响应模式
+          <select
+            id={`${prefix}-mode`}
+            value={config.response_mode}
+            onChange={(event) =>
+              onChange({
+                ...config,
+                response_mode: event.target.value as Config["response_mode"],
+              })
+            }
+            disabled={disabled}
+          >
+            <option value="fixed">固定内容</option>
+            <option value="random">每次随机</option>
+          </select>
+        </label>
+      </div>
+      <div className="response-description">
+        {config.response_mode === "fixed" ? (
+          <p>
+            重复 ASCII <code>0123456789abcdef</code>，按指定字节数截断。
+          </p>
+        ) : (
+          <p>每次请求生成新的随机字节，正文长度始终等于指定字节数。</p>
+        )}
+        <p>
+          HEAD 只返回响应头；其他支持的方法均按此配置生成正文，POST
+          不回显请求正文。
+        </p>
+      </div>
     </>
   );
 }
@@ -254,9 +300,11 @@ export default function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
-  const [create, setCreate] = useState<{ id: string; config: Config } | null>(
-    null,
-  );
+  const [create, setCreate] = useState<{
+    id: string;
+    config: Config;
+    legacy_source?: boolean;
+  } | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [connection, setConnection] = useState<Connection | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
@@ -325,7 +373,7 @@ export default function App() {
       return;
     }
     if (editingId.current !== selected.id || !dirtyRef.current) {
-      setDraft({ ...selected.config });
+      setDraft(normalizeConfig(selected.config));
       setDirty(false);
       dirtyRef.current = false;
       editingId.current = selected.id;
@@ -405,7 +453,7 @@ export default function App() {
       if (event.key !== "Tab") return;
       const controls = Array.from(
         document.querySelectorAll<HTMLElement>(
-          ".modal button:not(:disabled), .modal input:not(:disabled), .modal textarea:not(:disabled)",
+          ".modal button:not(:disabled), .modal input:not(:disabled), .modal select:not(:disabled), .modal textarea:not(:disabled)",
         ),
       );
       if (!controls.length) return;
@@ -442,13 +490,17 @@ export default function App() {
 
   function edit(config: Config) {
     setDraft(config);
-    setDirty(true);
-    dirtyRef.current = true;
+    const changed =
+      !selected ||
+      !sameGeneratedConfig(config, normalizeConfig(selected.config));
+    setDirty(changed);
+    dirtyRef.current = changed;
   }
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!selected) return;
     await perform("save", async () => {
+      validateConfig(draft);
       await api(
         `/api/instances/${encodeURIComponent(selected.id)}/config`,
         "PUT",
@@ -475,6 +527,7 @@ export default function App() {
     event.preventDefault();
     if (!create) return;
     await perform("create", async () => {
+      validateConfig(create.config);
       await api("/api/instances", "POST", {
         id: create.id,
         protocol_id: "http",
@@ -503,13 +556,16 @@ export default function App() {
   }
   const appliedDiffers = Boolean(
     selected?.applied_config &&
-      JSON.stringify(selected.config) !==
-        JSON.stringify(selected.applied_config),
+      !sameStoredConfig(selected.config, selected.applied_config),
   );
   const running = instances.filter(
     (instance) => instance.status === "running",
   ).length;
-  const bodyBytes = new TextEncoder().encode(draft.response_body).length;
+  const methods =
+    protocols.find((protocol) => protocol.id === "http")?.supported_methods ||
+    supportedMethods;
+  const legacyApplied = isLegacyConfig(selected?.applied_config);
+  const legacySaved = isLegacyConfig(selected?.config);
 
   return (
     <div className="app-shell">
@@ -545,7 +601,11 @@ export default function App() {
           />
           <div>
             {environment?.docker_available ? "Docker 已连接" : "Docker 未连接"}
-            <span>本地实验环境 · v0.1.0</span>
+            <span>
+              本地实验环境 · HTTP{" "}
+              {protocols.find((protocol) => protocol.id === "http")?.version ||
+                "—"}
+            </span>
           </div>
         </div>
       </aside>
@@ -707,7 +767,8 @@ export default function App() {
                       onClick={() =>
                         setCreate({
                           id: `${selected.id.slice(0, 43)}-copy`,
-                          config: { ...selected.config },
+                          config: normalizeConfig(selected.config),
+                          legacy_source: isLegacyConfig(selected.config),
                         })
                       }
                     >
@@ -732,6 +793,21 @@ export default function App() {
                   受控 HTTP 测试服务 <span>·</span> Docker <span>·</span>{" "}
                   HTTP/1.1
                 </p>
+                <div className="method-support">
+                  <span>
+                    {legacyApplied ? "新生成模式支持的方法" : "支持的方法"}
+                  </span>
+                  <div>
+                    {methods.map((method) => (
+                      <code key={method}>{method}</code>
+                    ))}
+                  </div>
+                  <p>
+                    {legacyApplied
+                      ? "旧生效配置保留旧版能力；保存新配置并重启后，切换到上述方法和响应生成规则。"
+                      : "HEAD 无正文；GET、POST、PUT、PATCH、DELETE、OPTIONS 均按配置生成响应正文。"}
+                  </p>
+                </div>
                 <div className="instance-actions">
                   <button
                     className="button primary"
@@ -818,6 +894,13 @@ export default function App() {
                     </span>
                   </div>
                   <form onSubmit={(event) => void save(event)}>
+                    {(legacySaved || legacyApplied) && (
+                      <div className="migration-note" role="note">
+                        {legacySaved
+                          ? "此实例含旧版固定正文配置。旧运行配置仍保留；编辑草稿初始长度取旧正文的 UTF-8 字节数。保存并重启后使用新的内容生成模式，正文不再保留原文本，POST 不再回显请求正文。"
+                          : "新配置已保存，旧生效配置仍保留固定正文和 POST 回显行为。显式重启后才切换到新的内容生成模式和方法支持。"}
+                      </div>
+                    )}
                     <ConfigFields
                       config={draft}
                       onChange={edit}
@@ -827,8 +910,16 @@ export default function App() {
                       }
                     />
                     <div className="config-meta">
-                      <span>UTF-8 正文</span>
-                      <span>{bodyBytes.toLocaleString()} 字节</span>
+                      <span>精确按字节计数</span>
+                      <span>
+                        {Number.isFinite(draft.response_length)
+                          ? draft.response_length.toLocaleString()
+                          : "—"}{" "}
+                        字节 ·{" "}
+                        {draft.response_mode === "fixed"
+                          ? "固定内容"
+                          : "每次随机"}
+                      </span>
                     </div>
                     <div className="form-footer">
                       <p>
@@ -856,10 +947,11 @@ export default function App() {
                           <dd>{selected.applied_config.port}</dd>
                         </div>
                         <div>
-                          <dt>响应正文</dt>
+                          <dt>响应配置</dt>
                           <dd className="applied-body">
-                            {selected.applied_config.response_body ||
-                              "（空正文）"}
+                            {isLegacyConfig(selected.applied_config)
+                              ? `旧版固定正文 ${new TextEncoder().encode(selected.applied_config.response_body).length.toLocaleString()} 字节（POST 回显）`
+                              : `${selected.applied_config.response_length.toLocaleString()} 字节 · ${selected.applied_config.response_mode === "fixed" ? "固定内容" : "每次随机"}`}
                           </dd>
                         </div>
                         <div>
@@ -999,7 +1091,9 @@ export default function App() {
               <h2>
                 {loading ? "正在连接管理服务" : "创建第一个 HTTP 测试目标"}
               </h2>
-              <p>设置监听地址、端口与响应正文，启动持续运行的测试服务。</p>
+              <p>
+                设置监听地址、端口、响应长度和内容模式，启动持续运行的测试服务。
+              </p>
               <button
                 className="button primary"
                 onClick={() =>
@@ -1014,7 +1108,7 @@ export default function App() {
                 <code>/ok</code>
                 <code>/chunked</code>
                 <code>/close</code>
-                <span>GET · HEAD · POST</span>
+                <span>{methods.join(" · ")}</span>
               </div>
             </section>
           )}
@@ -1088,6 +1182,11 @@ export default function App() {
                 prefix="create"
                 disabled={busy === "create"}
               />
+              {create.legacy_source && (
+                <div className="migration-note">
+                  从旧版配置复制：新实例使用相同字节长度的固定生成模式，不保留原正文文本；源实例运行配置保持原样。
+                </div>
+              )}
               <div className="modal-note">
                 新实例默认停止，点击“运行”后才会占用协议端口。
               </div>

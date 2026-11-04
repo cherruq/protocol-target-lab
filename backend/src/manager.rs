@@ -72,8 +72,9 @@ impl Manager {
         }
         Ok(())
     }
-    pub fn persist(&self, d: &mut Data, next: Document) -> Result<()> {
+    pub fn persist(&self, d: &mut Data, mut next: Document) -> Result<()> {
         Self::writable(d)?;
+        next.schema_version = 2;
         storage::save(&self.settings.config, &next)?;
         d.doc = next;
         Ok(())
@@ -213,9 +214,9 @@ impl Manager {
         let config = restore.unwrap_or(instance.config.clone());
         config.validate()?;
         // Resolve image before stopping an existing service; start never pulls.
-        docker::image_id(&self.settings.image)
+        let prepared_image = docker::prepare_image(&self.settings.image, &config)
             .await
-            .context("HTTP image is missing; build/import assets first")?;
+            .context("HTTP image is missing or incompatible; build/import matching assets first")?;
         if let Some(existing) = resources.first() {
             if kind != "restart" && docker::running(existing) && docker::matches(existing, &config)
             {
@@ -243,7 +244,7 @@ impl Manager {
         for v in &resources {
             docker::remove(v, &deployment, id).await?;
         }
-        let container = docker::start(&deployment, id, &config, &self.settings.image).await?;
+        let container = docker::start(&deployment, id, &config, &prepared_image).await?;
         let mut ready_error = "HTTP worker did not become ready".to_owned();
         for _ in 0..40 {
             match docker::probe(&config).await {

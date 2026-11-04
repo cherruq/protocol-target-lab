@@ -18,7 +18,7 @@ not need Node, npm, Python, Cargo, or Nginx on the host. The Python HTTP worker 
 inside its own container.
 
 For development, install the Rust toolchain specified in `rust-toolchain.toml`,
-Node 20.19+ or 22.12+ with npm (Node 24 was tested), Docker Engine with its CLI, GNU make, and Debian packaging tools
+Node 22.12+ with npm (Node 24 was tested), Docker Engine with its CLI, GNU make, and Debian packaging tools
 (`dpkg-dev`, `binutils`, `file`). Use Ubuntu 24.04 to compile release packages.
 Binaries built on a newer Ubuntu may require a newer glibc; the packaging script
 rejects dependencies newer than Ubuntu 24.04's glibc 2.39.
@@ -54,8 +54,8 @@ exist locally and fails if it is missing. `PLAB_BUILD_IMAGE` can select a prepar
 build image.
 
 The HTTP image is
-`protocol-target-lab/http:0.1.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.1.0_amd64.deb`.
+`protocol-target-lab/http:0.2.0`. Build artifacts are under `target/` and `dist/`.
+The manager package is `dist/protocol-target-lab_0.2.0_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -88,7 +88,7 @@ Docker provider; a host with Docker CE can run development builds directly, whil
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.1.0_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.2.0_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
@@ -96,14 +96,14 @@ plabctl status
 The package starts the management service. Open `http://<target-address>:18000`.
 The Web application has no login. The initial `http-demo` instance is disabled;
 start it explicitly after reviewing its bind address, port, and response body.
-The default target port is 18090 and the default body is `hello`.
+The default target port is 18090; new instances return 64 bytes in fixed mode.
 
 The manager remains available when the Docker backend or HTTP image is missing
 and reports the reason. Image import is separate from installation:
 
 ```sh
 # On a machine containing the built image:
-docker save -o http-image.tar protocol-target-lab/http:0.1.0
+docker save -o http-image.tar protocol-target-lab/http:0.2.0
 # On the target:
 sudo docker load -i http-image.tar
 ```
@@ -119,15 +119,32 @@ Large image archives are not imported or downloaded by package-maintainer script
 
 ## HTTP and logs
 
-Configure `bind_ip`, `port`, and UTF-8 `response_body` in the Web UI. Saving changes
-updates the draft; an explicit start/restart applies it. The UI displays the
-last successfully applied configuration separately. A manager restart restores
-enabled instances using that applied snapshot.
+Configure `bind_ip`, `port`, `response_length` (0 through 1048576 bytes), and
+`response_mode` (`fixed` or `random`) in the Web UI. The UI lists GET, HEAD, POST,
+PUT, PATCH, DELETE and OPTIONS. Every supported method except HEAD returns the
+configured generated body; HEAD sends the corresponding headers without a body.
+POST and the other request-body methods do not echo their request in this mode.
 
-`GET /ok`, `/chunked`, and `/close` return the configured body using fixed length,
-chunked transfer encoding, and connection-close delimiting respectively. HEAD
-sends the corresponding headers without a body. POST echoes its request body.
-See [HTTP details](docs/http.md) for limits and the public validation client.
+Fixed content repeats the ASCII byte pattern `0123456789abcdef` and truncates it
+to the exact requested length. Random content uses fresh binary bytes per
+response. A zero length means an empty body. The `/ok`, `/chunked`, and `/close`
+paths use fixed-length, chunked, and connection-close delimiting respectively.
+OPTIONS and unsupported-method responses expose the supported method list in
+Allow. See [HTTP details](docs/http.md) for limits and the public validation client.
+
+Saving updates the draft; an explicit start/restart applies it. Existing v1
+`response_body` configurations remain readable, with their exact ownership hash
+and old applied behavior preserved. The UI converts them only into an editing
+draft and explains the behavior change. Save and explicitly restart to adopt
+length/mode generation. Until then, an old running container is adopted unchanged
+and may still support only the original GET/HEAD/POST methods. Automatic recovery
+uses its saved legacy snapshot and the new worker's compatibility arguments.
+Explicit saves write schema version 2; both v1 and v2 files remain readable.
+
+Upgrade the HTTP image together with the manager. The default image is now
+`protocol-target-lab/http:0.2.0`; if a customized environment file still selects an
+older image, update `PLAB_HTTP_IMAGE` after importing the new version. The manager
+checks image capability before stopping a running instance to apply new options.
 
 The instance log panel shows worker stdout/stderr and management events through
 SSE, with pause, copy, and download controls. Body previews are bounded and include
@@ -182,13 +199,14 @@ Linux node (or the local node during development):
 ```sh
 make smoke SCENARIO=http-basic TARGET_ADDR=192.0.2.20 TARGET_PORT=18090
 # For a customized body:
-make smoke TARGET_ADDR=192.0.2.20 TARGET_PORT=18090 RESPONSE_BODY='test body'
+make smoke TARGET_ADDR=192.0.2.20 TARGET_PORT=18090 RESPONSE_LENGTH=1024 RESPONSE_MODE=random
 make test
 ```
 
 The example is a documentation address; substitute the actual target. The client
 does not modify or start instances. It verifies two rounds of all three response
-forms, HEAD, binary POST echoes, repeated connections, and a 404 response. For
+forms, all seven methods, HEAD without a body, generated POST responses,
+repeated connections, Allow headers, and a 404 response. For
 retained JSON evidence, invoke `public-tests/http_smoke.py --output <new-file>`.
 
 A complete first-stage acceptance also requires browser configuration and logs,

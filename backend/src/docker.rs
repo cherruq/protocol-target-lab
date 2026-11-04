@@ -53,6 +53,31 @@ pub async fn image_id(image: &str) -> Result<String> {
         .trim()
         .into())
 }
+pub async fn prepare_image(image: &str, config: &HttpConfig) -> Result<String> {
+    let id = image_id(image).await?;
+    if config.legacy_body.is_none() {
+        let metadata: Vec<Value> = serde_json::from_str(&cmd(&["image", "inspect", &id]).await?)?;
+        if metadata[0]["Config"]["Labels"]["io.protocol-target-lab.http-response-schema"].as_str()
+            != Some("2")
+        {
+            bail!(
+                "HTTP image does not support length/mode responses; import version 0.2.0 or newer and update PLAB_HTTP_IMAGE before applying configuration"
+            );
+        }
+    }
+    Ok(id)
+}
+pub fn worker_args(config: &HttpConfig) -> Vec<String> {
+    if let Some(body) = &config.legacy_body {
+        return vec![format!("--response-body={body}")];
+    }
+    vec![
+        "--response-length".into(),
+        config.response_length.to_string(),
+        "--response-mode".into(),
+        config.response_mode.as_str().into(),
+    ]
+}
 pub async fn owned(deployment: &str, instance: Option<&str>) -> Result<Vec<Value>> {
     let mut args = vec![
         "ps".into(),
@@ -105,7 +130,7 @@ pub async fn remove(v: &Value, deployment: &str, instance: &str) -> Result<()> {
 pub async fn start(deployment: &str, id: &str, config: &HttpConfig, image: &str) -> Result<String> {
     let immutable_image = image_id(image).await?;
     let name = format!("plab-{}-{id}", &deployment[..8]);
-    let args = vec![
+    let mut args = vec![
         "create".into(),
         "--name".into(),
         name,
@@ -134,8 +159,8 @@ pub async fn start(deployment: &str, id: &str, config: &HttpConfig, image: &str)
         config.bind_ip.clone(),
         "--port".into(),
         config.port.to_string(),
-        format!("--response-body={}", config.response_body),
     ];
+    args.extend(worker_args(config));
     let container = command(&args).await?.trim().to_owned();
     if let Err(e) = cmd(&["start", &container]).await {
         let _ = cmd(&["rm", &container]).await;
@@ -152,10 +177,17 @@ pub async fn probe(config: &HttpConfig) -> Result<()> {
         .get(format!("http://{}:{}/ok", config.probe_ip(), config.port))
         .send()
         .await?;
-    if response.status() != 200
-        || response.bytes().await?.as_ref() != config.response_body.as_bytes()
+    if response.status() != 200 {
+        bail!("HTTP /ok did not return 200");
+    }
+    let body = response.bytes().await?;
+    if body.len() != config.response_length as usize {
+        bail!("HTTP /ok response length did not match configuration");
+    }
+    if let Some(expected) = config.expected_body()
+        && body.as_ref() != expected
     {
-        bail!("HTTP /ok response did not match configured body");
+        bail!("HTTP /ok fixed response content did not match configuration");
     }
     Ok(())
 }

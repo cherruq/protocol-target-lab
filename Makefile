@@ -6,8 +6,12 @@ ARCH ?= amd64
 SCENARIO ?= http-basic
 TARGET_ADDR ?= 127.0.0.1
 TARGET_PORT ?= 18090
-RESPONSE_BODY ?= hello
-export OFFLINE TARGET ARCH SCENARIO TARGET_ADDR TARGET_PORT RESPONSE_BODY
+RESPONSE_LENGTH ?= 64
+RESPONSE_MODE ?= fixed
+export OFFLINE TARGET ARCH SCENARIO TARGET_ADDR TARGET_PORT RESPONSE_LENGTH RESPONSE_MODE
+ifneq ($(origin RESPONSE_BODY),undefined)
+export RESPONSE_BODY
+endif
 
 .PHONY: help fetch-deps verify-deps build build-ubuntu24 images assets deb smoke test
 help:
@@ -30,6 +34,6 @@ deb:
 smoke:
 	./scripts/smoke.sh
 test:
-	cd frontend && npm run typecheck && npm run build
+	cd frontend && npm test && npm run typecheck && npm run build
 	cargo fmt --all -- --check
 	cargo test --locked

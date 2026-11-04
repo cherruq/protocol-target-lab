@@ -2,4 +2,4 @@
 PLAB_LISTEN=0.0.0.0:18000
 PLAB_CONFIG_FILE=/etc/protocol-target-lab/instances.json
 PLAB_DATA_DIR=/var/lib/protocol-target-lab
-PLAB_HTTP_IMAGE=protocol-target-lab/http:0.1.0
+PLAB_HTTP_IMAGE=protocol-target-lab/http:0.2.0

@@ -65,7 +65,7 @@ struct Create {
 pub fn router(manager: Shared) -> Router {
     Router::new()
         .route("/healthz",get(|| async { Json(json!({"status":"ok","version":env!("CARGO_PKG_VERSION")})) }))
-        .route("/api/protocols",get(|| async { Json(json!([{"id":"http","name":"HTTP","implementation":"controlled responder","version":"0.1.0","available":true}])) }))
+        .route("/api/protocols",get(|| async { Json(json!([{"id":"http","name":"HTTP","implementation":"controlled responder","version":env!("CARGO_PKG_VERSION"),"available":true,"supported_methods":crate::model::HTTP_METHODS}])) }))
         .route("/api/protocols/{id}/schema",get(schema))
         .route("/api/instances",get(list).post(create))
         .route("/api/instances/{id}",get(instance).delete(delete))
@@ -88,7 +88,7 @@ async fn schema(Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
         ));
     }
     Ok(Json(
-        json!({"protocol_id":"http","type":"object","properties":{"bind_ip":{"type":"string","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18090},"response_body":{"type":"string","default":"hello","max_bytes":65536}},"required":["bind_ip","port","response_body"]}),
+        json!({"protocol_id":"http","type":"object","supported_methods":crate::model::HTTP_METHODS,"properties":{"bind_ip":{"type":"string","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18090},"response_length":{"type":"integer","minimum":0,"maximum":crate::model::MAX_RESPONSE_LENGTH,"default":64},"response_mode":{"type":"string","enum":["fixed","random"],"default":"fixed"}},"required":["bind_ip","port","response_length","response_mode"]}),
     ))
 }
 async fn list(State(m): State<Shared>) -> Json<Value> {
@@ -194,7 +194,7 @@ async fn probe(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
     }
     docker::probe(&config).await?;
     Ok(Json(
-        json!({"success":true,"path":"/ok","body_matches":true}),
+        json!({"success":true,"path":"/ok","body_matches":config.expected_body().is_some(),"length_matches":true,"response_length":config.response_length,"response_mode":if config.legacy_body.is_some() { "legacy" } else { config.response_mode.as_str() }}),
     ))
 }
 async fn environment(State(m): State<Shared>) -> Json<Value> {
@@ -227,7 +227,7 @@ async fn connection_info(
     };
     let url = format!("http://{host}:{}", c.port);
     Ok(Json(
-        json!({"base_url":url,"commands":[format!("curl --noproxy '*' '{url}/ok'"),format!("curl --noproxy '*' -I '{url}/ok'"),format!("curl --noproxy '*' '{url}/chunked'"),format!("curl --noproxy '*' '{url}/close'"),format!("curl --noproxy '*' --data-binary 'sample' '{url}/ok'")]}),
+        json!({"base_url":url,"commands":[format!("curl --noproxy '*' '{url}/ok'"),format!("curl --noproxy '*' -I '{url}/ok'"),format!("curl --noproxy '*' '{url}/chunked'"),format!("curl --noproxy '*' '{url}/close'"),format!("curl --noproxy '*' --data-binary 'sample' '{url}/ok'"),format!("curl --noproxy '*' -X PUT --data-binary 'sample' '{url}/ok'"),format!("curl --noproxy '*' -X PATCH --data-binary 'sample' '{url}/ok'"),format!("curl --noproxy '*' -X DELETE '{url}/ok'"),format!("curl --noproxy '*' -X OPTIONS -i '{url}/ok'")]}),
     ))
 }
 async fn logs(

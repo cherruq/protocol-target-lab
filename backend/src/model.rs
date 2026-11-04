@@ -3,19 +3,96 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
+pub const MAX_RESPONSE_LENGTH: u32 = 1024 * 1024;
+pub const HTTP_METHODS: [&str; 7] = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+pub const FIXED_PATTERN: &[u8] = b"0123456789abcdef";
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ResponseMode {
+    Fixed,
+    Random,
+}
+impl ResponseMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fixed => "fixed",
+            Self::Random => "random",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct HttpConfig {
     pub bind_ip: String,
     pub port: u16,
-    pub response_body: String,
+    pub response_length: u32,
+    pub response_mode: ResponseMode,
+    // Preserve the old serialized form and fingerprint until explicit editing.
+    pub legacy_body: Option<String>,
+}
+impl Serialize for HttpConfig {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut value = serializer
+            .serialize_struct("HttpConfig", if self.legacy_body.is_some() { 3 } else { 4 })?;
+        value.serialize_field("bind_ip", &self.bind_ip)?;
+        value.serialize_field("port", &self.port)?;
+        if let Some(body) = &self.legacy_body {
+            value.serialize_field("response_body", body)?;
+        } else {
+            value.serialize_field("response_length", &self.response_length)?;
+            value.serialize_field("response_mode", &self.response_mode)?;
+        }
+        value.end()
+    }
+}
+impl<'de> Deserialize<'de> for HttpConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Input {
+            bind_ip: String,
+            port: u16,
+            response_length: Option<u32>,
+            response_mode: Option<ResponseMode>,
+            response_body: Option<String>,
+        }
+        let raw = Input::deserialize(deserializer)?;
+        let (response_length, response_mode, legacy_body) = match (
+            raw.response_length,
+            raw.response_mode,
+            raw.response_body,
+        ) {
+            (Some(length), Some(mode), None) => (length, mode, None),
+            (None, None, Some(body)) => (
+                u32::try_from(body.len()).map_err(serde::de::Error::custom)?,
+                ResponseMode::Fixed,
+                Some(body),
+            ),
+            _ => {
+                return Err(serde::de::Error::custom(
+                    "config: provide response_length and response_mode, or a legacy response_body; do not mix formats",
+                ));
+            }
+        };
+        Ok(Self {
+            bind_ip: raw.bind_ip,
+            port: raw.port,
+            response_length,
+            response_mode,
+            legacy_body,
+        })
+    }
 }
 impl Default for HttpConfig {
     fn default() -> Self {
         Self {
             bind_ip: "0.0.0.0".into(),
             port: 18090,
-            response_body: "hello".into(),
+            response_length: 64,
+            response_mode: ResponseMode::Fixed,
+            legacy_body: None,
         }
     }
 }
@@ -31,7 +108,12 @@ impl HttpConfig {
         if self.port == 0 {
             bail!("config.port: must be between 1 and 65535");
         }
-        if self.response_body.len() > 65536 || self.response_body.contains('\0') {
+        if self.response_length > MAX_RESPONSE_LENGTH {
+            bail!("config.response_length: must be between 0 and 1048576 bytes");
+        }
+        if let Some(body) = &self.legacy_body
+            && (body.len() > 65536 || body.contains('\0'))
+        {
             bail!("config.response_body: maximum 65536 UTF-8 bytes; NUL is not allowed");
         }
         Ok(())
@@ -41,6 +123,19 @@ impl HttpConfig {
             "{:x}",
             Sha256::digest(serde_json::to_vec(self).expect("serializable config"))
         )
+    }
+    pub fn expected_body(&self) -> Option<Vec<u8>> {
+        if let Some(body) = &self.legacy_body {
+            return Some(body.as_bytes().to_vec());
+        }
+        match self.response_mode {
+            ResponseMode::Fixed => Some(
+                (0..self.response_length as usize)
+                    .map(|i| FIXED_PATTERN[i % FIXED_PATTERN.len()])
+                    .collect(),
+            ),
+            ResponseMode::Random => None,
+        }
     }
     pub fn probe_ip(&self) -> &str {
         if self.bind_ip == "0.0.0.0" {
@@ -130,13 +225,13 @@ pub struct Document {
 impl Document {
     pub fn new() -> Self {
         Self {
-            schema_version: 1,
+            schema_version: 2,
             deployment_id: uuid::Uuid::new_v4().to_string(),
             instances: vec![Instance::new("http-demo".into(), HttpConfig::default())],
         }
     }
     pub fn validate(&self) -> Result<()> {
-        if self.schema_version != 1 {
+        if ![1, 2].contains(&self.schema_version) {
             bail!("unsupported schema_version {}", self.schema_version);
         }
         uuid::Uuid::parse_str(&self.deployment_id)?;
@@ -154,5 +249,47 @@ impl Document {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn legacy_json_and_ownership_fingerprint_are_unchanged() {
+        let raw = r#"{"bind_ip":"127.0.0.1","port":18090,"response_body":"hello"}"#;
+        let c: HttpConfig = serde_json::from_str(raw).unwrap();
+        assert_eq!(serde_json::to_string(&c).unwrap(), raw);
+        assert_eq!(
+            c.fingerprint(),
+            format!("{:x}", Sha256::digest(raw.as_bytes()))
+        );
+        assert_eq!(c.expected_body().unwrap(), b"hello");
+        assert_eq!(c.response_length, 5);
+        assert_eq!(crate::docker::worker_args(&c), ["--response-body=hello"]);
+    }
+    #[test]
+    fn generated_shapes_are_strict_and_lengths_are_bounded() {
+        for raw in [
+            r#"{"bind_ip":"0.0.0.0","port":18090,"response_length":64,"response_mode":"fixed","response_body":"hello"}"#,
+            r#"{"bind_ip":"0.0.0.0","port":18090,"response_length":64}"#,
+            r#"{"bind_ip":"0.0.0.0","port":18090,"response_length":-1,"response_mode":"fixed"}"#,
+            r#"{"bind_ip":"0.0.0.0","port":18090,"response_length":64,"response_mode":"unknown"}"#,
+        ] {
+            assert!(serde_json::from_str::<HttpConfig>(raw).is_err());
+        }
+        let mut c = HttpConfig::default();
+        c.response_length = 0;
+        assert!(c.validate().is_ok());
+        assert!(c.expected_body().unwrap().is_empty());
+        c.response_length = 17;
+        assert_eq!(c.expected_body().unwrap(), b"0123456789abcdef0");
+        c.response_length = MAX_RESPONSE_LENGTH;
+        assert!(c.validate().is_ok());
+        c.response_length += 1;
+        assert!(c.validate().is_err());
+        c.response_length = 64;
+        c.response_mode = ResponseMode::Random;
+        assert!(c.expected_body().is_none());
     }
 }
