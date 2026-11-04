@@ -20,6 +20,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
   config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
   config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
+  config set mqtt-sn [--port N] [--discovery-group IP] [--discovery-port N] [--gateway-id N] [--broker-port N] [--predefined-topics-json JSON]
   config set iec104 [--bind-ip IP] [--port N] [--max-connections N] [--points-json JSON]
   config set telnet [--bind-ip IP] [--port N] [--banner TEXT] [--max-connections N] [--max-line-bytes N]
   start PROTOCOL | stop PROTOCOL | restart PROTOCOL [--wait | --no-wait]
@@ -42,7 +43,7 @@ Local administrative commands (retain existing behavior; may require root):
   plabctl stop-all              stop manager and owned resources
   plabctl status | doctor       local persisted state and Docker diagnostics
   plabctl assets import DIR     local image import from a checked manifest
-Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_IEC104_IMAGE, PLAB_DOCKER_SOCKET
+Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_IEC104_IMAGE, PLAB_MQTTSN_IMAGE, PLAB_DOCKER_SOCKET
 "#;
 const LIMIT: usize = 8 * 1024 * 1024;
 type Result<T> = std::result::Result<T, Failure>;
@@ -141,6 +142,12 @@ const VALUE_OPTIONS: &[&str] = &[
     "--tcp-enabled",
     "--records-json",
     "--points-json",
+    "--predefined-topics-json",
+    "--broker-port",
+    "--broker-host",
+    "--gateway-id",
+    "--discovery-port",
+    "--discovery-group",
     "--max-connections",
     "--max-packet-size",
     "--banner",
@@ -277,6 +284,12 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--tcp-enabled",
                 "--records-json",
                 "--points-json",
+                "--predefined-topics-json",
+                "--broker-port",
+                "--broker-host",
+                "--gateway-id",
+                "--discovery-port",
+                "--discovery-group",
                 "--max-connections",
                 "--max-packet-size",
                 "--banner",
@@ -330,6 +343,8 @@ fn parse(args: &[String]) -> Result<Options> {
                         "ALL".into()
                     } else if *p == "mqtt" {
                         crate::mqtt::TEST_TOPIC.into()
+                    } else if *p == "mqtt-sn" {
+                        crate::mqtt_sn::PATH.into()
                     } else if *p == "iec104" {
                         crate::iec104::PATH.into()
                     } else if *p == "telnet" {
@@ -624,7 +639,7 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
     for (key, value) in fields {
         let value = match key.as_str() {
             "--port" | "--response-length" | "--max-connections" | "--max-packet-size"
-            | "--max-line-bytes" => json!(
+            | "--max-line-bytes" | "--discovery-port" | "--gateway-id" | "--broker-port" => json!(
                 value
                     .parse::<u32>()
                     .map_err(|_| Failure::usage(format!("{key} must be a nonnegative integer")))?
@@ -634,13 +649,17 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
                     .parse::<bool>()
                     .map_err(|_| Failure::usage(format!("{key} must be true or false")))?,
             ),
-            "--records-json" | "--points-json" => serde_json::from_str(&value)
-                .map_err(|e| Failure::usage(format!("invalid configuration JSON: {e}")))?,
+            "--records-json" | "--points-json" | "--predefined-topics-json" => {
+                serde_json::from_str(&value)
+                    .map_err(|e| Failure::usage(format!("invalid configuration JSON: {e}")))?
+            }
             _ => Value::String(value),
         };
         patch.insert(
             if key == "--records-json" {
                 "records".into()
+            } else if key == "--predefined-topics-json" {
+                "predefined_topics".into()
             } else if key == "--points-json" {
                 "points".into()
             } else {
@@ -1013,6 +1032,42 @@ mod tests {
             json!({"max_packet_size":127}),
         ] {
             assert!(full.patch(patch).is_err());
+        }
+    }
+    #[tokio::test]
+    async fn mqtt_sn_defaults_and_partial_topic_updates_preserve_other_endpoints() {
+        let options = parse(&args("tests run mqtt-sn")).unwrap();
+        assert!(
+            matches!(options.command,Command::TestRun(ref p,ref method,ref path,true) if p=="mqtt-sn" && method=="ALL" && path==crate::mqtt_sn::PATH)
+        );
+        let patch = config_patch(BTreeMap::from([
+            (
+                "--predefined-topics-json".into(),
+                r#"[{"topic_id":65534,"topic":"lab/data"}]"#.into(),
+            ),
+            ("--gateway-id".into(), "255".into()),
+            ("--discovery-port".into(), "1985".into()),
+        ]))
+        .unwrap();
+        let base: ProtocolConfig = crate::mqtt_sn::MqttSnConfig::default().into();
+        let result = base.patch(patch).unwrap();
+        let ProtocolConfig::MqttSn(c) = result else {
+            panic!("MQTT-SN variant lost")
+        };
+        assert_eq!(c.port, 1884);
+        assert_eq!(c.broker_port, 28897);
+        assert_eq!(c.gateway_id, 255);
+        assert_eq!(c.discovery_port, 1985);
+        assert_eq!(c.predefined_topics[0].topic_id, 65534);
+        for patch in [
+            json!({"predefined_topics":[]}),
+            json!({"broker_host":"0.0.0.0"}),
+            json!({"bind_ip":"127.0.0.1"}),
+            json!({"max_connections":1}),
+            json!({"gateway_id":256}),
+            json!({}),
+        ] {
+            assert!(base.patch(patch).is_err());
         }
     }
     #[tokio::test]

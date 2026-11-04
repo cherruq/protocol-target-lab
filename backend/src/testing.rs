@@ -51,6 +51,14 @@ impl TestRequest {
     pub fn validate_for(&self, config: &ProtocolConfig) -> Result<()> {
         match config {
             ProtocolConfig::Http(_) => self.validate(),
+            ProtocolConfig::MqttSn(_) => {
+                if !crate::mqtt_sn::CASES.contains(&self.method.as_str())
+                    || self.path != crate::mqtt_sn::PATH
+                {
+                    bail!("config.test: choose an available MQTT-SN case and plab/test path");
+                }
+                Ok(())
+            }
             ProtocolConfig::Iec104(_) => {
                 if !crate::iec104::CASES.contains(&self.method.as_str())
                     || self.path != crate::iec104::PATH
@@ -378,7 +386,8 @@ async fn run_client(
         ProtocolConfig::Dns(_)
         | ProtocolConfig::Mqtt(_)
         | ProtocolConfig::Telnet(_)
-        | ProtocolConfig::Iec104(_) => args.extend([
+        | ProtocolConfig::Iec104(_)
+        | ProtocolConfig::MqttSn(_) => args.extend([
             "--config-json".into(),
             serde_json::to_string(&run.applied_config)?,
         ]),

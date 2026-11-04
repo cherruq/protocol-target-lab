@@ -87,13 +87,14 @@ async fn protocols(State(m): State<Shared>) -> Json<Value> {
         let workspace=d.doc.instances.iter().find(|i|i.protocol_id==protocol);
         let status=if d.config_error.is_some() {"unavailable"} else if d.docker_error.is_some() {"environment-unavailable"} else {workspace.map(|i|i.status.as_str()).unwrap_or("unavailable")};
         let error=d.config_error.as_deref().or(d.docker_error.as_deref()).or_else(||workspace.and_then(|i|i.runtime_error.as_deref().or(i.error.as_deref())));
-        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":match protocol {"dns"=>"dnsmasq 2.90","mqtt"=>"Mosquitto 2.0.18 + packet-size backports","telnet"=>"telnetlib3 4.0.3","iec104"=>"c104 2.2.1 + incremental TCP framing fix",_=>"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
-        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP"]);} else if protocol=="mqtt" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);} else if protocol=="iec104" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["STARTDT","STOPDT","TESTFR","GI","READ","C_SC_NA_1 DIRECT"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"]);}
+        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":match protocol {"dns"=>"dnsmasq 2.90","mqtt"=>"Mosquitto 2.0.18 + packet-size backports","telnet"=>"telnetlib3 4.0.3","iec104"=>"c104 2.2.1 + incremental TCP framing fix","mqtt-sn"=>"Eclipse Paho MQTT-SN Gateway 1.5.1 + project capacity guard; private Mosquitto 2.0.18",_=>"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
+        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP"]);} else if protocol=="mqtt" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);} else if protocol=="mqtt-sn" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["validated_qos"]=json!([1]);descriptor["validated_features"]=json!(["CONNECT/reconnect","REGISTER/PUBLISH","predefined topics","multicast GWINFO","independent MQTT broker delivery"]);} else if protocol=="iec104" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["STARTDT","STOPDT","TESTFR","GI","READ","C_SC_NA_1 DIRECT"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"]);}
         descriptor
     })))
 }
 async fn schema(Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
     match id.as_str() {
+        "mqtt-sn" => Ok(Json(crate::mqtt_sn::schema())),
         "iec104" => Ok(Json(crate::iec104::schema())),
         "http" => Ok(Json(
             json!({"protocol_id":"http","type":"object","supported_methods":crate::model::HTTP_METHODS,"properties":{"bind_ip":{"type":"string","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18090},"response_length":{"type":"integer","minimum":0,"maximum":crate::model::MAX_RESPONSE_LENGTH,"default":64},"response_mode":{"type":"string","enum":["fixed","random"],"default":"fixed"}},"required":["bind_ip","port","response_length","response_mode"]}),
@@ -185,6 +186,13 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
                     .collect::<Vec<_>>(),
             )
         }
+        ProtocolConfig::MqttSn(_) => (
+            crate::mqtt_sn::CASES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            vec![crate::mqtt_sn::PATH.into()],
+        ),
         ProtocolConfig::Iec104(_) => (
             crate::iec104::CASES.iter().map(|s| s.to_string()).collect(),
             vec![crate::iec104::PATH.into()],
@@ -236,6 +244,10 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
             .collect::<serde_json::Map<String, Value>>();
         result["case_labels"] = Value::Object(labels);
         result["path_label"] = "主题前缀".into();
+    }
+    if matches!(config, ProtocolConfig::MqttSn(_)) {
+        result["case_labels"] = json!({"CONNECT":"连接与同 ID 重连","REGISTER_PUBLISH":"注册主题与 QoS1 实际交付","PREDEFINED_PUBLISH":"预定义主题与 QoS1 实际交付","DISCOVERY":"组播发现与网关身份","ALL":"全部测试"});
+        result["path_label"] = "注册主题前缀".into();
     }
     if matches!(config, ProtocolConfig::Iec104(_)) {
         result["case_labels"] = json!({"CONNECT":"连接与 U 帧控制","GI":"总召与结束","READ":"读点与实际值","COMMAND":"模拟单点控制与恢复","ALL":"全部测试"});
@@ -318,6 +330,11 @@ async fn connection_info(
     } else {
         c.bind_ip()
     };
+    if let ProtocolConfig::MqttSn(config) = c {
+        return Ok(Json(
+            json!({"base_url":format!("mqtt-sn://{host}:{}",config.port),"host":host,"port":config.port,"discovery_group":config.discovery_group,"discovery_port":config.discovery_port,"gateway_id":config.gateway_id,"broker":{"host":config.broker_host,"port":config.broker_port,"scope":"private loopback on the target host"},"commands":["plabctl tests run mqtt-sn --method ALL"],"notes":["Gateway binds all IPv4 host interfaces; no bridge publication is used","Discovery replies are native multicast from the gateway UDP port, not unicast replies to the request socket","Client tests run on the manager host and independently observe real delivery at the private broker","Only QoS1 is validated by this phase; predefined topics are restricted to visible ASCII","plab-sn-normal and plab-sn-predef IDs and their short prefixes are reserved for tests"]}),
+        ));
+    }
     if let ProtocolConfig::Iec104(config) = c {
         return Ok(Json(
             json!({"base_url":format!("iec104://{host}:{}",config.port),"host":host,"port":config.port,"commands":["plabctl tests run iec104 --method ALL"],"points":config.points,"notes":["STARTDT/STOPDT/TESTFR, general interrogation, read, direct single command","Command point updates the configured single point in simulated memory only","Configuration values are startup settings; COMMAND tests restore the observed current value"]}),

@@ -5,6 +5,7 @@ import { dnsDefaults } from "../src/dns-config.ts";
 import { mqttDefaults } from "../src/mqtt-config.ts";
 import { telnetDefaults } from "../src/telnet-config.ts";
 import { iec104Defaults } from "../src/iec104-config.ts";
+import { mqttSnDefaults } from "../src/mqtt-sn-config.ts";
 import {
   discardWorkspaceDraft,
   sameWorkspaceConfig,
@@ -171,4 +172,62 @@ test("IEC104 nested startup edits preserve all five protocol drafts and clear on
   for (const other of [defaults, dnsDefaults, mqttDefaults, telnetDefaults])
     assert.equal(sameWorkspaceConfig(iec104Defaults, other), false);
   assert.equal(sameWorkspaceConfig(iec104Defaults, iec), false);
+});
+
+test("MQTT-SN topic edits join six isolated drafts without becoming another protocol's config", () => {
+  let drafts = updateWorkspaceDrafts(
+    {},
+    "http",
+    { ...defaults, response_length: 128 },
+    defaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "dns",
+    { ...dnsDefaults, port: 18253 },
+    dnsDefaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "mqtt",
+    { ...mqttDefaults, max_connections: 2 },
+    mqttDefaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "telnet",
+    { ...telnetDefaults, banner: "draft" },
+    telnetDefaults,
+  );
+  const iec = structuredClone(iec104Defaults);
+  iec.points.single.value = true;
+  drafts = updateWorkspaceDrafts(drafts, "iec104", iec, iec104Defaults);
+  const sn = structuredClone(mqttSnDefaults);
+  sn.predefined_topics = [{ topic_id: 42, topic: "browser/predefined" }];
+  drafts = updateWorkspaceDrafts(drafts, "mqtt-sn", sn, mqttSnDefaults);
+  assert.deepEqual(Object.keys(drafts), [
+    "http",
+    "dns",
+    "mqtt",
+    "telnet",
+    "iec104",
+    "mqtt-sn",
+  ]);
+  assert.deepEqual(Object.keys(discardWorkspaceDraft(drafts, "mqtt-sn")), [
+    "http",
+    "dns",
+    "mqtt",
+    "telnet",
+    "iec104",
+  ]);
+  assert.equal(mqttSnDefaults.predefined_topics[0].topic, "plab/predefined");
+  for (const other of [
+    defaults,
+    dnsDefaults,
+    mqttDefaults,
+    telnetDefaults,
+    iec104Defaults,
+  ])
+    assert.equal(sameWorkspaceConfig(mqttSnDefaults, other), false);
+  assert.equal(sameWorkspaceConfig(mqttSnDefaults, sn), false);
 });

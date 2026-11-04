@@ -4,7 +4,7 @@
 point to the same native binary, using the management HTTP API for workspace
 commands. It does not edit the server's files or invoke local Docker for these
 commands. The Web UI is for interactive use; the CLI exposes the same implemented
-HTTP, DNS, MQTT, Telnet and IEC104 workspaces to automation. Both control the same saved settings and resources.
+HTTP, DNS, MQTT, Telnet, IEC104 and MQTT-SN workspaces to automation. Both control the same saved settings and resources.
 
 API commands default to `http://127.0.0.1:18000`. Set `PLAB_URL` or pass `--url`
 (the explicit option wins). HTTP root URLs only: no credentials, path, query or
@@ -278,3 +278,61 @@ reports are bounded to512KiB.
 IEC104 image0.1.1 uses a source-rebuilt c1042.2.1 with a documented native TCP
 framing correction. Startup/adoption require the incremental-v1 capability;
 original image0.1.0 is a retained failing fixture and is not deployed.
+
+
+## MQTT-SN automation (manager0.10.0)
+
+Use `mqtt-sn` with the shared configuration/lifecycle/logs/connection-info/test
+commands. Atomic options are `--port`, `--discovery-group`, `--discovery-port`,
+`--gateway-id`, `--broker-port` and `--predefined-topics-json` (replaces the list).
+Full JSON also contains bind_ip0.0.0.0 and broker_host127.0.0.1; those fixed
+addresses express native wildcard listening and private loopback isolation.
+`--bind-ip`/`--broker-host` cannot select different addresses.
+
+```sh
+plabctl schema mqtt-sn
+plabctl config set mqtt-sn --port 18998 --discovery-port 18999 --broker-port 28997
+plabctl config set mqtt-sn --predefined-topics-json '[{"topic_id":1,"topic":"lab/predefined"}]'
+plabctl start mqtt-sn
+plabctl tests run mqtt-sn --method REGISTER_PUBLISH
+plabctl tests run mqtt-sn --method PREDEFINED_PUBLISH
+plabctl tests run mqtt-sn --method DISCOVERY
+plabctl tests run mqtt-sn --method ALL
+plabctl logs mqtt-sn
+plabctl stop mqtt-sn
+```
+
+The two UDP ports must differ; TCP broker port is a separate transport. Gateway
+ID is1..255, discovery group is IPv4 multicast, and all ports are1..65535.
+The list has1..16 entries with unique topic IDs1..65534 and unique names. Names
+are1..128 visible ASCII bytes without whitespace, comma,+ or # and cannot
+begin with$. This restricted configuration avoids private-broker reserved
+namespaces; it does not redefine MQTT topic validity. The plab/test
+name and its descendants are reserved for verification.
+
+Cases CONNECT, REGISTER_PUBLISH, PREDEFINED_PUBLISH, DISCOVERY and ALL use fixed
+`plab/test` path and two rounds. Both publication cases validate QoS1 receipt
+at an independent MQTT subscriber; PUBACK alone is insufficient. Predefined
+tests cover every configured mapping. DISCOVERY receives actual multicast
+GWINFO with matching gateway ID and source; it does not allocate an SN client.
+Tests reuse the two reserved identities plab-sn-normal/plab-sn-predef with
+clean sessions, new UDP source ports and fresh normal-topic registration.
+Users must choose distinct IDs, including avoiding short prefixes of these
+reserved names. Native client-table capacity is not a maximum-concurrent-count
+setting; arbitrary new identities can consume retained native entries.
+
+Tests execute on the manager host to observe the loopback-only private broker.
+A remote CLI controls that same host-side run and does not itself prove LAN
+reachability. Cross-node acceptance uses an external SN publisher and independent observation
+of the target loopback broker over a task-scoped private control channel; the
+broker is not opened to the LAN. The JSON/exit/session/cleanup contract remains shared, with a512KiB report
+cap, three-second sockets and30-second total test deadline.
+
+MQTT-SN image0.1.1 includes a documented project registration-capacity guard.
+Startup/adoption require bounded-v1; the original0.1.0 candidate is retained as
+a failing fixture and is not deployed as the workspace runtime.
+
+Discovery selects the target-facing membership interface for remote targets;
+local targets use the native multicast route. Up to six idempotent SEARCHGW
+queries share one absolute three-second budget. Retries do not relax gateway
+identity/source/destination checks or change host routing.

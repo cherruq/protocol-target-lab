@@ -5,3 +5,7 @@ THIRD_PARTY_LICENSES.txt -whitespace
 third-party/mosquitto/edl-v10 -whitespace
 third-party/mosquitto/patches/*.patch -whitespace
 third-party/iec104/patches/*.patch -whitespace
+third-party/paho-mqtt-sn/patches/*.patch -whitespace
+third-party/paho-mqtt-sn/about.html -whitespace
+third-party/paho-mqtt-sn/edl-v10 -whitespace
+third-party/paho-mqtt-sn/epl-v20 -whitespace

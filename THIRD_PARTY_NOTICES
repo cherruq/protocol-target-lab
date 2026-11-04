@@ -83,5 +83,17 @@ IEC104 runtime image:
   worker image, not in the native Rust/Web manager. Preserve upstream licenses
   and complete source/build materials when redistributing the image.
 
-This notice describes implemented HTTP, DNS, MQTT, Telnet and IEC104 components. Other protocol
+MQTT-SN runtime image:
+  Eclipse Paho MQTT-SN Gateway 1.5.1 is built from the pinned public embedded-C
+  source with its original Eclipse license/notice texts retained. A minimal
+  project capacity guard returns native congestion rather than dereferencing
+  a missing topic entry when the registration table is full. The patch is not
+  represented as an upstream backport. Source and
+  dependency provenance are in third-party/paho-mqtt-sn and images/mqtt-sn.
+  The same supervised image includes the documented Mosquitto 2.0.18 source,
+  full-packet backports and licenses described above for its private broker.
+  Public build/source materials accompany the separately imported image; the
+  Rust/Web manager dependency index is a separate closure.
+
+This notice describes implemented HTTP, DNS, MQTT, Telnet, IEC104 and MQTT-SN components. Other protocol
 libraries and a complete offline distribution are not included or claimed here.
