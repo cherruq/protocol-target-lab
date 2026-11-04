@@ -15,6 +15,7 @@ pub struct Settings {
     pub image: String,
     pub dns_image: String,
     pub mqtt_image: String,
+    pub telnet_image: String,
 }
 impl Settings {
     pub fn env() -> Result<Self> {
@@ -38,6 +39,7 @@ impl Settings {
                         "PLAB_HTTP_IMAGE",
                         "PLAB_DNS_IMAGE",
                         "PLAB_MQTT_IMAGE",
+                        "PLAB_TELNET_IMAGE",
                     ]
                     .contains(&key)
                     {
@@ -75,10 +77,13 @@ impl Settings {
             image: value("PLAB_HTTP_IMAGE", "protocol-target-lab/http:0.3.0"),
             dns_image: value("PLAB_DNS_IMAGE", "protocol-target-lab/dns:0.1.1"),
             mqtt_image: value("PLAB_MQTT_IMAGE", "protocol-target-lab/mqtt:0.1.1"),
+            telnet_image: value("PLAB_TELNET_IMAGE", "protocol-target-lab/telnet:0.1.0"),
         })
     }
     pub fn image_for(&self, protocol: &str) -> &str {
-        if protocol == "mqtt" {
+        if protocol == "telnet" {
+            &self.telnet_image
+        } else if protocol == "mqtt" {
             &self.mqtt_image
         } else if protocol == "dns" {
             &self.dns_image
@@ -204,6 +209,7 @@ mod tests {
                 image: "unused".into(),
                 dns_image: "unused".into(),
                 mqtt_image: "unused".into(),
+                telnet_image: "unused".into(),
             }
         }
     }
@@ -277,7 +283,7 @@ mod tests {
         save(&s.config, &d).unwrap();
         let bytes = std::fs::read(&s.config).unwrap();
         let loaded = load(&s).unwrap();
-        assert_eq!(loaded.instances.len(), 3);
+        assert_eq!(loaded.instances.len(), 4);
         assert_eq!(loaded.instances[0].id, "custom-http");
         assert!(loaded.instances[0].enabled);
         assert_eq!(loaded.instances[0].status, "checking");
@@ -319,12 +325,12 @@ mod tests {
         save(&s.config, &d).unwrap();
         let loaded = load(&s).unwrap();
         assert_eq!(loaded.deployment_id, d.deployment_id);
-        assert_eq!(loaded.instances.len(), 3);
+        assert_eq!(loaded.instances.len(), 4);
         let i = &loaded.instances[0];
         assert_eq!(i.id, "http-demo");
         assert!(!i.enabled);
         assert!(i.applied_config.is_none());
-        assert_eq!(load(&s).unwrap().instances.len(), 3);
+        assert_eq!(load(&s).unwrap().instances.len(), 4);
         d.deployment_id = uuid::Uuid::new_v4().to_string();
         save(&s.config, &d).unwrap();
         let bytes = std::fs::read(&s.config).unwrap();
@@ -365,7 +371,8 @@ mod tests {
         let fixture = Fixture::new();
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
-        doc.instances.retain(|i| i.protocol_id != "mqtt");
+        doc.instances
+            .retain(|i| ["http", "dns"].contains(&i.protocol_id.as_str()));
         doc.instances[0].id = "mqtt-demo".into();
         for instance in &mut doc.instances {
             instance.enabled = true;
@@ -396,6 +403,45 @@ mod tests {
         assert_eq!(mqtt.protocol_id, "mqtt");
         assert!(!mqtt.enabled);
         assert!(mqtt.applied_config.is_none());
+        let bytes = std::fs::read(&settings.config).unwrap();
+        load(&settings).unwrap();
+        assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);
+    }
+    #[test]
+    fn three_protocol_upgrade_adds_telnet_without_touching_existing_ids_or_hashes() {
+        let fixture = Fixture::new();
+        let settings = fixture.settings();
+        let mut doc = load(&settings).unwrap();
+        doc.instances.retain(|i| i.protocol_id != "telnet");
+        doc.instances[0].id = "telnet-demo".into();
+        for i in &mut doc.instances {
+            i.enabled = true;
+            i.applied_config = Some(i.config.clone());
+        }
+        let original = serde_json::to_value(&doc.instances).unwrap();
+        let hashes = doc
+            .instances
+            .iter()
+            .map(|i| i.config.fingerprint())
+            .collect::<Vec<_>>();
+        save(&settings.config, &doc).unwrap();
+        let loaded = load(&settings).unwrap();
+        assert_eq!(
+            serde_json::to_value(&loaded.instances[..3]).unwrap(),
+            original
+        );
+        assert_eq!(
+            loaded.instances[..3]
+                .iter()
+                .map(|i| i.config.fingerprint())
+                .collect::<Vec<_>>(),
+            hashes
+        );
+        assert_eq!(loaded.deployment_id, doc.deployment_id);
+        let telnet = &loaded.instances[3];
+        assert_eq!(telnet.id, "telnet-demo-2");
+        assert!(!telnet.enabled);
+        assert!(telnet.applied_config.is_none());
         let bytes = std::fs::read(&settings.config).unwrap();
         load(&settings).unwrap();
         assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);

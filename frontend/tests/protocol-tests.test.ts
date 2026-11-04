@@ -56,3 +56,23 @@ test("generic retained reports require both current workspace and accepted test 
   assert.equal(ownProtocolTest(run, "mqtt-old", "test-b"), null);
   assert.equal(ownProtocolTest(run, "mqtt-old", "test-a"), run);
 });
+
+test("generic structured previews keep TELNET IAC and negotiation traces without protocol-specific labels", () => {
+  const trace = {
+    trace: [
+      {
+        direction: "receive",
+        option: "TTYPE",
+        wire: { hex: "fffd18", length: 3, truncated: false },
+      },
+      { direction: "send", option: "NAWS", width: 120, height: 40 },
+    ],
+  };
+  const preview = boundedWireSummary(trace);
+  assert.equal(preview.truncated, false);
+  assert.deepEqual(JSON.parse(preview.text), trace);
+  assert.equal(
+    protocolTestLabel("UNKNOWN_OPTION", { UNKNOWN_OPTION: "未知选项拒绝" }),
+    "未知选项拒绝",
+  );
+});

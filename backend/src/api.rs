@@ -83,12 +83,12 @@ pub fn router(manager: Shared) -> Router {
 }
 async fn protocols(State(m): State<Shared>) -> Json<Value> {
     let d = m.data.lock().await;
-    Json(json!(["http","dns","mqtt"].map(|protocol| {
+    Json(json!(crate::model::PROTOCOLS.map(|protocol| {
         let workspace=d.doc.instances.iter().find(|i|i.protocol_id==protocol);
         let status=if d.config_error.is_some() {"unavailable"} else if d.docker_error.is_some() {"environment-unavailable"} else {workspace.map(|i|i.status.as_str()).unwrap_or("unavailable")};
         let error=d.config_error.as_deref().or(d.docker_error.as_deref()).or_else(||workspace.and_then(|i|i.runtime_error.as_deref().or(i.error.as_deref())));
-        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":match protocol {"dns"=>"dnsmasq 2.90","mqtt"=>"Mosquitto 2.0.18 + packet-size backports",_=>"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
-        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);}
+        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":match protocol {"dns"=>"dnsmasq 2.90","mqtt"=>"Mosquitto 2.0.18 + packet-size backports","telnet"=>"telnetlib3 4.0.3",_=>"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
+        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP"]);} else if protocol=="mqtt" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"]);}
         descriptor
     })))
 }
@@ -96,6 +96,9 @@ async fn schema(Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
     match id.as_str() {
         "http" => Ok(Json(
             json!({"protocol_id":"http","type":"object","supported_methods":crate::model::HTTP_METHODS,"properties":{"bind_ip":{"type":"string","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18090},"response_length":{"type":"integer","minimum":0,"maximum":crate::model::MAX_RESPONSE_LENGTH,"default":64},"response_mode":{"type":"string","enum":["fixed","random"],"default":"fixed"}},"required":["bind_ip","port","response_length","response_mode"]}),
+        )),
+        "telnet" => Ok(Json(
+            json!({"protocol_id":"telnet","type":"object","additionalProperties":false,"implementation":"telnetlib3 4.0.3","default":crate::telnet::TelnetConfig::default(),"supported_features":["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"],"properties":{"bind_ip":{"type":"string","format":"ipv4","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":2323},"banner":{"type":"string","minLength":1,"maxUtf8Bytes":256,"default":"Protocol Target Lab Telnet"},"max_connections":{"type":"integer","minimum":1,"maximum":128,"default":16},"max_line_bytes":{"type":"integer","minimum":64,"maximum":65536,"default":4096}},"required":["bind_ip","port","banner","max_connections","max_line_bytes"],"notes":["Finite ECHO/INFO/CLOSE lab application; no system login or shell","Banner has no ASCII control characters; input line bytes exclude CRLF"]}),
         )),
         "mqtt" => Ok(Json(
             json!({"protocol_id":"mqtt","type":"object","additionalProperties":false,"implementation":"Mosquitto 2.0.18 + packet-size backports","supported_versions":["3.1.1","5.0"],"supported_qos":[0,1,2],"default":crate::mqtt::MqttConfig::default(),"properties":{"bind_ip":{"type":"string","format":"ipv4","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18883},"max_connections":{"type":"integer","minimum":1,"maximum":128,"default":32},"max_packet_size":{"type":"integer","minimum":128,"maximum":1048576,"default":1048576}},"required":["bind_ip","port","max_connections","max_packet_size"]}),
@@ -181,6 +184,10 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
                     .collect::<Vec<_>>(),
             )
         }
+        ProtocolConfig::Telnet(_) => (
+            crate::telnet::CASES.iter().map(|s| s.to_string()).collect(),
+            vec![crate::telnet::PATH.into()],
+        ),
         ProtocolConfig::Mqtt(_) => (
             crate::mqtt::CASES.iter().map(|s| s.to_string()).collect(),
             vec![crate::mqtt::TEST_TOPIC.into()],
@@ -225,6 +232,10 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
         result["case_labels"] = Value::Object(labels);
         result["path_label"] = "主题前缀".into();
     }
+    if matches!(config, ProtocolConfig::Telnet(_)) {
+        result["case_labels"] = json!({"CONNECT":"连接与欢迎","ECHO":"数据回显与 IAC 转义","OPTIONS":"原生协商与会话信息","UNKNOWN_OPTION":"不支持选项拒绝","ALL":"全部测试"});
+        result["path_label"] = "会话".into();
+    }
     Ok(Json(result))
 }
 async fn start_test(
@@ -258,7 +269,7 @@ async fn start_test(
 }
 async fn image_inventory(m: &Shared) -> Value {
     let mut images = serde_json::Map::new();
-    for protocol in ["http", "dns", "mqtt"] {
+    for protocol in crate::model::PROTOCOLS {
         let image = m.settings.image_for(protocol);
         let id = docker::image_id(image).await.ok();
         images.insert(
@@ -298,6 +309,11 @@ async fn connection_info(
     } else {
         c.bind_ip()
     };
+    if let ProtocolConfig::Telnet(config) = c {
+        return Ok(Json(
+            json!({"base_url":format!("telnet://{host}:{}",config.port),"host":host,"port":config.port,"commands":[format!("telnet {host} {}",config.port)],"notes":["Lab commands: ECHO <data>, INFO, CLOSE","Real telnetlib3 option negotiation; no system login or shell"]}),
+        ));
+    }
     if let ProtocolConfig::Mqtt(config) = c {
         let endpoint = format!("mqtt://{host}:{}", config.port);
         return Ok(Json(

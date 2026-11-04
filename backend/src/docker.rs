@@ -229,6 +229,7 @@ pub async fn probe(config: &ProtocolConfig) -> Result<()> {
     let config = match config {
         ProtocolConfig::Dns(c) => return crate::dns::probe(c).await,
         ProtocolConfig::Mqtt(c) => return crate::mqtt::probe(c).await,
+        ProtocolConfig::Telnet(c) => return crate::telnet::probe(c).await,
         ProtocolConfig::Http(c) => c,
     };
     let client = reqwest::Client::builder()

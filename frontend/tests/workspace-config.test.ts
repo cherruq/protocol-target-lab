@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { defaults } from "../src/config.ts";
 import { dnsDefaults } from "../src/dns-config.ts";
 import { mqttDefaults } from "../src/mqtt-config.ts";
+import { telnetDefaults } from "../src/telnet-config.ts";
 import {
   discardWorkspaceDraft,
   sameWorkspaceConfig,
@@ -80,4 +81,44 @@ test("three protocol drafts survive switching and a MQTT save clears only MQTT",
   );
   assert.equal(sameWorkspaceConfig(mqttDefaults, defaults), false);
   assert.equal(sameWorkspaceConfig(mqttDefaults, dnsDefaults), false);
+});
+
+test("TELNET joins four isolated workspace drafts without overwriting another protocol", () => {
+  let drafts = updateWorkspaceDrafts(
+    {},
+    "http",
+    { ...defaults, response_length: 128 },
+    defaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "dns",
+    { ...dnsDefaults, port: 18253 },
+    dnsDefaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "mqtt",
+    { ...mqttDefaults, max_connections: 2 },
+    mqttDefaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "telnet",
+    { ...telnetDefaults, banner: "UTF-8 欢迎" },
+    telnetDefaults,
+  );
+  assert.deepEqual(Object.keys(drafts), ["http", "dns", "mqtt", "telnet"]);
+  const after = discardWorkspaceDraft(drafts, "telnet");
+  assert.deepEqual(Object.keys(after), ["http", "dns", "mqtt"]);
+  assert.equal(sameWorkspaceConfig(telnetDefaults, mqttDefaults), false);
+  assert.equal(sameWorkspaceConfig(telnetDefaults, dnsDefaults), false);
+  assert.equal(sameWorkspaceConfig(telnetDefaults, defaults), false);
+  assert.equal(
+    sameWorkspaceConfig(telnetDefaults, {
+      ...telnetDefaults,
+      banner: "changed",
+    }),
+    false,
+  );
 });

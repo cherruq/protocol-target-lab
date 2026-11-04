@@ -260,6 +260,14 @@ export default function ProtocolClientTests<C>({
               测试报告：{current.report.error}
             </div>
           )}
+          {current.report?.trace !== undefined && (
+            <div className="protocol-extra-trace">
+              <Wire
+                title={`${protocolName} 交互记录`}
+                message={{ trace: current.report.trace }}
+              />
+            </div>
+          )}
           {checks.length ? (
             <>
               <div className="test-counts">
@@ -301,6 +309,14 @@ export default function ProtocolClientTests<C>({
                         message={check.response}
                       />
                     </div>
+                    {check.trace !== undefined && (
+                      <div className="protocol-extra-trace">
+                        <Wire
+                          title={`${protocolName} 交互记录`}
+                          message={{ trace: check.trace }}
+                        />
+                      </div>
+                    )}
                   </details>
                 ))}
               </div>

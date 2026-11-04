@@ -4,7 +4,7 @@
 point to the same native binary, using the management HTTP API for workspace
 commands. It does not edit the server's files or invoke local Docker for these
 commands. The Web UI is for interactive use; the CLI exposes the same implemented
-HTTP, DNS and MQTT workspaces to automation. Both control the same saved settings and resources.
+HTTP, DNS, MQTT and Telnet workspaces to automation. Both control the same saved settings and resources.
 
 API commands default to `http://127.0.0.1:18000`. Set `PLAB_URL` or pass `--url`
 (the explicit option wins). HTTP root URLs only: no credentials, path, query or
@@ -208,3 +208,30 @@ subscriber delivery; results retain a bounded packet trace. The client report
 limit is 512 KiB and the existing JSON/exit-code/session/timeout contract applies.
 A saved max_connections=1 is legal, but independent publisher/subscriber testing
 requires at least2 applied connections and otherwise returns a clear diagnostic.
+
+## Telnet automation (manager 0.8.0)
+
+Use `telnet` with the shared workspace commands. Complete configuration JSON
+contains bind_ip, port, banner, max_connections and max_line_bytes. Atomic field
+options are `--bind-ip`, `--port`, `--banner`, `--max-connections` and
+`--max-line-bytes`. Banner is1..256 UTF-8 bytes without ASCII controls; input
+lines are64..65536 decoded application bytes excluding the final CRLF. Other
+protocol fields are rejected. Saving does not apply changes automatically.
+
+```sh
+plabctl config set telnet --port 23230 --banner 'Lab terminal' --max-line-bytes 64
+plabctl start telnet
+plabctl tests run telnet --method ALL
+plabctl tests run telnet --method ECHO
+plabctl tests run telnet --method OPTIONS
+plabctl connection-info telnet
+plabctl logs telnet
+plabctl stop telnet
+```
+
+Cases are CONNECT, ECHO, OPTIONS, UNKNOWN_OPTION and ALL, using the fixed
+`session` path. Each selected case runs twice with bounded packet traces and
+checks actual responses or native session metadata. This is a finite experiment
+application (ECHO/INFO/CLOSE), not a remote operating-system shell. CLI JSON,
+exit codes, operation/session correlation and disposable-client cleanup follow
+the existing contract. The report cap is512 KiB.

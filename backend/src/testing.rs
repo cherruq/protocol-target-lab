@@ -51,6 +51,14 @@ impl TestRequest {
     pub fn validate_for(&self, config: &ProtocolConfig) -> Result<()> {
         match config {
             ProtocolConfig::Http(_) => self.validate(),
+            ProtocolConfig::Telnet(_) => {
+                if !crate::telnet::CASES.contains(&self.method.as_str())
+                    || self.path != crate::telnet::PATH
+                {
+                    bail!("config.test: choose an available Telnet case and session path");
+                }
+                Ok(())
+            }
             ProtocolConfig::Mqtt(c) => {
                 if !crate::mqtt::CASES.contains(&self.method.as_str())
                     || self.path != crate::mqtt::TEST_TOPIC
@@ -359,10 +367,11 @@ async fn run_client(
         run.path.clone(),
     ];
     match &run.applied_config {
-        ProtocolConfig::Dns(_) | ProtocolConfig::Mqtt(_) => args.extend([
-            "--config-json".into(),
-            serde_json::to_string(&run.applied_config)?,
-        ]),
+        ProtocolConfig::Dns(_) | ProtocolConfig::Mqtt(_) | ProtocolConfig::Telnet(_) => args
+            .extend([
+                "--config-json".into(),
+                serde_json::to_string(&run.applied_config)?,
+            ]),
         ProtocolConfig::Http(c) => {
             if let Some(body) = &c.legacy_body {
                 args.push(format!("--legacy-body={body}"));

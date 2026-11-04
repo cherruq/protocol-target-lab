@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "base_image": "python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337",
+  "image": "protocol-target-lab/telnet:0.1.0",
+  "packages": [
+    {
+      "name": "telnetlib3",
+      "version": "4.0.3",
+      "file": "third-party/telnetlib3/telnetlib3-4.0.3-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/d0/59/b66e768fd98a3e331264e1440c736d406f4b9dc417b6068df7ef9fd0fb55/telnetlib3-4.0.3-py3-none-any.whl",
+      "sha256": "2c1721b69ae0fd65d511d26733233d5757bef7dbc2ed268bd293c452cc81e898",
+      "kind": "bdist_wheel"
+    },
+    {
+      "name": "telnetlib3",
+      "version": "4.0.3",
+      "file": "third-party/telnetlib3/telnetlib3-4.0.3.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/18/72/3fe2fda37dc85f36b3963cb57e392d1614d16651528a7f06942f257ea66b/telnetlib3-4.0.3.tar.gz",
+      "sha256": "e1f205e2d0d6804dd1ae1d7392aa45843958e648f16f6c331b0c241305bc9adc",
+      "kind": "sdist"
+    },
+    {
+      "name": "wcwidth",
+      "version": "0.6.0",
+      "file": "third-party/telnetlib3/wcwidth-0.6.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/68/5a/199c59e0a824a3db2b89c5d2dade7ab5f9624dbf6448dc291b46d5ec94d3/wcwidth-0.6.0-py3-none-any.whl",
+      "sha256": "1a3a1e510b553315f8e146c54764f4fb6264ffad731b3d78088cdb1478ffbdad",
+      "kind": "bdist_wheel"
+    },
+    {
+      "name": "wcwidth",
+      "version": "0.6.0",
+      "file": "third-party/telnetlib3/wcwidth-0.6.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/35/a2/8e3becb46433538a38726c948d3399905a4c7cabd0df578ede5dc51f0ec2/wcwidth-0.6.0.tar.gz",
+      "sha256": "cdc4e4262d6ef9a1a57e018384cbeb1208d8abbc64176027e2c2455c81313159",
+      "kind": "sdist"
+    }
+  ],
+  "build_image": "protocol-target-lab/telnet-build:4.0.3"
+}
