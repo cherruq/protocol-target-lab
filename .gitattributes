@@ -1,0 +1,2 @@
+# Preserve upstream license text verbatim, including Markdown spacing.
+THIRD_PARTY_LICENSES.txt -whitespace

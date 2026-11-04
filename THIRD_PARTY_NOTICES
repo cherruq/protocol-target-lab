@@ -1,0 +1,46 @@
+Protocol Target Lab third-party source notes — phase 1
+
+The project's original Rust manager, Web application, HTTP worker, test client,
+and integration scripts are distributed under the accompanying MIT LICENSE.
+Third-party components retain their original licenses. Full license and copyright
+texts for the locked Linux Rust dependency closure and bundled Web components
+are in THIRD_PARTY_LICENSES.txt. The version/source/file index is
+third-party/licenses.json (third-party-licenses.json in the installed docs).
+The deb installs both files under /usr/share/doc/protocol-target-lab. Keep LICENSE,
+this notice, the full license bundle and its index with standalone binaries.
+
+The bundle includes nested upstream notices and the complete Vite notice file.
+The include_dir crates omit their license text from their published archives;
+third-party/upstream/include_dir preserves the license from the exact upstream
+commit recorded in those archives. Generation and verification require only
+prepared Cargo/npm caches; scripts/collect-third-party-licenses.py never downloads.
+
+Rust dependencies:
+  Cargo.toml lists direct dependencies. Cargo.lock records exact resolved package
+  versions and registry checksums. Crate license declarations and upstream source
+  metadata are available through `cargo metadata --locked --format-version 1`.
+  Dependency source archives and LICENSE/NOTICE files must accompany any future
+  complete offline source distribution; a Cargo lockfile alone is not that bundle.
+
+Web dependencies:
+  frontend/package.json lists direct dependencies. frontend/package-lock.json
+  records package versions, source locations, integrity values and supplied license
+  metadata. Preserve upstream license files when distributing dependency materials.
+
+HTTP runtime image:
+  Python 3.12, Python Software Foundation License, https://www.python.org/psf/license/
+  Official Python image build sources: https://github.com/docker-library/python
+  Debian base packages retain their package licenses in /usr/share/doc inside the
+  image. images/http/base-image.lock identifies the selected public base digest.
+  The worker uses only the Python standard library; no pip packages are installed.
+
+Docker Engine and CLI:
+  The manager invokes the system Docker CLI with structured arguments. The engine
+  and its CLI are provided by the Ubuntu docker.io system package, not copied
+  into this source repository or the manager deb. Upstream: https://github.com/moby/moby and
+  https://github.com/docker/cli. Docker installation/dependency preparation is an
+  administrator or offline-bundle preparation step, never a package-maintainer
+  script download.
+
+This first-stage notice describes implemented HTTP components. Other protocol
+libraries and a complete offline distribution are not included or claimed here.

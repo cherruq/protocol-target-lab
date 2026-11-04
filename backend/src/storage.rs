@@ -1,0 +1,299 @@
+use crate::model::Document;
+use anyhow::{Context, Result};
+use fs2::FileExt;
+use std::{
+    fs::{File, OpenOptions},
+    io::Write,
+    path::{Path, PathBuf},
+};
+
+#[derive(Clone)]
+pub struct Settings {
+    pub config: PathBuf,
+    pub data: PathBuf,
+    pub listen: String,
+    pub image: String,
+}
+impl Settings {
+    pub fn env() -> Result<Self> {
+        let mut defaults = std::collections::HashMap::new();
+        let env_path = std::env::var("PLAB_ENV_FILE")
+            .unwrap_or_else(|_| "/etc/default/protocol-target-lab".into());
+        match std::fs::read_to_string(&env_path) {
+            Ok(text) => {
+                for line in text
+                    .lines()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty() && !s.starts_with('#'))
+                {
+                    let (key, value) = line
+                        .split_once('=')
+                        .context("invalid manager defaults; expected KEY=VALUE")?;
+                    if ![
+                        "PLAB_CONFIG_FILE",
+                        "PLAB_DATA_DIR",
+                        "PLAB_LISTEN",
+                        "PLAB_HTTP_IMAGE",
+                    ]
+                    .contains(&key)
+                    {
+                        anyhow::bail!("unsupported key in manager defaults: {key}");
+                    }
+                    let value = value.trim();
+                    let value = if value.len() >= 2
+                        && ((value.starts_with('\'') && value.ends_with('\''))
+                            || (value.starts_with('"') && value.ends_with('"')))
+                    {
+                        &value[1..value.len() - 1]
+                    } else {
+                        value
+                    };
+                    defaults.insert(key.to_owned(), value.to_owned());
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e).context("cannot read manager defaults"),
+        }
+        let value = |key: &str, fallback: &str| {
+            std::env::var(key)
+                .ok()
+                .or_else(|| defaults.get(key).cloned())
+                .unwrap_or_else(|| fallback.into())
+        };
+        Ok(Self {
+            config: value(
+                "PLAB_CONFIG_FILE",
+                "/etc/protocol-target-lab/instances.json",
+            )
+            .into(),
+            data: value("PLAB_DATA_DIR", "/var/lib/protocol-target-lab").into(),
+            listen: value("PLAB_LISTEN", "0.0.0.0:18000"),
+            image: value("PLAB_HTTP_IMAGE", "protocol-target-lab/http:0.3.0"),
+        })
+    }
+    pub fn lock(&self, name: &str) -> Result<File> {
+        std::fs::create_dir_all(&self.data)?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(self.data.join(name))?;
+        file.try_lock_exclusive()
+            .with_context(|| format!("another operation holds {name}"))?;
+        Ok(file)
+    }
+}
+
+pub fn save(path: &Path, doc: &Document) -> Result<()> {
+    let parent = path.parent().context("configuration path has no parent")?;
+    std::fs::create_dir_all(parent)?;
+    let temporary = parent.join(format!(".instances-{}.tmp", uuid::Uuid::new_v4()));
+    let result = (|| -> Result<()> {
+        let mut f = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        f.write_all(&serde_json::to_vec_pretty(doc)?)?;
+        f.write_all(b"\n")?;
+        f.sync_all()?;
+        std::fs::rename(&temporary, path)?;
+        File::open(parent)?.sync_all()?;
+        Ok(())
+    })();
+    if temporary.exists() {
+        let _ = std::fs::remove_file(temporary);
+    }
+    result.with_context(|| format!("cannot save {}", path.display()))
+}
+pub fn load(settings: &Settings) -> Result<Document> {
+    if !settings.config.exists() {
+        // A missing existing config must not silently create a new deployment.
+        if settings.data.join("deployment-id").exists() {
+            anyhow::bail!(
+                "configuration missing: {} (deployment marker exists)",
+                settings.config.display()
+            );
+        }
+        let d = Document::new();
+        save(&settings.config, &d)?;
+        std::fs::write(settings.data.join("deployment-id"), &d.deployment_id)?;
+        return Ok(d);
+    }
+    let bytes = std::fs::read(&settings.config)?;
+    let mut d: Document = serde_json::from_slice(&bytes)
+        .with_context(|| format!("invalid configuration {}", settings.config.display()))?;
+    d.validate()?;
+    let marker = settings.data.join("deployment-id");
+    if marker.exists() {
+        if std::fs::read_to_string(&marker)?.trim() != d.deployment_id {
+            anyhow::bail!("deployment_id does not match persistent ownership marker");
+        }
+    } else {
+        std::fs::write(marker, &d.deployment_id)?;
+    }
+    // Older versions allowed deleting the last entry. Restore a disabled fixed
+    // workspace only after validating the entire document and ownership marker.
+    // Existing IDs, snapshots and container labels are never rewritten.
+    if d.instances.is_empty() {
+        d.instances = Document::new().instances;
+        d.schema_version = 2;
+        save(&settings.config, &d)?;
+    }
+    for i in &mut d.instances {
+        i.status = if i.error.is_some() {
+            "error"
+        } else if i.enabled {
+            "checking"
+        } else {
+            "stopped"
+        }
+        .into();
+    }
+    Ok(d)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    struct Fixture(PathBuf);
+    impl Fixture {
+        fn new() -> Self {
+            let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("build/tests")
+                .join(uuid::Uuid::new_v4().to_string());
+            std::fs::create_dir_all(&p).unwrap();
+            Self(p)
+        }
+        fn settings(&self) -> Settings {
+            Settings {
+                config: self.0.join("instances.json"),
+                data: self.0.clone(),
+                listen: "127.0.0.1:0".into(),
+                image: "unused".into(),
+            }
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    #[test]
+    fn corrupted_config_is_preserved_and_missing_existing_config_is_rejected() {
+        let f = Fixture::new();
+        let s = f.settings();
+        let d = load(&s).unwrap();
+        assert!(!d.instances[0].enabled);
+        assert!(d.instances[0].applied_config.is_none());
+        std::fs::write(&s.config, b"broken configuration").unwrap();
+        assert!(load(&s).is_err());
+        assert_eq!(std::fs::read(&s.config).unwrap(), b"broken configuration");
+        std::fs::remove_file(&s.config).unwrap();
+        assert!(load(&s).is_err());
+        assert!(!s.config.exists());
+    }
+    #[test]
+    fn draft_and_successful_snapshot_remain_separate_after_reload() {
+        let f = Fixture::new();
+        let s = f.settings();
+        let mut d = load(&s).unwrap();
+        let i = &mut d.instances[0];
+        i.enabled = true;
+        i.applied_config = Some(i.config.clone());
+        i.config.response_length = 128;
+        save(&s.config, &d).unwrap();
+        let loaded = load(&s).unwrap();
+        assert!(loaded.instances[0].enabled);
+        assert_eq!(
+            loaded.instances[0]
+                .applied_config
+                .as_ref()
+                .unwrap()
+                .response_length,
+            64
+        );
+        assert_eq!(loaded.instances[0].config.response_length, 128);
+    }
+    #[test]
+    fn fixed_workspace_preserves_custom_id_legacy_bytes_and_snapshots() {
+        let f = Fixture::new();
+        let s = f.settings();
+        let mut d = load(&s).unwrap();
+        d.schema_version = 1;
+        let i = &mut d.instances[0];
+        i.id = "custom-http".into();
+        i.config = serde_json::from_str(
+            r#"{"bind_ip":"0.0.0.0","port":18091,"response_body":"old body"}"#,
+        )
+        .unwrap();
+        i.applied_config = Some(i.config.clone());
+        i.enabled = true;
+        let hash = i.config.fingerprint();
+        save(&s.config, &d).unwrap();
+        let bytes = std::fs::read(&s.config).unwrap();
+        let loaded = load(&s).unwrap();
+        assert_eq!(loaded.instances.len(), 1);
+        assert_eq!(loaded.instances[0].id, "custom-http");
+        assert!(loaded.instances[0].enabled);
+        assert_eq!(loaded.instances[0].status, "checking");
+        assert_eq!(
+            loaded.instances[0]
+                .applied_config
+                .as_ref()
+                .unwrap()
+                .fingerprint(),
+            hash
+        );
+        assert_eq!(std::fs::read(&s.config).unwrap(), bytes);
+    }
+    #[test]
+    fn duplicate_protocol_is_rejected_without_changing_file_or_marker() {
+        let f = Fixture::new();
+        let s = f.settings();
+        let mut d = load(&s).unwrap();
+        let mut second = d.instances[0].clone();
+        second.id = "http-second".into();
+        d.instances.push(second);
+        save(&s.config, &d).unwrap();
+        let bytes = std::fs::read(&s.config).unwrap();
+        let marker = std::fs::read(s.data.join("deployment-id")).unwrap();
+        assert!(
+            format!("{:#}", load(&s).err().unwrap())
+                .contains("multiple workspaces for protocol http")
+        );
+        assert_eq!(std::fs::read(&s.config).unwrap(), bytes);
+        assert_eq!(std::fs::read(s.data.join("deployment-id")).unwrap(), marker);
+    }
+    #[test]
+    fn empty_legacy_document_restores_only_disabled_workspace_after_marker_check() {
+        let f = Fixture::new();
+        let s = f.settings();
+        let mut d = load(&s).unwrap();
+        d.instances.clear();
+        d.schema_version = 1;
+        save(&s.config, &d).unwrap();
+        let loaded = load(&s).unwrap();
+        assert_eq!(loaded.deployment_id, d.deployment_id);
+        assert_eq!(loaded.instances.len(), 1);
+        let i = &loaded.instances[0];
+        assert_eq!(i.id, "http-demo");
+        assert!(!i.enabled);
+        assert!(i.applied_config.is_none());
+        assert_eq!(load(&s).unwrap().instances.len(), 1);
+        d.deployment_id = uuid::Uuid::new_v4().to_string();
+        save(&s.config, &d).unwrap();
+        let bytes = std::fs::read(&s.config).unwrap();
+        assert!(load(&s).is_err());
+        assert_eq!(std::fs::read(&s.config).unwrap(), bytes);
+    }
+    #[test]
+    fn deployment_mismatch_cannot_claim_resources() {
+        let f = Fixture::new();
+        let s = f.settings();
+        let mut d = load(&s).unwrap();
+        d.deployment_id = uuid::Uuid::new_v4().to_string();
+        save(&s.config, &d).unwrap();
+        assert!(load(&s).is_err());
+    }
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=Protocol Target Lab management service
+Wants=docker.service network-online.target
+After=docker.service network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/protocol-target-lab
+ExecStart=/usr/bin/protocol-target-lab serve
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=30
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

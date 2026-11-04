@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+case "$1" in
+    configure)
+        install -d -m 0755 /etc/protocol-target-lab /var/lib/protocol-target-lab /run/protocol-target-lab
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload
+            systemctl enable protocol-target-lab.service
+            # Restart only the manager; it adopts its existing labeled workers.
+            systemctl restart protocol-target-lab.service
+        fi
+        ;;
+esac
+exit 0

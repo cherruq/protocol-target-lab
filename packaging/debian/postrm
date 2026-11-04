@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+case "$1" in
+    purge)
+        # These fixed directories belong exclusively to this package.
+        rm -rf -- /etc/protocol-target-lab /var/lib/protocol-target-lab /run/protocol-target-lab
+        rm -f -- /etc/default/protocol-target-lab
+        ;;
+esac
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload
+fi
+exit 0
