@@ -1,6 +1,6 @@
 Protocol Target Lab third-party source notes — protocol workers
 
-The project's original Rust manager, Web application, HTTP/DNS/MQTT/Telnet/IEC104/MQTT-SN/RTP/RTCP/DL-T645 wrappers and test clients,
+The project's original Rust manager, Web application, HTTP/DNS/MQTT/Telnet/IEC104/MQTT-SN/RTP/RTCP/DL-T645/BFD wrappers and test clients,
 and integration scripts are distributed under the accompanying MIT LICENSE.
 The IEC101 native C wrapper is instead GPL-3.0-or-later, as identified in its
 source; its Python supervisor/client and local serial helper use MIT.
@@ -142,6 +142,19 @@ IEC101 runtime image and local helper:
   into the Rust manager. No physical serial driver or proprietary stack is
   copied into the manager deb.
 
+BFD runtime image:
+  The autonomous single-hop state machine, six target-side scenarios, read-only
+  observer and same-image client are original MIT-licensed project code using
+  only the Python standard library. The locked base preserves CPython and OS
+  notices. Runtime sources, tests and base/build provenance accompany the image
+  export. Original FRR 8.4.4 is used separately as an independent native oracle;
+  its executable, libraries, GPL source and component dependencies are not
+  included in the standard-library worker or manager/deb distribution. Any
+  separate redistribution of an oracle image retains its own complete
+  corresponding-source and notice requirements; a config dry-run is not native
+  interoperability evidence. Host iproute2 is supplied by its system package,
+  invoked read-only by the manager and not copied into the repository/runtime.
+
 This notice describes implemented HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP,
-RTCP, DL/T645 and IEC101 components. Other protocol
+RTCP, DL/T645, IEC101 and BFD components. Other protocol
 libraries and a complete offline distribution are not included or claimed here.

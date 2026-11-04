@@ -379,3 +379,48 @@ test("IEC101 dual-channel nested drafts join ten workspaces without overwriting 
   assert.equal(sameWorkspaceConfig(iec101Defaults, dual), false);
   assert.equal(iec101Defaults.double.point.value, true);
 });
+
+test("BFD tagged scenarios add an eleventh isolated draft and only its explicit save clears it", async () => {
+  const { bfdDefaults, changeBfdMode } = await import("../src/bfd-config.ts");
+  const { iec101Defaults, updateIec101Channel } = await import(
+    "../src/iec101-config.ts"
+  );
+  const { rtpDefaults } = await import("../src/rtp-config.ts");
+  const { rtcpDefaults } = await import("../src/rtcp-config.ts");
+  const { dlt645Defaults } = await import("../src/dlt645-config.ts");
+  const configs = [
+    defaults,
+    dnsDefaults,
+    mqttDefaults,
+    telnetDefaults,
+    iec104Defaults,
+    mqttSnDefaults,
+    rtpDefaults,
+    rtcpDefaults,
+    dlt645Defaults,
+  ];
+  let drafts = {};
+  for (const [index, config] of configs.entries())
+    drafts = updateWorkspaceDrafts(
+      drafts,
+      `prior-${index}`,
+      { ...config, port: config.port + 1 },
+      config,
+    );
+  const dual = updateIec101Channel(iec101Defaults, "single", {
+    point: { value: false },
+  });
+  drafts = updateWorkspaceDrafts(drafts, "iec101", dual, iec101Defaults);
+  const bfd = changeBfdMode(bfdDefaults, "quiet");
+  drafts = updateWorkspaceDrafts(drafts, "bfd", bfd, bfdDefaults);
+  assert.deepEqual(drafts.bfd, bfd);
+  assert.deepEqual(drafts.iec101, dual);
+  const saved = updateWorkspaceDrafts(drafts, "bfd", bfd, bfd);
+  assert.equal(Object.keys(saved).length, 10);
+  assert.equal(Object.keys(drafts).length, 11);
+  for (const config of configs)
+    assert.equal(sameWorkspaceConfig(bfdDefaults, config), false);
+  assert.equal(sameWorkspaceConfig(bfdDefaults, iec101Defaults), false);
+  assert.equal(sameWorkspaceConfig(bfdDefaults, defaults), false);
+  assert.equal(sameWorkspaceConfig(bfdDefaults, bfd), false);
+});

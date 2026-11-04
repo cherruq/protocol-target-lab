@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation supports **ten protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645 and IEC101**, with manager version **0.14.0**,
-HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, and IEC101 dual-channel slave/client image **0.1.0**. Each protocol has one fixed workspace and
+The current implementation supports **eleven protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101 and BFD**, with manager version **0.15.0**,
+HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, IEC101 dual-channel slave/client image **0.1.0**, and BFD peer/client image **0.1.0**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -56,7 +56,9 @@ not need Node, npm, Cargo, or Nginx on the host. The Rust core and API client do
 not use host Python. The deb additionally depends on **Python 3** for the optional
 local `plabctl serial` PTY helper, installed at
 `/usr/libexec/protocol-target-lab/iec101_serial.py` and invoked with Python isolated
-mode. Protocol workers and their Python runtimes run inside their own containers.
+mode. The host also needs **iproute2** for the manager's read-only `ip -j`
+address/interface checks before BFD operations; the deb declares this dependency.
+Protocol workers and their Python runtimes run inside their own containers.
 
 For development, install the Rust toolchain specified in `rust-toolchain.toml`,
 Node 22.12+ with npm (Node 24 was tested), Docker Engine with its CLI, GNU make, Python 3 (license inventory verification), and Debian packaging tools
@@ -98,7 +100,7 @@ build image.
 
 The HTTP image is
 `protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.14.0_amd64.deb`.
+The manager package is `dist/protocol-target-lab_0.15.0_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -126,12 +128,13 @@ offline installation bundle or complete source-dependency distribution.
 The release package selects Ubuntu 24.04's `docker.io` package as its Docker
 Engine and CLI provider. Install it first, or have the corresponding prepared
 packages available to APT. The manager deb declares `docker.io`, Python 3 for the local serial helper,
-and its detected native library dependencies. The project does not automatically replace another
+iproute2 for BFD address/interface checks, and its detected native library
+dependencies. The project does not automatically replace another
 Docker provider; a host with Docker CE can run development builds directly, while
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.14.0_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.15.0_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
@@ -168,7 +171,7 @@ There is one main configuration per protocol. Start, stop, restart, logs, and
 connection tests operate directly on that protocol's workspace. Internal runtime
 components do not create more workspaces: IEC101 keeps both independent
 address-width channels simultaneously in one workspace, while an MQTT-SN private broker is an internal dependency. Temporary
-test containers also remain internal resources. The ten implemented protocols
+test containers also remain internal resources. The eleven implemented protocols
 listed above each have one fixed workspace.
 
 Existing single-HTTP configurations retain their original ID, ownership hash,
@@ -590,3 +593,44 @@ is9600/8N1; it does not establish physical RS232/RS485 electrical behavior,
 line rate/parity, half-duplex direction or field hardware operation. See
 [IEC101 guide](docs/iec101.md), [acceptance scope](docs/iec101-acceptance.md),
 and [CLI reference](docs/cli.md).
+
+## BFD active single-hop peer
+
+BFD runs an autonomous IPv4 single-hop active Control peer in host networking.
+It owns its explicit bind address's UDP3784 receiver and configured high source
+port, plus a private read-only observer on127.0.0.1:18084. Default addresses
+127.0.0.1/127.0.0.2 and interface lo provide genuine software-loopback BFD without
+adding host addresses. The worker uses only NET_RAW for interface binding; it
+does not configure routes, interfaces or sysctls. Host iproute2 is required for
+the manager's read-only address/interface preflight.
+
+```sh
+make fetch-bfd-deps
+make bfd-images OFFLINE=1
+make bfd-assets OFFLINE=1
+sudo plabctl assets import ./dist/bfd-assets
+plabctl start bfd
+plabctl runtime bfd
+plabctl tests run bfd --method ALL
+plabctl stop bfd
+```
+
+Six target-side modes are normal, poll, quiet, wrong-your, ttl254 and short.
+Each fault is armed after actual bidirectional Up and runs at most once for a
+validated peer epoch; Down/recovery alone does not rearm it. ALL validates the
+CURRENT applied mode for two fresh rounds, including actual target output and
+recovery. It does not reconfigure the target to claim all six modes in one run.
+
+The runtime query separates a running worker from actual peer Down/Init/Up.
+Health reads bounded state and actual socket/process identity; it creates no
+fake peer. BFD tests default to150s CLI waiting, while other commands keep120s.
+A test can run locally only when the configured peer address/interface already
+belongs to that host and its peer_ip:3784 is free. For a remote LAN peer, run the
+same-image client on that node with its own interface name and trusted private
+observation; Web tests do not spoof remote addresses or change network setup.
+
+The runtime is original MIT Python standard-library code. Original FRR is a
+separate independent oracle, not a dependency bundled into the worker or deb.
+Software-loopback/native-oracle evidence does not establish a physical fault,
+routing convergence or whole-host reboot. See [BFD guide](docs/bfd.md),
+[acceptance scope](docs/bfd-acceptance.md) and [CLI reference](docs/cli.md).

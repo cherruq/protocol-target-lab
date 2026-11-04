@@ -4,7 +4,7 @@
 point to the same native binary, using the management HTTP API for workspace
 commands. It does not edit the server's files or invoke local Docker for these
 commands. The Web UI is for interactive use; the CLI exposes the same implemented
-HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645 and IEC101
+HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101 and BFD
 workspaces to automation. Both control the same saved settings and resources.
 
 API commands default to `http://127.0.0.1:18000`. Set `PLAB_URL` or pass `--url`
@@ -79,8 +79,8 @@ two flags. Queries such as `show` and `tests result` return available state with
 exit 0, even when that state describes an error; use the waiting command when the
 exit code must express execution success.
 
-`--timeout N` sets the whole command deadline (default 120 seconds, range
-1..3600), covering lookup, request, polling and input. Individual JSON API requests
+`--timeout N` sets the whole command deadline (default120 seconds; BFD test
+run/result commands default150; range1..3600), covering lookup, request, polling and input. Individual JSON API requests
 are bounded to 10 seconds. `logs --follow` emits JSON Lines and uses the total
 deadline; Ctrl-C returns code 6. Streams ending unexpectedly return code 3.
 Timeout or Ctrl-C does not cancel already accepted manager work. The error
@@ -514,3 +514,63 @@ the Rust manager/API client itself has no Python runtime dependency. Direct
 TCP/wire tests do not require a local serial helper. Software PTY/TCP acceptance
 does not establish physical RS232/RS485 electrical timing, parity or field-device
 operation.
+
+## BFD automation (manager 0.15.0)
+
+```sh
+plabctl schema bfd
+plabctl config get bfd
+plabctl config set bfd --bind-ip 127.0.0.1 --peer-ip 127.0.0.2 --interface lo
+plabctl config set bfd --source-port 55028 --local-discriminator 1111901224
+plabctl config set bfd --min-tx-us 1000000 --min-rx-us 1000000 --detect-mult 3
+plabctl config set bfd --scenario-json '{"mode":"quiet","after_up_ms":1000,"duration_ms":4000}'
+plabctl start bfd
+plabctl runtime bfd
+plabctl tests run bfd --method ALL
+plabctl logs bfd
+plabctl stop bfd
+```
+
+Full JSON requires wire_profile, bind_ip, peer_ip, interface, source_port,
+local_discriminator, min_tx_us, min_rx_us, detect_mult and scenario. The profile
+is the required literal `bfd-ipv4-single-hop`; port3784 is fixed rather than a
+generic `--port` option. The listed field flags use atomic PATCH; `--scenario-json`
+replaces the complete tagged object so switching modes does not retain
+incompatible fields. Complete file/stdin/data JSON intentionally replaces the
+full configuration. Saving alone does not restart or apply changes.
+
+`normal` accepts only mode. `poll` also requires after_up_ms. `quiet`,
+`wrong-your`, `ttl254` and `short` require after_up_ms and duration_ms. Delay
+is0..3600000ms, duration1..3600000ms. Source port is49152..65535, discriminator
+a nonzero uint32, Tx/Rx1000000..4294967295 microseconds and DetectMult1..255.
+Binding and peer addresses must be different explicit IPv4 unicast addresses;
+the interface must have the configured local address at start. The manager uses
+installed iproute2 for read-only OS checks, never to add addresses or routes.
+
+`runtime bfd` reads the exact owned worker's private state. It shows current
+local/remote BFD state, epoch/scenario, actual bind metadata, counters and
+main-loop heartbeat separately from process running. A legitimate peer Down is
+not a missing worker or a fabricated Up. The query creates no BFD peer.
+
+Methods are NORMAL, POLL, QUIET, WRONG_YOUR, TTL254, SHORT and ALL, with fixed
+path session. A named method must match the applied mode. ALL verifies the
+current mode twice with fresh peer identities, not all six configurations.
+Target faults must be observed in the target-to-client direction; client-side
+bad packets cannot substitute for target-side fault output. Full configured
+window expiry, detection direction and normal recovery are retained in the report.
+
+Built-in tests need the configured peer address/interface on the manager host
+and exclusive peer_ip:3784. They refuse an active Up/Init/recent peer rather than
+evicting it. Default loopback127.0.0.1/127.0.0.2 works without address changes.
+For a configured remote peer, execute the same-image client on that node with
+its own interface and trusted private observation. A remote API CLI still
+controls a test on the manager host; it does not move the test to the CLI host.
+
+BFD tests have120s overall client and bounded15s phases; legal large timers or
+windows too short to prove detection can make full validation unavailable. The
+CLI defaults BFD `tests run` and `tests result` waiting to150s, with explicit
+`--timeout` taking precedence. Other CLI commands retain their120s default.
+Cleanup sends a real AdminDown only after revalidating the same source and own
+epoch, then requires observed Down. It never labels administrative release as a
+detection timeout or touches a replaced peer. Standard JSON/exit/session/cleanup
+contracts still apply, with a512KiB report cap.
