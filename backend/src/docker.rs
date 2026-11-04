@@ -74,6 +74,15 @@ pub async fn prepare_image(image: &str, config: &ProtocolConfig) -> Result<Strin
                 "MQTT image lacks full-packet size enforcement; import version 0.1.1 or newer with full-v1 capability"
             );
         }
+        if matches!(config, ProtocolConfig::Iec104(_))
+            && metadata[0]["Config"]["Labels"]["io.protocol-target-lab.iec104-stream-framing"]
+                .as_str()
+                != Some("incremental-v1")
+        {
+            bail!(
+                "IEC104 image lacks incremental TCP framing; import version 0.1.1 or newer with incremental-v1 capability"
+            );
+        }
     } else if config.as_http().is_some_and(|c| c.legacy_body.is_none()) {
         let metadata: Vec<Value> = serde_json::from_str(&cmd(&["image", "inspect", &id]).await?)?;
         if metadata[0]["Config"]["Labels"]["io.protocol-target-lab.http-response-schema"].as_str()
@@ -131,6 +140,9 @@ pub fn matches(v: &Value, config: &ProtocolConfig) -> bool {
         && (!matches!(config, ProtocolConfig::Mqtt(_))
             || v["Config"]["Labels"]["io.protocol-target-lab.mqtt-packet-size"].as_str()
                 == Some("full-v1"))
+        && (!matches!(config, ProtocolConfig::Iec104(_))
+            || v["Config"]["Labels"]["io.protocol-target-lab.iec104-stream-framing"].as_str()
+                == Some("incremental-v1"))
 }
 pub async fn remove(v: &Value, deployment: &str, instance: &str) -> Result<()> {
     let id = container_id(v)?;
@@ -230,6 +242,7 @@ pub async fn probe(config: &ProtocolConfig) -> Result<()> {
         ProtocolConfig::Dns(c) => return crate::dns::probe(c).await,
         ProtocolConfig::Mqtt(c) => return crate::mqtt::probe(c).await,
         ProtocolConfig::Telnet(c) => return crate::telnet::probe(c).await,
+        ProtocolConfig::Iec104(c) => return crate::iec104::probe(c).await,
         ProtocolConfig::Http(c) => c,
     };
     let client = reqwest::Client::builder()
@@ -450,6 +463,27 @@ pub async fn preflight_port(
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn iec104_adoption_requires_incremental_stream_capability() {
+        let config: ProtocolConfig = crate::iec104::Iec104Config::default().into();
+        let mut container = json!({"Config":{"Labels":{}}});
+        container["Config"]["Labels"][HASH] = config.fingerprint().into();
+        assert!(!matches(&container, &config));
+        container["Config"]["Labels"]["io.protocol-target-lab.iec104-stream-framing"] =
+            "incremental-v1".into();
+        assert!(matches(&container, &config));
+        for legacy in [
+            ProtocolConfig::Http(HttpConfig::default()),
+            ProtocolConfig::Dns(crate::dns::DnsConfig::default()),
+            ProtocolConfig::Mqtt(crate::mqtt::MqttConfig::default()),
+            ProtocolConfig::Telnet(crate::telnet::TelnetConfig::default()),
+        ] {
+            container["Config"]["Labels"] =
+                json!({"io.protocol-target-lab.mqtt-packet-size":"full-v1"});
+            container["Config"]["Labels"][HASH] = legacy.fingerprint().into();
+            assert!(matches(&container, &legacy));
+        }
+    }
     #[test]
     fn mqtt_adoption_requires_full_packet_capability_without_changing_legacy_hashes() {
         let mqtt: ProtocolConfig = crate::mqtt::MqttConfig::default().into();

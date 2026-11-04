@@ -20,6 +20,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
   config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
   config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
+  config set iec104 [--bind-ip IP] [--port N] [--max-connections N] [--points-json JSON]
   config set telnet [--bind-ip IP] [--port N] [--banner TEXT] [--max-connections N] [--max-line-bytes N]
   start PROTOCOL | stop PROTOCOL | restart PROTOCOL [--wait | --no-wait]
   connection-info PROTOCOL
@@ -41,7 +42,7 @@ Local administrative commands (retain existing behavior; may require root):
   plabctl stop-all              stop manager and owned resources
   plabctl status | doctor       local persisted state and Docker diagnostics
   plabctl assets import DIR     local image import from a checked manifest
-Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_DOCKER_SOCKET
+Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_IEC104_IMAGE, PLAB_DOCKER_SOCKET
 "#;
 const LIMIT: usize = 8 * 1024 * 1024;
 type Result<T> = std::result::Result<T, Failure>;
@@ -139,6 +140,7 @@ const VALUE_OPTIONS: &[&str] = &[
     "--udp-enabled",
     "--tcp-enabled",
     "--records-json",
+    "--points-json",
     "--max-connections",
     "--max-packet-size",
     "--banner",
@@ -274,6 +276,7 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--udp-enabled",
                 "--tcp-enabled",
                 "--records-json",
+                "--points-json",
                 "--max-connections",
                 "--max-packet-size",
                 "--banner",
@@ -327,6 +330,8 @@ fn parse(args: &[String]) -> Result<Options> {
                         "ALL".into()
                     } else if *p == "mqtt" {
                         crate::mqtt::TEST_TOPIC.into()
+                    } else if *p == "iec104" {
+                        crate::iec104::PATH.into()
                     } else if *p == "telnet" {
                         crate::telnet::PATH.into()
                     } else {
@@ -629,13 +634,15 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
                     .parse::<bool>()
                     .map_err(|_| Failure::usage(format!("{key} must be true or false")))?,
             ),
-            "--records-json" => serde_json::from_str(&value)
-                .map_err(|e| Failure::usage(format!("invalid records JSON: {e}")))?,
+            "--records-json" | "--points-json" => serde_json::from_str(&value)
+                .map_err(|e| Failure::usage(format!("invalid configuration JSON: {e}")))?,
             _ => Value::String(value),
         };
         patch.insert(
             if key == "--records-json" {
                 "records".into()
+            } else if key == "--points-json" {
+                "points".into()
             } else {
                 key.trim_start_matches("--").replace('-', "_")
             },
@@ -1006,6 +1013,41 @@ mod tests {
             json!({"max_packet_size":127}),
         ] {
             assert!(full.patch(patch).is_err());
+        }
+    }
+    #[tokio::test]
+    async fn iec104_case_defaults_and_point_table_patch_are_typed() {
+        let options = parse(&args("tests run iec104")).unwrap();
+        assert!(
+            matches!(options.command,Command::TestRun(ref p,ref method,ref path,true) if p=="iec104" && method=="ALL" && path==crate::iec104::PATH)
+        );
+        let mut points = crate::iec104::Iec104Config::default().points;
+        points.single.ioa = 16777215;
+        points.single.value = true;
+        let patch = config_patch(BTreeMap::from([
+            (
+                "--points-json".into(),
+                serde_json::to_string(&points).unwrap(),
+            ),
+            ("--max-connections".into(), "1".into()),
+        ]))
+        .unwrap();
+        let base: ProtocolConfig = crate::iec104::Iec104Config::default().into();
+        let updated = base.patch(patch).unwrap();
+        assert_eq!(updated.port(), 2404);
+        let ProtocolConfig::Iec104(c) = updated else {
+            panic!("IEC104 variant lost")
+        };
+        assert_eq!(c.max_connections, 1);
+        assert_eq!(c.points, points);
+        for patch in [
+            json!({"points":{"single":{}}}),
+            json!({"points":null}),
+            json!({"banner":"x"}),
+            json!({"max_connections":65}),
+            json!({}),
+        ] {
+            assert!(base.patch(patch).is_err());
         }
     }
     #[tokio::test]

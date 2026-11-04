@@ -4,3 +4,4 @@ THIRD_PARTY_LICENSES.txt -whitespace
 # Preserve original license bytes and significant unified-diff context.
 third-party/mosquitto/edl-v10 -whitespace
 third-party/mosquitto/patches/*.patch -whitespace
+third-party/iec104/patches/*.patch -whitespace
