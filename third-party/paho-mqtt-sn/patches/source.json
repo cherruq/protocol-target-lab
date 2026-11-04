@@ -1,0 +1,12 @@
+{
+  "id": "register-capacity-bounded-v1",
+  "source_file": "MQTTSNGateway/src/MQTTSNGWPublishHandler.cpp",
+  "original_sha256": "8c71aed1d4a57631609e98eb1e3823ce426dd8c93b53ceaa09c637a010647567",
+  "patched_sha256": "0c8d560b0dee318f3c9869e1db22a63fb913cfc1887abd3b6e03bc5ff38b04eb",
+  "patch_file": "0001-register-capacity.patch",
+  "patch_sha256": "1869086feb3cac15a4c4094b36e21c1bf13b012b2077b4ee27e3cd15799646c8",
+  "origin": "Original project capacity correction, not an upstream backport",
+  "original_source_url": "https://raw.githubusercontent.com/eclipse-paho/paho.mqtt-sn.embedded-c/e1e1b733e0fecef6bed92798d7f6d6440d9026f2/MQTTSNGateway/src/MQTTSNGWPublishHandler.cpp",
+  "license": "EPL-1.0 OR BSD-3-Clause",
+  "reason": "When the native per-client topic table is full, preserve it and send a native REGACK with TopicId=0, the request MsgId and congestion return code 0x01 instead of dereferencing nullptr."
+}

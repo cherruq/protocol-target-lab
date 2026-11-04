@@ -22,18 +22,25 @@ import {
   sameIec104Config,
   type Iec104Config,
 } from "./iec104-config.ts";
+import {
+  isMqttSnConfig,
+  sameMqttSnConfig,
+  type MqttSnConfig,
+} from "./mqtt-sn-config.ts";
 export type WorkspaceConfig =
   | StoredConfig
   | DnsConfig
   | MqttConfig
   | TelnetConfig
-  | Iec104Config;
+  | Iec104Config
+  | MqttSnConfig;
 export type DraftConfig =
   | Config
   | DnsConfig
   | MqttConfig
   | TelnetConfig
-  | Iec104Config;
+  | Iec104Config
+  | MqttSnConfig;
 export type WorkspaceDrafts = Record<string, DraftConfig>;
 
 export function sameWorkspaceConfig(
@@ -48,6 +55,8 @@ export function sameWorkspaceConfig(
     return isTelnetConfig(a) && isTelnetConfig(b) && sameTelnetConfig(a, b);
   if (isIec104Config(a) || isIec104Config(b))
     return isIec104Config(a) && isIec104Config(b) && sameIec104Config(a, b);
+  if (isMqttSnConfig(a) || isMqttSnConfig(b))
+    return isMqttSnConfig(a) && isMqttSnConfig(b) && sameMqttSnConfig(a, b);
   return isHttpConfig(a) && isHttpConfig(b) && sameStoredConfig(a, b);
 }
 export function updateWorkspaceDrafts(
@@ -64,8 +73,10 @@ export function updateWorkspaceDrafts(
         ? !isTelnetConfig(saved) || !sameTelnetConfig(edited, saved)
         : isIec104Config(edited)
           ? !isIec104Config(saved) || !sameIec104Config(edited, saved)
-          : !isHttpConfig(saved) ||
-            !sameGeneratedConfig(edited, normalizeConfig(saved));
+          : isMqttSnConfig(edited)
+            ? !isMqttSnConfig(saved) || !sameMqttSnConfig(edited, saved)
+            : !isHttpConfig(saved) ||
+              !sameGeneratedConfig(edited, normalizeConfig(saved));
   const next = { ...drafts };
   if (changed) next[id] = edited;
   else delete next[id];

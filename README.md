@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation is **HTTP, DNS, MQTT, Telnet and IEC104**, with manager version **0.9.0**,
-HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, and IEC104 server/client image **0.1.1**. Each protocol has one fixed workspace and
+The current implementation is **HTTP, DNS, MQTT, Telnet, IEC104 and MQTT-SN**, with manager version **0.10.0**,
+HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, and MQTT-SN server/client image **0.1.1**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -94,7 +94,7 @@ build image.
 
 The HTTP image is
 `protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.9.0_amd64.deb`.
+The manager package is `dist/protocol-target-lab_0.10.0_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -127,7 +127,7 @@ Docker provider; a host with Docker CE can run development builds directly, whil
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.9.0_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.10.0_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
@@ -438,3 +438,34 @@ then restores and verifies the prior value; it reports failure if restoration
 fails. It does not invent a command termination ASDU. Public pinned wheel,
 full native source, exact project framing patch and build/license materials accompany the runtime image.
 See [IEC104 details](docs/iec104.md) and [CLI reference](docs/cli.md).
+
+
+## MQTT-SN workspace
+
+MQTT-SN runs a real **Eclipse Paho1.5.1** UDP gateway with a documented native registration-capacity guard and a private Mosquitto
+broker in one supervised container. Host networking carries actual multicast
+GWINFO replies; the native gateway listens on all IPv4 interfaces. The private
+broker binds only127.0.0.1 on its configured port and is independent of the
+public MQTT workspace. Configuration exposes primary UDP, discovery group/UDP
+port, gateway ID, private broker port and1..16 predefined mappings.
+
+```sh
+make fetch-mqtt-sn-deps
+make mqtt-sn-images OFFLINE=1
+make mqtt-sn-assets
+plabctl config set mqtt-sn --port 18998 --discovery-port 18999 --broker-port 28997
+plabctl start mqtt-sn
+plabctl tests run mqtt-sn --method ALL
+plabctl logs mqtt-sn
+plabctl stop mqtt-sn
+```
+
+The disposable client validates QoS1 normal/predefined publications through an
+independent MQTT subscriber, two same-ID reconnects with fresh source ports,
+and native multicast discovery with exact gateway identity/source checks. Other
+MQTT-SN QoS modes are outside this phase acceptance. Predefined topics use a
+restricted visible-ASCII subset without a leading dollar sign, because the private
+broker reserves system namespaces and the native CSV reader rewrites some
+whitespace/Unicode bytes. Private broker supervision, socket conflicts and
+restart adoption preserve the existing protocol workspaces. See
+[MQTT-SN details](docs/mqtt-sn.md) and [CLI reference](docs/cli.md).

@@ -83,6 +83,15 @@ pub async fn prepare_image(image: &str, config: &ProtocolConfig) -> Result<Strin
                 "IEC104 image lacks incremental TCP framing; import version 0.1.1 or newer with incremental-v1 capability"
             );
         }
+        if matches!(config, ProtocolConfig::MqttSn(_))
+            && metadata[0]["Config"]["Labels"]["io.protocol-target-lab.mqtt-sn-register-capacity"]
+                .as_str()
+                != Some("bounded-v1")
+        {
+            bail!(
+                "MQTT-SN image lacks safe registration capacity handling; import version0.1.1 or newer with bounded-v1 capability"
+            );
+        }
     } else if config.as_http().is_some_and(|c| c.legacy_body.is_none()) {
         let metadata: Vec<Value> = serde_json::from_str(&cmd(&["image", "inspect", &id]).await?)?;
         if metadata[0]["Config"]["Labels"]["io.protocol-target-lab.http-response-schema"].as_str()
@@ -137,6 +146,13 @@ pub fn running(v: &Value) -> bool {
 }
 pub fn matches(v: &Value, config: &ProtocolConfig) -> bool {
     v["Config"]["Labels"][HASH].as_str() == Some(config.fingerprint().as_str())
+        && (!matches!(config, ProtocolConfig::MqttSn(_))
+            || (v["HostConfig"]["NetworkMode"] == "host"
+                && v["HostConfig"]["IpcMode"] == "private"
+                && ["", "private"]
+                    .contains(&v["HostConfig"]["PidMode"].as_str().unwrap_or("invalid"))
+                && v["Config"]["Labels"]["io.protocol-target-lab.mqtt-sn-register-capacity"]
+                    == "bounded-v1"))
         && (!matches!(config, ProtocolConfig::Mqtt(_))
             || v["Config"]["Labels"]["io.protocol-target-lab.mqtt-packet-size"].as_str()
                 == Some("full-v1"))
@@ -174,7 +190,7 @@ pub async fn start(
         "--name".into(),
         name,
         "--network".into(),
-        if matches!(config, ProtocolConfig::Http(_)) {
+        if matches!(config, ProtocolConfig::Http(_) | ProtocolConfig::MqttSn(_)) {
             "host".into()
         } else {
             "bridge".into()
@@ -208,6 +224,15 @@ pub async fn start(
                 c.port.to_string(),
             ]);
             args.extend(worker_args(c));
+        }
+        ProtocolConfig::MqttSn(_) => {
+            args.extend([
+                "--ipc".into(),
+                "private".into(),
+                immutable_image,
+                "--config-json".into(),
+                serde_json::to_string(config)?,
+            ]);
         }
         _ => {
             for transport in config.transports() {
@@ -243,6 +268,7 @@ pub async fn probe(config: &ProtocolConfig) -> Result<()> {
         ProtocolConfig::Mqtt(c) => return crate::mqtt::probe(c).await,
         ProtocolConfig::Telnet(c) => return crate::telnet::probe(c).await,
         ProtocolConfig::Iec104(c) => return crate::iec104::probe(c).await,
+        ProtocolConfig::MqttSn(c) => return crate::mqtt_sn::probe(c).await,
         ProtocolConfig::Http(c) => c,
     };
     let client = reqwest::Client::builder()
@@ -343,7 +369,18 @@ pub async fn preflight_port(
     own: Option<&ProtocolConfig>,
     own_id: Option<&str>,
 ) -> Result<()> {
-    let transports = config.transports();
+    let endpoints = if let ProtocolConfig::MqttSn(c) = config {
+        c.endpoints()
+            .iter()
+            .map(|e| (e.ip.to_string(), e.port, e.transport))
+            .collect::<Vec<_>>()
+    } else {
+        config
+            .transports()
+            .into_iter()
+            .map(|t| (config.bind_ip().to_string(), config.port(), t))
+            .collect::<Vec<_>>()
+    };
     let overlap = |a: &str, b: &str| a == b || a == "0.0.0.0" || b == "0.0.0.0";
     // Docker may publish through NAT without a userland listening socket.
     let ids = cmd(&["ps", "-q"]).await?;
@@ -358,18 +395,17 @@ pub async fn preflight_port(
             if let Some(ports) = container["NetworkSettings"]["Ports"].as_object() {
                 for (key, bindings) in ports {
                     let protocol = key.split('/').nth(1).unwrap_or("").to_ascii_uppercase();
-                    if !transports.contains(&protocol.as_str()) {
-                        continue;
-                    }
                     if let Some(bindings) = bindings.as_array() {
                         for binding in bindings {
-                            if binding["HostPort"].as_str()
-                                == Some(config.port().to_string().as_str())
-                                && (binding["HostIp"].as_str() == Some("::")
-                                    || binding["HostIp"]
-                                        .as_str()
-                                        .is_some_and(|ip| overlap(ip, config.bind_ip())))
-                            {
+                            if endpoints.iter().any(|(ip, port, transport)| {
+                                *transport == protocol
+                                    && binding["HostPort"].as_str()
+                                        == Some(port.to_string().as_str())
+                                    && (binding["HostIp"].as_str() == Some("::")
+                                        || binding["HostIp"]
+                                            .as_str()
+                                            .is_some_and(|bound| overlap(bound, ip)))
+                            }) {
                                 bail!(
                                     "config.port: another Docker {protocol} publication conflicts with requested endpoint"
                                 );
@@ -382,6 +418,16 @@ pub async fn preflight_port(
     }
     if let ProtocolConfig::Http(c) = config {
         return preflight_http(c, own.and_then(ProtocolConfig::as_http)).await;
+    }
+    if let ProtocolConfig::MqttSn(c) = config {
+        let old = own.and_then(|c| {
+            if let ProtocolConfig::MqttSn(c) = c {
+                Some(c)
+            } else {
+                None
+            }
+        });
+        return crate::mqtt_sn::preflight(c, old, own_id).await;
     }
     let c = config;
     let address_check = std::net::TcpListener::bind((c.bind_ip(), 0))
@@ -463,6 +509,27 @@ pub async fn preflight_port(
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn mqtt_sn_adoption_requires_host_network_and_private_process_ipc_namespaces() {
+        let config: ProtocolConfig = crate::mqtt_sn::MqttSnConfig::default().into();
+        let mut v = json!({"Config":{"Labels":{}}});
+        v["Config"]["Labels"][HASH] = config.fingerprint().into();
+        assert!(!matches(&v, &config));
+        v["HostConfig"] = json!({"NetworkMode":"host","IpcMode":"private","PidMode":""});
+        assert!(!matches(&v, &config));
+        v["Config"]["Labels"]["io.protocol-target-lab.mqtt-sn-register-capacity"] =
+            json!("bounded-v1");
+        assert!(matches(&v, &config));
+        for (key, value) in [
+            ("NetworkMode", "bridge"),
+            ("IpcMode", "host"),
+            ("PidMode", "host"),
+        ] {
+            let mut bad = v.clone();
+            bad["HostConfig"][key] = json!(value);
+            assert!(!matches(&bad, &config));
+        }
+    }
     #[test]
     fn iec104_adoption_requires_incremental_stream_capability() {
         let config: ProtocolConfig = crate::iec104::Iec104Config::default().into();

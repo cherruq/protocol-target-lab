@@ -21,6 +21,15 @@ import DnsClientTests from "./DnsClientTests";
 import MqttConfigForm from "./MqttConfigForm";
 import TelnetConfigForm from "./TelnetConfigForm";
 import Iec104ConfigForm from "./Iec104ConfigForm";
+import MqttSnConfigForm from "./MqttSnConfigForm";
+import {
+  mqttSnDefaults,
+  mqttSnCaseLabels,
+  isMqttSnConfig,
+  validateMqttSnConfig,
+  mqttSnDescription,
+  type MqttSnConfig,
+} from "./mqtt-sn-config";
 import {
   iec104Defaults,
   iec104CaseLabels,
@@ -89,6 +98,10 @@ type TelnetInstance = Omit<Instance, "config" | "applied_config"> & {
 type Iec104Instance = Omit<Instance, "config" | "applied_config"> & {
   config: Iec104Config;
   applied_config: Iec104Config | null;
+};
+type MqttSnInstance = Omit<Instance, "config" | "applied_config"> & {
+  config: MqttSnConfig;
+  applied_config: MqttSnConfig | null;
 };
 type Environment = {
   docker_available: boolean;
@@ -391,6 +404,7 @@ export default function App() {
   const isMqtt = selectedProtocol?.id === "mqtt";
   const isTelnet = selectedProtocol?.id === "telnet";
   const isIec104 = selectedProtocol?.id === "iec104";
+  const isMqttSn = selectedProtocol?.id === "mqtt-sn";
   const protocolName = selectedProtocol?.name || "协议";
   const httpSelected =
     selectedProtocol?.id === "http" &&
@@ -427,12 +441,20 @@ export default function App() {
     (!selected.applied_config || isIec104Config(selected.applied_config))
       ? (selected as Iec104Instance)
       : null;
+  const mqttSnSelected =
+    isMqttSn &&
+    selected?.protocol_id === "mqtt-sn" &&
+    isMqttSnConfig(selected.config) &&
+    (!selected.applied_config || isMqttSnConfig(selected.applied_config))
+      ? (selected as MqttSnInstance)
+      : null;
   const knownWorkspace = Boolean(
     httpSelected ||
       dnsSelected ||
       mqttSelected ||
       telnetSelected ||
-      iec104Selected,
+      iec104Selected ||
+      mqttSnSelected,
   );
   const cachedDraft = selectedId ? drafts[selectedId] : undefined;
   const draft: Config =
@@ -440,7 +462,8 @@ export default function App() {
     !isDnsConfig(cachedDraft) &&
     !isMqttConfig(cachedDraft) &&
     !isTelnetConfig(cachedDraft) &&
-    !isIec104Config(cachedDraft)
+    !isIec104Config(cachedDraft) &&
+    !isMqttSnConfig(cachedDraft)
       ? cachedDraft
       : httpSelected
         ? normalizeConfig(httpSelected.config)
@@ -457,6 +480,9 @@ export default function App() {
   const iec104Draft: Iec104Config = isIec104Config(cachedDraft)
     ? cachedDraft
     : iec104Selected?.config || iec104Defaults;
+  const mqttSnDraft: MqttSnConfig = isMqttSnConfig(cachedDraft)
+    ? cachedDraft
+    : mqttSnSelected?.config || mqttSnDefaults;
   const dirty = Boolean(cachedDraft);
   const selectedAsset =
     assets?.protocols?.[selectedProtocolId] ||
@@ -614,8 +640,11 @@ export default function App() {
             ? telnetDraft
             : isIec104
               ? iec104Draft
-              : draft;
-      if (isIec104) validateIec104Config(iec104Draft);
+              : isMqttSn
+                ? mqttSnDraft
+                : draft;
+      if (isMqttSn) validateMqttSnConfig(mqttSnDraft);
+      else if (isIec104) validateIec104Config(iec104Draft);
       else if (isTelnet) validateTelnetConfig(telnetDraft);
       else if (isMqtt) validateMqttConfig(mqttDraft);
       else if (!isDns) validateConfig(draft);
@@ -870,66 +899,79 @@ export default function App() {
                 <p className="instance-description">
                   受控 {protocolName} 测试服务 <span>·</span> Docker{" "}
                   <span>·</span>{" "}
-                  {isIec104
-                    ? `${selectedProtocol?.implementation || "c104 2.2.1"}（含 TCP 分帧修正） · TCP`
-                    : isTelnet
-                      ? `${selectedProtocol?.implementation || "TELNET"} · TCP`
-                      : isDns
-                        ? "UDP / TCP"
-                        : isMqtt
-                          ? `${selectedProtocol?.implementation || "MQTT"} · 匿名 TCP`
-                          : "HTTP/1.1"}
+                  {isMqttSn
+                    ? `${selectedProtocol?.implementation || "Paho 1.5.1"}（含注册容量保护修正） · UDP 网关`
+                    : isIec104
+                      ? `${selectedProtocol?.implementation || "c104 2.2.1"}（含 TCP 分帧修正） · TCP`
+                      : isTelnet
+                        ? `${selectedProtocol?.implementation || "TELNET"} · TCP`
+                        : isDns
+                          ? "UDP / TCP"
+                          : isMqtt
+                            ? `${selectedProtocol?.implementation || "MQTT"} · 匿名 TCP`
+                            : "HTTP/1.1"}
                 </p>
                 <div className="method-support">
                   <span>
-                    {isIec104
-                      ? "固定类型与命令模式"
-                      : isTelnet
-                        ? "协议协商能力"
-                        : isMqtt
-                          ? "支持的版本与 QoS"
-                          : isDns
-                            ? "支持的传输"
-                            : legacyApplied
-                              ? "新生成模式支持的方法"
-                              : "支持的方法"}
+                    {isMqttSn
+                      ? "本轮验收与原生部署"
+                      : isIec104
+                        ? "固定类型与命令模式"
+                        : isTelnet
+                          ? "协议协商能力"
+                          : isMqtt
+                            ? "支持的版本与 QoS"
+                            : isDns
+                              ? "支持的传输"
+                              : legacyApplied
+                                ? "新生成模式支持的方法"
+                                : "支持的方法"}
                   </span>
                   <div>
-                    {(isIec104
-                      ? ["M_SP_NA_1", "M_ME_NC_1", "C_SC_NA_1", "DIRECT"]
-                      : isTelnet
-                        ? selectedProtocol?.supported_features || []
-                        : isMqtt
-                          ? [
-                              ...(
-                                selectedProtocol?.supported_versions || []
-                              ).map((v) => `MQTT ${v}`),
-                              ...(selectedProtocol?.supported_qos || []).map(
-                                (q) => `QoS ${q}`,
-                              ),
-                            ]
-                          : isDns
-                            ? selectedProtocol?.supported_transports || [
-                                "UDP",
-                                "TCP",
+                    {(isMqttSn
+                      ? [
+                          "UDP",
+                          "QoS 1（本轮验收）",
+                          "组播 GWINFO",
+                          "同容器私有 Broker",
+                        ]
+                      : isIec104
+                        ? ["M_SP_NA_1", "M_ME_NC_1", "C_SC_NA_1", "DIRECT"]
+                        : isTelnet
+                          ? selectedProtocol?.supported_features || []
+                          : isMqtt
+                            ? [
+                                ...(
+                                  selectedProtocol?.supported_versions || []
+                                ).map((v) => `MQTT ${v}`),
+                                ...(selectedProtocol?.supported_qos || []).map(
+                                  (q) => `QoS ${q}`,
+                                ),
                               ]
-                            : methods
+                            : isDns
+                              ? selectedProtocol?.supported_transports || [
+                                  "UDP",
+                                  "TCP",
+                                ]
+                              : methods
                     ).map((method) => (
                       <code key={method}>{method}</code>
                     ))}
                   </div>
                   <p>
-                    {isIec104
-                      ? "三个固定角色用于实验模拟。单点和测量显示启动初值；实时点值以 GI / READ 的实际返回为准。DIRECT 命令仅修改模拟内存，不连接或驱动物理设备。"
-                      : isTelnet
-                        ? "使用真实 Telnet 协议栈进行 IAC 协商；实验应用提供 ECHO、INFO、CLOSE，不提供系统登录或 shell。"
-                        : isMqtt
-                          ? "支持发布 / 订阅与 QoS 0、1、2。当前使用匿名 TCP，不提供 TLS、密码认证、WebSocket 或 SCRAM。"
-                          : isDns
-                            ? "按配置记录回答 A / AAAA 查询。UDP 和 TCP 可分别启用，使用同一组记录与端口。"
-                            : legacyApplied
-                              ? "旧生效配置保留旧版能力；保存新配置并重启后，切换到上述方法和响应生成规则。"
-                              : "HEAD 无正文；GET、POST、PUT、PATCH、DELETE、OPTIONS 均按配置生成响应正文。"}
+                    {isMqttSn
+                      ? "本轮验证 QoS 1 端到端收发及真实组播发现，其他原生 QoS 能力未在本轮验收。网关及私有 Broker 使用同一容器，不依赖 MQTT 工作台是否运行。"
+                      : isIec104
+                        ? "三个固定角色用于实验模拟。单点和测量显示启动初值；实时点值以 GI / READ 的实际返回为准。DIRECT 命令仅修改模拟内存，不连接或驱动物理设备。"
+                        : isTelnet
+                          ? "使用真实 Telnet 协议栈进行 IAC 协商；实验应用提供 ECHO、INFO、CLOSE，不提供系统登录或 shell。"
+                          : isMqtt
+                            ? "支持发布 / 订阅与 QoS 0、1、2。当前使用匿名 TCP，不提供 TLS、密码认证、WebSocket 或 SCRAM。"
+                            : isDns
+                              ? "按配置记录回答 A / AAAA 查询。UDP 和 TCP 可分别启用，使用同一组记录与端口。"
+                              : legacyApplied
+                                ? "旧生效配置保留旧版能力；保存新配置并重启后，切换到上述方法和响应生成规则。"
+                                : "HEAD 无正文；GET、POST、PUT、PATCH、DELETE、OPTIONS 均按配置生成响应正文。"}
                   </p>
                 </div>
                 <div className="instance-actions">
@@ -1003,7 +1045,15 @@ export default function App() {
                           : "新配置已保存，旧生效配置仍保留固定正文和 POST 回显行为。显式重启后才切换到新的内容生成模式和方法支持。"}
                       </div>
                     )}
-                    {isIec104 ? (
+                    {isMqttSn ? (
+                      <MqttSnConfigForm
+                        config={mqttSnDraft}
+                        onChange={edit}
+                        disabled={
+                          Boolean(environment?.config_error) || busy === "save"
+                        }
+                      />
+                    ) : isIec104 ? (
                       <Iec104ConfigForm
                         config={iec104Draft}
                         onChange={edit}
@@ -1091,44 +1141,72 @@ export default function App() {
                           <dd>{selected.applied_config.bind_ip}</dd>
                         </div>
                         <div>
-                          <dt>{isDns ? "DNS 端口" : "TCP 端口"}</dt>
+                          <dt>
+                            {isMqttSn
+                              ? "主 UDP 端口"
+                              : isDns
+                                ? "DNS 端口"
+                                : "TCP 端口"}
+                          </dt>
                           <dd>{selected.applied_config.port}</dd>
                         </div>
                         <div>
                           <dt>
-                            {isIec104
-                              ? "启动点配置与映射"
-                              : isTelnet
-                                ? "实验应用与限制"
-                                : isDns
-                                  ? "启用传输"
-                                  : isMqtt
-                                    ? "连接与报文限制"
-                                    : "响应配置"}
+                            {isMqttSn
+                              ? "网关发现与私有 Broker"
+                              : isIec104
+                                ? "启动点配置与映射"
+                                : isTelnet
+                                  ? "实验应用与限制"
+                                  : isDns
+                                    ? "启用传输"
+                                    : isMqtt
+                                      ? "连接与报文限制"
+                                      : "响应配置"}
                           </dt>
                           <dd className="applied-body">
-                            {isIec104Config(selected.applied_config)
-                              ? iec104StartupDescription(
-                                  selected.applied_config,
-                                )
-                              : isTelnetConfig(selected.applied_config)
-                                ? `最多 ${selected.applied_config.max_connections} 个连接 · 输入行最大 ${selected.applied_config.max_line_bytes.toLocaleString()} 字节（去掉 CRLF） · 欢迎语 ${JSON.stringify(selected.applied_config.banner)}`
-                                : isMqttConfig(selected.applied_config)
-                                  ? `最多 ${selected.applied_config.max_connections} 个连接 · 完整报文最大 ${selected.applied_config.max_packet_size.toLocaleString()} 字节`
-                                  : isDnsConfig(selected.applied_config)
-                                    ? [
-                                        selected.applied_config.udp_enabled &&
-                                          "UDP",
-                                        selected.applied_config.tcp_enabled &&
-                                          "TCP",
-                                      ]
-                                        .filter(Boolean)
-                                        .join(" / ")
-                                    : isLegacyConfig(selected.applied_config)
-                                      ? `旧版固定正文 ${new TextEncoder().encode(selected.applied_config.response_body).length.toLocaleString()} 字节（POST 回显）`
-                                      : `${selected.applied_config.response_length.toLocaleString()} 字节 · ${selected.applied_config.response_mode === "fixed" ? "固定内容" : "每次随机"}`}
+                            {isMqttSnConfig(selected.applied_config)
+                              ? mqttSnDescription(selected.applied_config)
+                              : isIec104Config(selected.applied_config)
+                                ? iec104StartupDescription(
+                                    selected.applied_config,
+                                  )
+                                : isTelnetConfig(selected.applied_config)
+                                  ? `最多 ${selected.applied_config.max_connections} 个连接 · 输入行最大 ${selected.applied_config.max_line_bytes.toLocaleString()} 字节（去掉 CRLF） · 欢迎语 ${JSON.stringify(selected.applied_config.banner)}`
+                                  : isMqttConfig(selected.applied_config)
+                                    ? `最多 ${selected.applied_config.max_connections} 个连接 · 完整报文最大 ${selected.applied_config.max_packet_size.toLocaleString()} 字节`
+                                    : isDnsConfig(selected.applied_config)
+                                      ? [
+                                          selected.applied_config.udp_enabled &&
+                                            "UDP",
+                                          selected.applied_config.tcp_enabled &&
+                                            "TCP",
+                                        ]
+                                          .filter(Boolean)
+                                          .join(" / ")
+                                      : isLegacyConfig(selected.applied_config)
+                                        ? `旧版固定正文 ${new TextEncoder().encode(selected.applied_config.response_body).length.toLocaleString()} 字节（POST 回显）`
+                                        : `${selected.applied_config.response_length.toLocaleString()} 字节 · ${selected.applied_config.response_mode === "fixed" ? "固定内容" : "每次随机"}`}
                           </dd>
                         </div>
+                        {isMqttSnConfig(selected.applied_config) && (
+                          <div>
+                            <dt>预定义主题</dt>
+                            <dd>
+                              <ul className="dns-applied-records">
+                                {selected.applied_config.predefined_topics.map(
+                                  (t) => (
+                                    <li key={t.topic_id}>
+                                      <code>
+                                        {t.topic_id} ↔ {t.topic}
+                                      </code>
+                                    </li>
+                                  ),
+                                )}
+                              </ul>
+                            </dd>
+                          </div>
+                        )}
                         {isDnsConfig(selected.applied_config) && (
                           <div>
                             <dt>生效记录</dt>
@@ -1242,7 +1320,18 @@ export default function App() {
                   <h2>连接与验证</h2>
                   <span className="muted">内置测试与手动接入</span>
                 </div>
-                {iec104Selected ? (
+                {mqttSnSelected ? (
+                  <ProtocolClientTests
+                    key={mqttSnSelected.id}
+                    instance={mqttSnSelected}
+                    protocolName="MQTT-SN"
+                    hasUnappliedConfig={dirty || appliedDiffers}
+                    operationsLocked={locked}
+                    caseLabels={mqttSnCaseLabels}
+                    pathLabel="测试主题前缀"
+                    describeConfig={mqttSnDescription}
+                  />
+                ) : iec104Selected ? (
                   <ProtocolClientTests
                     key={iec104Selected.id}
                     instance={iec104Selected}
@@ -1299,15 +1388,17 @@ export default function App() {
                 <details className="connection-help">
                   <summary>
                     手动接入与{" "}
-                    {isIec104
-                      ? "IEC104 客户端"
-                      : isTelnet
-                        ? "Telnet 客户端"
-                        : isDns
-                          ? "dig"
-                          : isMqtt
-                            ? "MQTT 客户端"
-                            : "curl"}{" "}
+                    {isMqttSn
+                      ? "MQTT-SN 客户端"
+                      : isIec104
+                        ? "IEC104 客户端"
+                        : isTelnet
+                          ? "Telnet 客户端"
+                          : isDns
+                            ? "dig"
+                            : isMqtt
+                              ? "MQTT 客户端"
+                              : "curl"}{" "}
                     命令
                   </summary>
                   <div className="connection-content">
@@ -1316,29 +1407,31 @@ export default function App() {
                       <code>
                         {connection?.base_url ||
                           connection?.endpoint ||
-                          `${isIec104 ? "iec104://" : isTelnet ? "telnet://" : isDns ? "" : isMqtt ? "mqtt://" : "http://"}${(selected.applied_config || selected.config).bind_ip}:${(selected.applied_config || selected.config).port}`}
+                          `${isMqttSn ? "udp://" : isIec104 ? "iec104://" : isTelnet ? "telnet://" : isDns ? "" : isMqtt ? "mqtt://" : "http://"}${(selected.applied_config || selected.config).bind_ip}:${(selected.applied_config || selected.config).port}`}
                       </code>
                       <p>绑定 0.0.0.0 时，请使用目标设备实际可达的 IP。</p>
                     </div>
                     <div className="command-list">
                       {(
                         connection?.commands ||
-                        (isIec104
-                          ? ["等待管理服务提供 IEC104 接入命令。"]
-                          : isTelnet
-                            ? ["等待管理服务提供 TELNET 接入命令。"]
-                            : isMqtt
-                              ? ["等待管理服务提供 MQTT 接入命令。"]
-                              : isDns
-                                ? [
-                                    `dig @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
-                                    `dig +tcp @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
-                                  ]
-                                : [
-                                    `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/ok`,
-                                    `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/chunked`,
-                                    `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/close`,
-                                  ])
+                        (isMqttSn
+                          ? ["等待管理服务提供 MQTT-SN 接入命令。"]
+                          : isIec104
+                            ? ["等待管理服务提供 IEC104 接入命令。"]
+                            : isTelnet
+                              ? ["等待管理服务提供 TELNET 接入命令。"]
+                              : isMqtt
+                                ? ["等待管理服务提供 MQTT 接入命令。"]
+                                : isDns
+                                  ? [
+                                      `dig @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
+                                      `dig +tcp @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
+                                    ]
+                                  : [
+                                      `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/ok`,
+                                      `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/chunked`,
+                                      `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/close`,
+                                    ])
                       ).map((command, index) => (
                         <div className="command" key={index}>
                           <code>{command}</code>
@@ -1377,7 +1470,13 @@ export default function App() {
                       : "无法取得协议工作台配置，请查看管理服务诊断。")}
               </p>
               <div className="supported-paths">
-                {isIec104 ? (
+                {isMqttSn ? (
+                  <>
+                    <code>UDP</code>
+                    <code>QoS 1（本轮验收）</code>
+                    <code>组播 GWINFO</code>
+                  </>
+                ) : isIec104 ? (
                   <>
                     <code>M_SP_NA_1</code>
                     <code>M_ME_NC_1</code>

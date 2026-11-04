@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "base_image": "python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337",
+  "build_image": "protocol-target-lab/mqtt-sn-build:1.5.1",
+  "image": "protocol-target-lab/mqtt-sn:0.1.1",
+  "paho": {
+    "version": "1.5.1",
+    "commit": "e1e1b733e0fecef6bed92798d7f6d6440d9026f2",
+    "url": "https://codeload.github.com/eclipse-paho/paho.mqtt-sn.embedded-c/tar.gz/e1e1b733e0fecef6bed92798d7f6d6440d9026f2",
+    "file": "third-party/paho-mqtt-sn/paho-mqtt-sn-e1e1b733.tar.gz",
+    "sha256": "948df5e211017f02f56ceea934c00b7b11465f30b1fe9d46257ed9cc5411c472",
+    "license": "EPL-2.0 OR BSD-3-Clause",
+    "cmake_flags": "-DSENSORNET=udp -DCMAKE_BUILD_TYPE=Release",
+    "project_patch": {
+      "id": "register-capacity-bounded-v1",
+      "source_file": "MQTTSNGateway/src/MQTTSNGWPublishHandler.cpp",
+      "original_sha256": "8c71aed1d4a57631609e98eb1e3823ce426dd8c93b53ceaa09c637a010647567",
+      "patched_sha256": "0c8d560b0dee318f3c9869e1db22a63fb913cfc1887abd3b6e03bc5ff38b04eb",
+      "patch_file": "0001-register-capacity.patch",
+      "patch_sha256": "1869086feb3cac15a4c4094b36e21c1bf13b012b2077b4ee27e3cd15799646c8",
+      "origin": "Original project capacity correction, not an upstream backport",
+      "original_source_url": "https://raw.githubusercontent.com/eclipse-paho/paho.mqtt-sn.embedded-c/e1e1b733e0fecef6bed92798d7f6d6440d9026f2/MQTTSNGateway/src/MQTTSNGWPublishHandler.cpp",
+      "license": "EPL-1.0 OR BSD-3-Clause",
+      "reason": "When the native per-client topic table is full, preserve it and send a native REGACK with TopicId=0, the request MsgId and congestion return code 0x01 instead of dereferencing nullptr."
+    }
+  },
+  "broker": {
+    "image": "protocol-target-lab/mqtt:0.1.1",
+    "image_id": "sha256:a2b298da5c70d50e2e8ba87e053e108b065d27c2cd64ed2b10790356d08403f0",
+    "required_labels": {
+      "io.protocol-target-lab.mqtt-packet-size": "full-v1",
+      "io.protocol-target-lab.mosquitto-patches": "full-packet-size-v1"
+    },
+    "binary": "/usr/local/sbin/mosquitto",
+    "source_materials": "/usr/share/doc/protocol-target-lab-mqtt",
+    "content_sha256": "cd967aace63ec5267234c9358199192f22384f61564c3379ca5af7ab8d6bc58a",
+    "content_profile": "canonical JSON of complete RootFS and Config; sort_keys=True,separators=(comma,colon),ensure_ascii=True,UTF-8",
+    "known_engine_ids": [
+      "sha256:a2b298da5c70d50e2e8ba87e053e108b065d27c2cd64ed2b10790356d08403f0",
+      "sha256:b09d057b76c8788816b78937b851953912d83aba858f178d711eecdb242ea249"
+    ],
+    "candidate_refs": [
+      "protocol-target-lab/mqtt:0.1.1"
+    ]
+  },
+  "mqtt_client_primitive": {
+    "file": "workers/mqtt/mqtt_wire.py",
+    "sha256": "2d9ba0b5bf5f6156367b3f5f1543cd184237f1e819de20927c772c2c846f72f8"
+  }
+}

@@ -1,0 +1,16 @@
+--- a/MQTTSNGateway/src/MQTTSNGWPublishHandler.cpp
++++ b/MQTTSNGateway/src/MQTTSNGWPublishHandler.cpp
+@@ -213,10 +213,11 @@
+         topicid.data.long_.len = topicName.lenstring.len;
+         topicid.data.long_.name = topicName.lenstring.data;
+ 
+-        id = client->getTopics()->add(&topicid)->getTopicId();
++        Topic* topic = client->getTopics()->add(&topicid);
++        id = topic ? topic->getTopicId() : 0;
+ 
+         MQTTSNPacket* regAck = new MQTTSNPacket();
+-        regAck->setREGACK(id, msgId, MQTTSN_RC_ACCEPTED);
++        regAck->setREGACK(id, msgId, topic ? MQTTSN_RC_ACCEPTED : MQTTSN_RC_REJECTED_CONGESTED);
+         Event* ev = new Event();
+         ev->setClientSendEvent(client, regAck);
+         _gateway->getClientSendQue()->post(ev);
