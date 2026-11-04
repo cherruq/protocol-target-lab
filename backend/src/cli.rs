@@ -20,6 +20,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
   config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
   config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
+  config set telnet [--bind-ip IP] [--port N] [--banner TEXT] [--max-connections N] [--max-line-bytes N]
   start PROTOCOL | stop PROTOCOL | restart PROTOCOL [--wait | --no-wait]
   connection-info PROTOCOL
   logs PROTOCOL [--follow]
@@ -40,7 +41,7 @@ Local administrative commands (retain existing behavior; may require root):
   plabctl stop-all              stop manager and owned resources
   plabctl status | doctor       local persisted state and Docker diagnostics
   plabctl assets import DIR     local image import from a checked manifest
-Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_DOCKER_SOCKET
+Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_DOCKER_SOCKET
 "#;
 const LIMIT: usize = 8 * 1024 * 1024;
 type Result<T> = std::result::Result<T, Failure>;
@@ -140,6 +141,8 @@ const VALUE_OPTIONS: &[&str] = &[
     "--records-json",
     "--max-connections",
     "--max-packet-size",
+    "--banner",
+    "--max-line-bytes",
 ];
 fn wants_help(args: &[String]) -> bool {
     if args.len() == 1 && args[0] == "help" {
@@ -273,6 +276,8 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--records-json",
                 "--max-connections",
                 "--max-packet-size",
+                "--banner",
+                "--max-line-bytes",
             ] {
                 if let Some(value) = values.remove(name) {
                     fields.insert(name.into(), value);
@@ -322,6 +327,8 @@ fn parse(args: &[String]) -> Result<Options> {
                         "ALL".into()
                     } else if *p == "mqtt" {
                         crate::mqtt::TEST_TOPIC.into()
+                    } else if *p == "telnet" {
+                        crate::telnet::PATH.into()
                     } else {
                         "/ok".into()
                     }
@@ -611,7 +618,8 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
     let mut patch = serde_json::Map::new();
     for (key, value) in fields {
         let value = match key.as_str() {
-            "--port" | "--response-length" | "--max-connections" | "--max-packet-size" => json!(
+            "--port" | "--response-length" | "--max-connections" | "--max-packet-size"
+            | "--max-line-bytes" => json!(
                 value
                     .parse::<u32>()
                     .map_err(|_| Failure::usage(format!("{key} must be a nonnegative integer")))?
@@ -998,6 +1006,39 @@ mod tests {
             json!({"max_packet_size":127}),
         ] {
             assert!(full.patch(patch).is_err());
+        }
+    }
+    #[tokio::test]
+    async fn telnet_defaults_banner_values_and_atomic_line_patch_are_strict() {
+        let options = parse(&args("tests run telnet")).unwrap();
+        assert!(
+            matches!(options.command,Command::TestRun(ref p,ref method,ref path,true) if p=="telnet" && method=="ALL" && path==crate::telnet::PATH)
+        );
+        assert!(!wants_help(&args("config set telnet --banner --help")));
+        let config = configuration(
+            ConfigInput::Fields(BTreeMap::from([
+                ("--banner".into(), "--help".into()),
+                ("--max-line-bytes".into(), "64".into()),
+            ])),
+            serde_json::to_value(crate::telnet::TelnetConfig::default()).unwrap(),
+        )
+        .await
+        .unwrap();
+        let ProtocolConfig::Telnet(config) = config else {
+            panic!("Telnet variant lost")
+        };
+        assert_eq!(config.banner, "--help");
+        assert_eq!(config.max_line_bytes, 64);
+        assert_eq!(config.port, 2323);
+        let config: ProtocolConfig = config.into();
+        for patch in [
+            json!({}),
+            json!({"banner":null}),
+            json!({"max_packet_size":128}),
+            json!({"max_line_bytes":63}),
+            json!({"banner":"bad\nline"}),
+        ] {
+            assert!(config.patch(patch).is_err());
         }
     }
     #[test]

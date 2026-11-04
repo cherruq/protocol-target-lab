@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation is **HTTP, DNS and MQTT**, with manager version **0.7.0**,
-HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, and MQTT server/client image **0.1.1**. Each protocol has one fixed workspace and
+The current implementation is **HTTP, DNS, MQTT and Telnet**, with manager version **0.8.0**,
+HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, and Telnet server/client image **0.1.0**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -95,7 +95,7 @@ build image.
 
 The HTTP image is
 `protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.7.0_amd64.deb`.
+The manager package is `dist/protocol-target-lab_0.8.0_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -128,7 +128,7 @@ Docker provider; a host with Docker CE can run development builds directly, whil
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.7.0_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.8.0_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
@@ -218,7 +218,7 @@ and may still support only the original GET/HEAD/POST methods. Automatic recover
 uses its saved legacy snapshot and the new worker's compatibility arguments.
 Explicit saves write schema version 2; both v1 and v2 files remain readable.
 
-Manager 0.7.0 continues to use HTTP image
+Manager 0.8.0 continues to use HTTP image
 `protocol-target-lab/http:0.3.0`; if a customized environment file still selects an
 older image, update `PLAB_HTTP_IMAGE` after importing the new version. The manager
 checks image capability before stopping the running HTTP service to apply new options.
@@ -380,3 +380,33 @@ online preparation, offline image build and runtime/source export respectively.
 The manager never pulls images at service start. Existing HTTP/DNS workspace
 IDs, saved/applied data, ownership hashes and containers are preserved; older
 valid installations gain a disabled MQTT workspace. See [MQTT details](docs/mqtt.md).
+
+## Telnet workspace
+
+Telnet uses the real **telnetlib3 4.0.3** stack and its native option callbacks.
+The finite lab application supports `ECHO <data>`, `INFO` and `CLOSE`; it does
+not provide a system login or run shell commands. INFO exposes the actual
+session's native TTYPE/NAWS/TSPEED/XDISPLOC/NEW_ENVIRON metadata, so clients can
+verify one-way subnegotiations without invented wire acknowledgements. AYT is
+not advertised as supported when the native stack leaves it unhandled.
+
+Configure host binding/port (default2323), a nonempty banner (at most256 UTF-8
+bytes, no ASCII control characters), active connection limit1..128 and decoded
+application input-line limit64..65536 bytes, excluding its final CRLF. The
+welcome line is `PLAB TELNET <banner>`. Normal service has no short-run quota;
+malformed/over-budget connections are closed individually. Native subnegotiation,
+environment metadata and output queues have separate bounded resource policies.
+
+```sh
+plabctl config set telnet --port 23230 --banner 'Protocol Target Lab Telnet' --max-connections 16 --max-line-bytes 4096
+plabctl start telnet
+plabctl tests run telnet --method ALL
+plabctl tests run telnet --method OPTIONS
+plabctl logs telnet
+plabctl stop telnet
+```
+
+Disposable tests cover welcome, byte echo/IAC escaping, real native option
+callbacks and unsupported-option rejection. Use `make fetch-telnet-deps`,
+`make telnet-images` and `make telnet-assets` for explicit preparation, offline
+build and image/source/license export. See [Telnet details](docs/telnet.md).

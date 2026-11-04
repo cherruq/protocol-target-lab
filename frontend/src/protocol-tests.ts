@@ -5,6 +5,7 @@ export type ProtocolCheck = {
   seconds?: number;
   request?: Record<string, unknown>;
   response?: Record<string, unknown>;
+  trace?: unknown;
 };
 export type ProtocolTestRun<C> = {
   id: string;
@@ -23,6 +24,7 @@ export type ProtocolTestRun<C> = {
     seconds?: number;
     error?: string;
     exit_code?: number | null;
+    trace?: unknown;
   } | null;
   error: string | null;
   cleanup_complete: boolean;

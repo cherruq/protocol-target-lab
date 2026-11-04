@@ -4,6 +4,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 pub const MAX_RESPONSE_LENGTH: u32 = 1024 * 1024;
+pub const PROTOCOLS: [&str; 4] = ["http", "dns", "mqtt", "telnet"];
 pub const HTTP_METHODS: [&str; 7] = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 pub const FIXED_PATTERN: &[u8] = b"0123456789abcdef";
 
@@ -220,6 +221,7 @@ pub enum ProtocolConfig {
     Http(HttpConfig),
     Dns(crate::dns::DnsConfig),
     Mqtt(crate::mqtt::MqttConfig),
+    Telnet(crate::telnet::TelnetConfig),
 }
 impl From<HttpConfig> for ProtocolConfig {
     fn from(c: HttpConfig) -> Self {
@@ -236,12 +238,18 @@ impl From<crate::mqtt::MqttConfig> for ProtocolConfig {
         Self::Mqtt(c)
     }
 }
+impl From<crate::telnet::TelnetConfig> for ProtocolConfig {
+    fn from(config: crate::telnet::TelnetConfig) -> Self {
+        Self::Telnet(config)
+    }
+}
 impl ProtocolConfig {
     pub fn validate(&self) -> Result<()> {
         match self {
             Self::Http(c) => c.validate(),
             Self::Dns(c) => c.validate(),
             Self::Mqtt(c) => c.validate(),
+            Self::Telnet(c) => c.validate(),
         }
     }
     pub fn as_http(&self) -> Option<&HttpConfig> {
@@ -256,6 +264,7 @@ impl ProtocolConfig {
             Self::Http(_) => "http",
             Self::Dns(_) => "dns",
             Self::Mqtt(_) => "mqtt",
+            Self::Telnet(_) => "telnet",
         }
     }
     pub fn bind_ip(&self) -> &str {
@@ -263,6 +272,7 @@ impl ProtocolConfig {
             Self::Http(c) => &c.bind_ip,
             Self::Dns(c) => &c.bind_ip,
             Self::Mqtt(c) => &c.bind_ip,
+            Self::Telnet(c) => &c.bind_ip,
         }
     }
     pub fn port(&self) -> u16 {
@@ -270,18 +280,20 @@ impl ProtocolConfig {
             Self::Http(c) => c.port,
             Self::Dns(c) => c.port,
             Self::Mqtt(c) => c.port,
+            Self::Telnet(c) => c.port,
         }
     }
     pub fn transports(&self) -> Vec<&'static str> {
         match self {
             Self::Dns(c) => c.transports(),
-            Self::Http(_) | Self::Mqtt(_) => vec!["TCP"],
+            Self::Http(_) | Self::Mqtt(_) | Self::Telnet(_) => vec!["TCP"],
         }
     }
     pub fn internal_port(&self) -> u16 {
         match self {
             Self::Dns(_) => 15353,
             Self::Mqtt(_) => 18883,
+            Self::Telnet(_) => 2323,
             Self::Http(c) => c.port,
         }
     }
@@ -295,7 +307,7 @@ impl ProtocolConfig {
     pub fn fingerprint(&self) -> String {
         match self {
             Self::Http(c) => c.fingerprint(),
-            Self::Dns(_) | Self::Mqtt(_) => format!(
+            Self::Dns(_) | Self::Mqtt(_) | Self::Telnet(_) => format!(
                 "{:x}",
                 Sha256::digest(serde_json::to_vec(self).expect("serializable config"))
             ),
@@ -307,56 +319,70 @@ impl ProtocolConfig {
                 .map_err(|e| anyhow::anyhow!("config.patch: {e}"))?
                 .apply(c.clone())?
                 .into()),
-            Self::Mqtt(_) => {
-                let patch = value
-                    .as_object()
-                    .ok_or_else(|| anyhow::anyhow!("config.patch: expected object"))?;
-                if patch.is_empty()
-                    || patch.iter().any(|(key, value)| {
-                        !["bind_ip", "port", "max_connections", "max_packet_size"]
-                            .contains(&key.as_str())
-                            || value.is_null()
-                    })
-                {
-                    bail!(
-                        "config.patch: provide MQTT fields; unknown fields and null are not allowed"
-                    );
-                }
-                let mut full = serde_json::to_value(self)?;
-                for (key, value) in patch {
-                    full[key] = value.clone();
-                }
-                let config: crate::mqtt::MqttConfig = serde_json::from_value(full)
-                    .map_err(|e| anyhow::anyhow!("config.patch: {e}"))?;
-                config.validate()?;
-                Ok(config.into())
+            Self::Dns(c) => {
+                let result: Self = typed_patch(
+                    c,
+                    value,
+                    &["bind_ip", "port", "udp_enabled", "tcp_enabled", "records"],
+                )?
+                .into();
+                result.validate()?;
+                Ok(result)
             }
-            Self::Dns(_) => {
-                let patch = value
-                    .as_object()
-                    .ok_or_else(|| anyhow::anyhow!("config.patch: expected object"))?;
-                if patch.is_empty()
-                    || patch.iter().any(|(k, v)| {
-                        !["bind_ip", "port", "udp_enabled", "tcp_enabled", "records"]
-                            .contains(&k.as_str())
-                            || v.is_null()
-                    })
-                {
-                    bail!(
-                        "config.patch: provide DNS fields; unknown fields and null are not allowed"
-                    );
-                }
-                let mut full = serde_json::to_value(self)?;
-                for (k, v) in patch {
-                    full[k] = v.clone();
-                }
-                let c: crate::dns::DnsConfig = serde_json::from_value(full)
-                    .map_err(|e| anyhow::anyhow!("config.patch: {e}"))?;
-                c.validate()?;
-                Ok(c.into())
+            Self::Mqtt(c) => {
+                let result: Self = typed_patch(
+                    c,
+                    value,
+                    &["bind_ip", "port", "max_connections", "max_packet_size"],
+                )?
+                .into();
+                result.validate()?;
+                Ok(result)
+            }
+            Self::Telnet(c) => {
+                let result: Self = typed_patch(
+                    c,
+                    value,
+                    &[
+                        "bind_ip",
+                        "port",
+                        "banner",
+                        "max_connections",
+                        "max_line_bytes",
+                    ],
+                )?
+                .into();
+                result.validate()?;
+                Ok(result)
             }
         }
     }
+}
+fn typed_patch<T: Serialize + serde::de::DeserializeOwned>(
+    config: &T,
+    value: Value,
+    fields: &[&str],
+) -> Result<T> {
+    let patch = value
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("config.patch: expected object"))?;
+    if patch.is_empty()
+        || patch
+            .iter()
+            .any(|(key, value)| !fields.contains(&key.as_str()) || value.is_null())
+    {
+        bail!(
+            "config.patch: provide supported protocol fields; unknown fields and null are not allowed"
+        );
+    }
+    let mut full = serde_json::to_value(config)?;
+    for (key, value) in patch {
+        full[key] = value.clone();
+    }
+    let edited: T =
+        serde_json::from_value(full).map_err(|e| anyhow::anyhow!("config.patch: {e}"))?;
+    // Validation is performed by the typed caller before persistence.
+    Ok(edited)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -452,6 +478,7 @@ impl Document {
                 Instance::new("http-demo".into(), HttpConfig::default()),
                 Instance::new("dns-demo".into(), crate::dns::DnsConfig::default()),
                 Instance::new("mqtt-demo".into(), crate::mqtt::MqttConfig::default()),
+                Instance::new("telnet-demo".into(), crate::telnet::TelnetConfig::default()),
             ],
         }
     }
@@ -466,7 +493,7 @@ impl Document {
             if !valid_id(&i.id) || !ids.insert(&i.id) {
                 bail!("invalid or duplicate instance id");
             }
-            if !["http", "dns", "mqtt"].contains(&i.protocol_id.as_str())
+            if !PROTOCOLS.contains(&i.protocol_id.as_str())
                 || i.runtime != "docker"
                 || i.config.protocol_id() != i.protocol_id
                 || i.applied_config
@@ -493,6 +520,29 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn registered_protocols_have_unique_disabled_defaults() {
+        let doc = Document::new();
+        doc.validate().unwrap();
+        assert_eq!(
+            doc.instances
+                .iter()
+                .map(|i| i.protocol_id.as_str())
+                .collect::<Vec<_>>(),
+            PROTOCOLS
+        );
+        assert!(
+            doc.instances
+                .iter()
+                .all(|i| !i.enabled && i.applied_config.is_none())
+        );
+        for instance in &doc.instances {
+            let decoded: ProtocolConfig =
+                serde_json::from_value(serde_json::to_value(&instance.config).unwrap()).unwrap();
+            assert_eq!(decoded.protocol_id(), instance.protocol_id);
+            assert_eq!(decoded.fingerprint(), instance.config.fingerprint());
+        }
+    }
     #[test]
     fn legacy_json_and_ownership_fingerprint_are_unchanged() {
         let raw = r#"{"bind_ip":"127.0.0.1","port":18090,"response_body":"hello"}"#;

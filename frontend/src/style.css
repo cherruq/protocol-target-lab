@@ -2082,3 +2082,6 @@ select:disabled {
   max-height: 440px;
   overflow: auto;
 }
+.protocol-extra-trace {
+  margin-top: 14px;
+}

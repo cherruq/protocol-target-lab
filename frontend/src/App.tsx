@@ -19,6 +19,14 @@ import ClientTests from "./ClientTests";
 import DnsConfigForm from "./DnsConfigForm";
 import DnsClientTests from "./DnsClientTests";
 import MqttConfigForm from "./MqttConfigForm";
+import TelnetConfigForm from "./TelnetConfigForm";
+import {
+  telnetDefaults,
+  telnetCaseLabels,
+  isTelnetConfig,
+  validateTelnetConfig,
+  type TelnetConfig,
+} from "./telnet-config";
 import ProtocolClientTests from "./ProtocolClientTests";
 import {
   mqttDefaults,
@@ -65,6 +73,10 @@ type MqttInstance = Omit<Instance, "config" | "applied_config"> & {
   config: MqttConfig;
   applied_config: MqttConfig | null;
 };
+type TelnetInstance = Omit<Instance, "config" | "applied_config"> & {
+  config: TelnetConfig;
+  applied_config: TelnetConfig | null;
+};
 type Environment = {
   docker_available: boolean;
   docker_version?: string;
@@ -87,6 +99,7 @@ type Protocol = {
   supported_transports?: string[];
   supported_versions?: string[];
   supported_qos?: number[];
+  supported_features?: string[];
   image?: string;
   workspace: Instance | null;
   status: string;
@@ -363,6 +376,7 @@ export default function App() {
   const selectedId = selected?.id || null;
   const isDns = selectedProtocol?.id === "dns";
   const isMqtt = selectedProtocol?.id === "mqtt";
+  const isTelnet = selectedProtocol?.id === "telnet";
   const protocolName = selectedProtocol?.name || "协议";
   const httpSelected =
     selectedProtocol?.id === "http" &&
@@ -385,10 +399,22 @@ export default function App() {
     (!selected.applied_config || isMqttConfig(selected.applied_config))
       ? (selected as MqttInstance)
       : null;
-  const knownWorkspace = Boolean(httpSelected || dnsSelected || mqttSelected);
+  const telnetSelected =
+    isTelnet &&
+    selected?.protocol_id === "telnet" &&
+    isTelnetConfig(selected.config) &&
+    (!selected.applied_config || isTelnetConfig(selected.applied_config))
+      ? (selected as TelnetInstance)
+      : null;
+  const knownWorkspace = Boolean(
+    httpSelected || dnsSelected || mqttSelected || telnetSelected,
+  );
   const cachedDraft = selectedId ? drafts[selectedId] : undefined;
   const draft: Config =
-    cachedDraft && !isDnsConfig(cachedDraft) && !isMqttConfig(cachedDraft)
+    cachedDraft &&
+    !isDnsConfig(cachedDraft) &&
+    !isMqttConfig(cachedDraft) &&
+    !isTelnetConfig(cachedDraft)
       ? cachedDraft
       : httpSelected
         ? normalizeConfig(httpSelected.config)
@@ -399,6 +425,9 @@ export default function App() {
   const mqttDraft: MqttConfig = isMqttConfig(cachedDraft)
     ? cachedDraft
     : mqttSelected?.config || mqttDefaults;
+  const telnetDraft: TelnetConfig = isTelnetConfig(cachedDraft)
+    ? cachedDraft
+    : telnetSelected?.config || telnetDefaults;
   const dirty = Boolean(cachedDraft);
   const selectedAsset =
     assets?.protocols?.[selectedProtocolId] ||
@@ -552,8 +581,11 @@ export default function App() {
         ? normalizeDnsConfig(dnsDraft)
         : isMqtt
           ? mqttDraft
-          : draft;
-      if (isMqtt) validateMqttConfig(mqttDraft);
+          : isTelnet
+            ? telnetDraft
+            : draft;
+      if (isTelnet) validateTelnetConfig(telnetDraft);
+      else if (isMqtt) validateMqttConfig(mqttDraft);
       else if (!isDns) validateConfig(draft);
       await api(
         `/api/instances/${encodeURIComponent(selected.id)}/config`,
@@ -806,50 +838,58 @@ export default function App() {
                 <p className="instance-description">
                   受控 {protocolName} 测试服务 <span>·</span> Docker{" "}
                   <span>·</span>{" "}
-                  {isDns
-                    ? "UDP / TCP"
-                    : isMqtt
-                      ? `${selectedProtocol?.implementation || "MQTT"} · 匿名 TCP`
-                      : "HTTP/1.1"}
+                  {isTelnet
+                    ? `${selectedProtocol?.implementation || "TELNET"} · TCP`
+                    : isDns
+                      ? "UDP / TCP"
+                      : isMqtt
+                        ? `${selectedProtocol?.implementation || "MQTT"} · 匿名 TCP`
+                        : "HTTP/1.1"}
                 </p>
                 <div className="method-support">
                   <span>
-                    {isMqtt
-                      ? "支持的版本与 QoS"
-                      : isDns
-                        ? "支持的传输"
-                        : legacyApplied
-                          ? "新生成模式支持的方法"
-                          : "支持的方法"}
+                    {isTelnet
+                      ? "协议协商能力"
+                      : isMqtt
+                        ? "支持的版本与 QoS"
+                        : isDns
+                          ? "支持的传输"
+                          : legacyApplied
+                            ? "新生成模式支持的方法"
+                            : "支持的方法"}
                   </span>
                   <div>
-                    {(isMqtt
-                      ? [
-                          ...(selectedProtocol?.supported_versions || []).map(
-                            (v) => `MQTT ${v}`,
-                          ),
-                          ...(selectedProtocol?.supported_qos || []).map(
-                            (q) => `QoS ${q}`,
-                          ),
-                        ]
-                      : isDns
-                        ? selectedProtocol?.supported_transports || [
-                            "UDP",
-                            "TCP",
+                    {(isTelnet
+                      ? selectedProtocol?.supported_features || []
+                      : isMqtt
+                        ? [
+                            ...(selectedProtocol?.supported_versions || []).map(
+                              (v) => `MQTT ${v}`,
+                            ),
+                            ...(selectedProtocol?.supported_qos || []).map(
+                              (q) => `QoS ${q}`,
+                            ),
                           ]
-                        : methods
+                        : isDns
+                          ? selectedProtocol?.supported_transports || [
+                              "UDP",
+                              "TCP",
+                            ]
+                          : methods
                     ).map((method) => (
                       <code key={method}>{method}</code>
                     ))}
                   </div>
                   <p>
-                    {isMqtt
-                      ? "支持发布 / 订阅与 QoS 0、1、2。当前使用匿名 TCP，不提供 TLS、密码认证、WebSocket 或 SCRAM。"
-                      : isDns
-                        ? "按配置记录回答 A / AAAA 查询。UDP 和 TCP 可分别启用，使用同一组记录与端口。"
-                        : legacyApplied
-                          ? "旧生效配置保留旧版能力；保存新配置并重启后，切换到上述方法和响应生成规则。"
-                          : "HEAD 无正文；GET、POST、PUT、PATCH、DELETE、OPTIONS 均按配置生成响应正文。"}
+                    {isTelnet
+                      ? "使用真实 Telnet 协议栈进行 IAC 协商；实验应用提供 ECHO、INFO、CLOSE，不提供系统登录或 shell。"
+                      : isMqtt
+                        ? "支持发布 / 订阅与 QoS 0、1、2。当前使用匿名 TCP，不提供 TLS、密码认证、WebSocket 或 SCRAM。"
+                        : isDns
+                          ? "按配置记录回答 A / AAAA 查询。UDP 和 TCP 可分别启用，使用同一组记录与端口。"
+                          : legacyApplied
+                            ? "旧生效配置保留旧版能力；保存新配置并重启后，切换到上述方法和响应生成规则。"
+                            : "HEAD 无正文；GET、POST、PUT、PATCH、DELETE、OPTIONS 均按配置生成响应正文。"}
                   </p>
                 </div>
                 <div className="instance-actions">
@@ -923,7 +963,15 @@ export default function App() {
                           : "新配置已保存，旧生效配置仍保留固定正文和 POST 回显行为。显式重启后才切换到新的内容生成模式和方法支持。"}
                       </div>
                     )}
-                    {isDns ? (
+                    {isTelnet ? (
+                      <TelnetConfigForm
+                        config={telnetDraft}
+                        onChange={edit}
+                        disabled={
+                          Boolean(environment?.config_error) || busy === "save"
+                        }
+                      />
+                    ) : isDns ? (
                       <DnsConfigForm
                         config={dnsDraft}
                         onChange={edit}
@@ -996,27 +1044,31 @@ export default function App() {
                         </div>
                         <div>
                           <dt>
-                            {isDns
-                              ? "启用传输"
-                              : isMqtt
-                                ? "连接与报文限制"
-                                : "响应配置"}
+                            {isTelnet
+                              ? "实验应用与限制"
+                              : isDns
+                                ? "启用传输"
+                                : isMqtt
+                                  ? "连接与报文限制"
+                                  : "响应配置"}
                           </dt>
                           <dd className="applied-body">
-                            {isMqttConfig(selected.applied_config)
-                              ? `最多 ${selected.applied_config.max_connections} 个连接 · 完整报文最大 ${selected.applied_config.max_packet_size.toLocaleString()} 字节`
-                              : isDnsConfig(selected.applied_config)
-                                ? [
-                                    selected.applied_config.udp_enabled &&
-                                      "UDP",
-                                    selected.applied_config.tcp_enabled &&
-                                      "TCP",
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" / ")
-                                : isLegacyConfig(selected.applied_config)
-                                  ? `旧版固定正文 ${new TextEncoder().encode(selected.applied_config.response_body).length.toLocaleString()} 字节（POST 回显）`
-                                  : `${selected.applied_config.response_length.toLocaleString()} 字节 · ${selected.applied_config.response_mode === "fixed" ? "固定内容" : "每次随机"}`}
+                            {isTelnetConfig(selected.applied_config)
+                              ? `最多 ${selected.applied_config.max_connections} 个连接 · 输入行最大 ${selected.applied_config.max_line_bytes.toLocaleString()} 字节（去掉 CRLF） · 欢迎语 ${JSON.stringify(selected.applied_config.banner)}`
+                              : isMqttConfig(selected.applied_config)
+                                ? `最多 ${selected.applied_config.max_connections} 个连接 · 完整报文最大 ${selected.applied_config.max_packet_size.toLocaleString()} 字节`
+                                : isDnsConfig(selected.applied_config)
+                                  ? [
+                                      selected.applied_config.udp_enabled &&
+                                        "UDP",
+                                      selected.applied_config.tcp_enabled &&
+                                        "TCP",
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" / ")
+                                  : isLegacyConfig(selected.applied_config)
+                                    ? `旧版固定正文 ${new TextEncoder().encode(selected.applied_config.response_body).length.toLocaleString()} 字节（POST 回显）`
+                                    : `${selected.applied_config.response_length.toLocaleString()} 字节 · ${selected.applied_config.response_mode === "fixed" ? "固定内容" : "每次随机"}`}
                           </dd>
                         </div>
                         {isDnsConfig(selected.applied_config) && (
@@ -1132,7 +1184,20 @@ export default function App() {
                   <h2>连接与验证</h2>
                   <span className="muted">内置测试与手动接入</span>
                 </div>
-                {mqttSelected ? (
+                {telnetSelected ? (
+                  <ProtocolClientTests
+                    key={telnetSelected.id}
+                    instance={telnetSelected}
+                    protocolName="TELNET"
+                    hasUnappliedConfig={dirty || appliedDiffers}
+                    operationsLocked={locked}
+                    caseLabels={telnetCaseLabels}
+                    pathLabel="实验会话"
+                    describeConfig={(config) =>
+                      `${config.bind_ip}:${config.port} · 最多 ${config.max_connections} 个连接 · 输入行最大 ${config.max_line_bytes.toLocaleString()} 字节（去掉 CRLF） · 欢迎语 ${JSON.stringify(config.banner)}`
+                    }
+                  />
+                ) : mqttSelected ? (
                   <ProtocolClientTests
                     key={mqttSelected.id}
                     instance={mqttSelected}
@@ -1162,7 +1227,14 @@ export default function App() {
                 ) : null}
                 <details className="connection-help">
                   <summary>
-                    手动接入与 {isDns ? "dig" : isMqtt ? "MQTT 客户端" : "curl"}{" "}
+                    手动接入与{" "}
+                    {isTelnet
+                      ? "Telnet 客户端"
+                      : isDns
+                        ? "dig"
+                        : isMqtt
+                          ? "MQTT 客户端"
+                          : "curl"}{" "}
                     命令
                   </summary>
                   <div className="connection-content">
@@ -1171,25 +1243,27 @@ export default function App() {
                       <code>
                         {connection?.base_url ||
                           connection?.endpoint ||
-                          `${isDns ? "" : isMqtt ? "mqtt://" : "http://"}${(selected.applied_config || selected.config).bind_ip}:${(selected.applied_config || selected.config).port}`}
+                          `${isTelnet ? "telnet://" : isDns ? "" : isMqtt ? "mqtt://" : "http://"}${(selected.applied_config || selected.config).bind_ip}:${(selected.applied_config || selected.config).port}`}
                       </code>
                       <p>绑定 0.0.0.0 时，请使用目标设备实际可达的 IP。</p>
                     </div>
                     <div className="command-list">
                       {(
                         connection?.commands ||
-                        (isMqtt
-                          ? ["等待管理服务提供 MQTT 接入命令。"]
-                          : isDns
-                            ? [
-                                `dig @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
-                                `dig +tcp @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
-                              ]
-                            : [
-                                `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/ok`,
-                                `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/chunked`,
-                                `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/close`,
-                              ])
+                        (isTelnet
+                          ? ["等待管理服务提供 TELNET 接入命令。"]
+                          : isMqtt
+                            ? ["等待管理服务提供 MQTT 接入命令。"]
+                            : isDns
+                              ? [
+                                  `dig @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
+                                  `dig +tcp @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
+                                ]
+                              : [
+                                  `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/ok`,
+                                  `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/chunked`,
+                                  `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/close`,
+                                ])
                       ).map((command, index) => (
                         <div className="command" key={index}>
                           <code>{command}</code>
@@ -1228,7 +1302,16 @@ export default function App() {
                       : "无法取得协议工作台配置，请查看管理服务诊断。")}
               </p>
               <div className="supported-paths">
-                {isMqtt ? (
+                {isTelnet ? (
+                  <>
+                    {(selectedProtocol?.supported_features || []).map(
+                      (feature) => (
+                        <code key={feature}>{feature}</code>
+                      ),
+                    )}
+                    <span>ECHO · INFO · CLOSE</span>
+                  </>
+                ) : isMqtt ? (
                   <>
                     <code>MQTT 3.1.1</code>
                     <code>MQTT 5.0</code>

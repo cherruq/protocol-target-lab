@@ -1,6 +1,6 @@
-Protocol Target Lab third-party source notes — HTTP, DNS and MQTT
+Protocol Target Lab third-party source notes — HTTP, DNS, MQTT and Telnet
 
-The project's original Rust manager, Web application, HTTP/DNS/MQTT wrappers and test clients,
+The project's original Rust manager, Web application, HTTP/DNS/MQTT/Telnet wrappers and test clients,
 and integration scripts are distributed under the accompanying MIT LICENSE.
 Third-party components retain their original licenses. Full license and copyright
 texts for the locked Linux Rust dependency closure and bundled Web components
@@ -63,5 +63,14 @@ MQTT runtime image:
   materials beside the saved image. Mosquitto is not copied into the manager deb;
   original Python wrappers/clients use MIT and base components keep their licenses.
 
-This notice describes implemented HTTP, DNS and MQTT components. Other protocol
+Telnet runtime image:
+  telnetlib3 4.0.3 is ISC licensed; wcwidth 0.6.0 is MIT licensed. telnetlib3 also
+  bundles a CPython telnetlib backport. Complete original CPython/Python license
+  and provenance materials, upstream package source/wheels, package licenses and
+  dependency hashes are preserved under third-party/telnetlib3 and in the image.
+  images/telnet and scripts/telnet-assets.sh provide offline runtime build/export
+  materials. These Python components run in the separate image, not in the native
+  manager binary; the Rust/Web license bundle index describes its own closure.
+
+This notice describes implemented HTTP, DNS, MQTT and Telnet components. Other protocol
 libraries and a complete offline distribution are not included or claimed here.
