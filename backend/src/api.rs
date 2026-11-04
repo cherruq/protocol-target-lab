@@ -33,6 +33,14 @@ impl IntoResponse for ApiError {
 impl From<anyhow::Error> for ApiError {
     fn from(e: anyhow::Error) -> Self {
         let text = format!("{e:#}");
+        if text.contains("holds control.lock")
+            || text.contains("another client test is already running")
+        {
+            return Self(
+                StatusCode::CONFLICT,
+                "已有客户端测试或实例操作正在执行，请等待完成后重试。".into(),
+            );
+        }
         let code = if text.contains("not found") {
             StatusCode::NOT_FOUND
         } else if text.contains("already")
@@ -220,6 +228,13 @@ async fn start_test(
         .map_err(|e| ApiError(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()))?;
     let test_id = crate::testing::begin(&m, &id, request).await.map_err(|e| {
         let message = format!("{e:#}");
+        let message = if message.contains("holds control.lock")
+            || message.contains("another client test is already running")
+        {
+            "已有客户端测试或实例操作正在执行，请等待完成后重试。".into()
+        } else {
+            message
+        };
         ApiError(
             if message.contains("instance not found") {
                 StatusCode::NOT_FOUND
