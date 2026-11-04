@@ -5,8 +5,16 @@ import {
   resultCounts,
   visibleTestRun,
   testDurationLabel,
+  acceptedTestWasReplaced,
   type TestRun,
 } from "../src/client-tests.ts";
+
+test("an accepted test lost or replaced in retained memory is identified without treating a submission as an accepted ID", () => {
+  assert.equal(acceptedTestWasReplaced(null, { id: "old" }), false);
+  assert.equal(acceptedTestWasReplaced("accepted", { id: "accepted" }), false);
+  assert.equal(acceptedTestWasReplaced("accepted", { id: "newer" }), true);
+  assert.equal(acceptedTestWasReplaced("accepted", null), true);
+});
 
 test("switching instance or waiting for a new test never exposes the old result", () => {
   const result = {

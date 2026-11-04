@@ -1,7 +1,7 @@
 use crate::{
     docker,
     manager::Shared,
-    model::{HTTP_METHODS, HttpConfig},
+    model::{HTTP_METHODS, ProtocolConfig},
 };
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -36,7 +36,7 @@ pub struct TestRun {
     pub finished_at: Option<u64>,
     pub container_name: String,
     pub source_container_id: String,
-    pub applied_config: HttpConfig,
+    pub applied_config: ProtocolConfig,
     pub report: Option<Value>,
     pub error: Option<String>,
     pub cleanup_complete: bool,
@@ -48,6 +48,23 @@ pub struct TestRequest {
     pub path: String,
 }
 impl TestRequest {
+    pub fn validate_for(&self, config: &ProtocolConfig) -> Result<()> {
+        match config {
+            ProtocolConfig::Http(_) => self.validate(),
+            ProtocolConfig::Dns(c) => {
+                if self.method != "ALL" && !c.transports().contains(&self.method.as_str()) {
+                    bail!("config.test.method: choose an enabled DNS transport or ALL");
+                }
+                if self.path != "ALL"
+                    && !c.names().contains(&crate::dns::canonical_name(&self.path))
+                {
+                    bail!("config.test.path: choose ALL or a configured DNS name");
+                }
+                Ok(())
+            }
+        }
+    }
+
     pub fn validate(&self) -> Result<()> {
         if self.method != "ALL" && !HTTP_METHODS.contains(&self.method.as_str()) {
             bail!("method: choose a supported HTTP method or ALL");
@@ -152,7 +169,6 @@ pub async fn reap_stale(manager: &Shared, deployment: &str) -> Result<()> {
 }
 
 pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) -> Result<String> {
-    request.validate()?;
     let control = manager.control().await?;
     let (deployment, instance) = {
         let d = manager.data.lock().await;
@@ -175,6 +191,7 @@ pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) ->
     let config = instance
         .applied_config
         .context("instance has no applied configuration")?;
+    request.validate_for(&config)?;
     let resources = docker::owned(&deployment, Some(instance_id)).await?;
     if resources.len() != 1
         || !docker::running(&resources[0])
@@ -183,16 +200,18 @@ pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) ->
         bail!("no unique running target matches the applied configuration");
     }
     let source_id = docker::container_id(&resources[0])?;
-    let image_id = docker::image_id(&manager.settings.image)
+    let image_id = docker::image_id(manager.settings.image_for(&instance.protocol_id))
         .await
-        .context("client image is unavailable; import the matching HTTP image")?;
+        .context("client image is unavailable; import the matching protocol image")?;
     let metadata: Vec<Value> =
         serde_json::from_str(&docker::cmd(&["image", "inspect", &image_id]).await?)?;
-    if metadata[0]["Config"]["Labels"]["io.protocol-target-lab.http-client-schema"].as_str()
-        != Some("1")
-    {
+    let capability = format!(
+        "io.protocol-target-lab.{}-client-schema",
+        instance.protocol_id
+    );
+    if metadata[0]["Config"]["Labels"][&capability].as_str() != Some("1") {
         bail!(
-            "configured HTTP image has no built-in client; import version 0.3.0 or newer before testing"
+            "configured image has no built-in protocol client; import matching assets before testing"
         );
     }
     cleanup_tests(&deployment, None)
@@ -318,22 +337,32 @@ async fn run_client(
         "--host".into(),
         run.applied_config.probe_ip().into(),
         "--port".into(),
-        run.applied_config.port.to_string(),
+        run.applied_config.port().to_string(),
         "--method".into(),
         run.method.clone(),
         "--path".into(),
         run.path.clone(),
     ];
-    if let Some(body) = &run.applied_config.legacy_body {
-        args.push(format!("--legacy-body={body}"));
-    } else {
-        args.extend([
-            "--response-length".into(),
-            run.applied_config.response_length.to_string(),
-            "--response-mode".into(),
-            run.applied_config.response_mode.as_str().into(),
-        ]);
+    match &run.applied_config {
+        ProtocolConfig::Dns(c) => args.extend(["--config-json".into(), serde_json::to_string(c)?]),
+        ProtocolConfig::Http(c) => {
+            if let Some(body) = &c.legacy_body {
+                args.push(format!("--legacy-body={body}"));
+            } else {
+                args.extend([
+                    "--response-length".into(),
+                    c.response_length.to_string(),
+                    "--response-mode".into(),
+                    c.response_mode.as_str().into(),
+                ]);
+            }
+        }
     }
+    let report_limit = if matches!(run.applied_config, ProtocolConfig::Dns(_)) {
+        512 * 1024
+    } else {
+        REPORT_LIMIT
+    };
     let mut child = Command::new("docker")
         .arg("--host")
         .arg(format!(
@@ -349,7 +378,7 @@ async fn run_client(
         .stdout
         .take()
         .context("client stdout unavailable")?
-        .take(REPORT_LIMIT + 1);
+        .take(report_limit + 1);
     let mut stderr = child
         .stderr
         .take()
@@ -375,8 +404,11 @@ async fn run_client(
             bail!("client execution exceeded the 45-second limit");
         }
     };
-    if out.len() as u64 > REPORT_LIMIT {
-        bail!("client report exceeded the 128 KiB limit");
+    if out.len() as u64 > report_limit {
+        bail!(
+            "client report exceeded the {} KiB limit",
+            report_limit / 1024
+        );
     }
     let mut report: Value = serde_json::from_slice(&out).with_context(|| {
         format!(

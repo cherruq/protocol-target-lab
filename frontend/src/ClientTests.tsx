@@ -6,6 +6,7 @@ import {
   testPaths,
   testDurationLabel,
   visibleTestRun,
+  acceptedTestWasReplaced,
   type TestMethod,
   type TestPath,
   type TestRun,
@@ -181,6 +182,7 @@ export default function ClientTests({
   const fetchSequence = useRef(0);
   const refreshInFlight = useRef<Promise<void> | null>(null);
   const session = useRef<string | null>(null);
+  const acceptedTest = useRef<string | null>(null);
   const hadActiveTest = useRef(false);
   hadActiveTest.current =
     submitting || Boolean(waitingId) || snapshot?.current?.status === "running";
@@ -206,6 +208,7 @@ export default function ClientTests({
           setWaitingId(null);
           setSubmitting(false);
           setStartError("");
+          acceptedTest.current = null;
         }
         session.current = next.session_id || null;
         if (next.current && next.current.instance_id !== instance.id) {
@@ -214,6 +217,20 @@ export default function ClientTests({
             "测试接口返回的结果与当前 HTTP 服务不一致，已隐藏该结果。",
           );
           return;
+        }
+        // Only POST acceptance arms this check. The immediate force refresh
+        // invalidates every GET that began before the accepted ID was known.
+        if (acceptedTestWasReplaced(acceptedTest.current, next.current)) {
+          setSessionNotice(
+            "请求的测试结果已被后续测试替换或不再保留；以下显示当前保留结果，请按需重新执行。",
+          );
+          acceptedTest.current = null;
+          setWaitingId(null);
+        } else if (
+          next.current?.id === acceptedTest.current &&
+          next.current.status !== "running"
+        ) {
+          acceptedTest.current = null;
         }
         setSnapshot(next);
         setFetchError("");
@@ -250,12 +267,14 @@ export default function ClientTests({
     setStartError("");
     setSessionNotice("");
     setWaitingId("submitting");
+    acceptedTest.current = null;
     try {
       const result = await testApi<{ test_id: string }>(endpoint, {
         method,
         path,
       });
       if (!mounted.current) return;
+      acceptedTest.current = result.test_id;
       setWaitingId(result.test_id);
       await refresh(true);
     } catch (cause) {

@@ -1,6 +1,6 @@
-Protocol Target Lab third-party source notes — phase 1
+Protocol Target Lab third-party source notes — HTTP and DNS
 
-The project's original Rust manager, Web application, HTTP worker, test client,
+The project's original Rust manager, Web application, HTTP/DNS wrappers and test clients,
 and integration scripts are distributed under the accompanying MIT LICENSE.
 Third-party components retain their original licenses. Full license and copyright
 texts for the locked Linux Rust dependency closure and bundled Web components
@@ -42,5 +42,16 @@ Docker Engine and CLI:
   administrator or offline-bundle preparation step, never a package-maintainer
   script download.
 
-This first-stage notice describes implemented HTTP components. Other protocol
+DNS runtime image:
+  dnsmasq 2.90, copyright Simon Kelley and upstream contributors, is offered under
+  GPL version 2 or (at your option) version 3. Complete corresponding unmodified
+  source, both license texts, exact build recipes/flags and source SHA-256 are in
+  third-party/dnsmasq and images/dns. The DNS image includes these materials at
+  /usr/share/doc/protocol-target-lab-dns; scripts/dns-assets.sh exports them beside
+  the saved runtime image. Keep them with redistributed DNS images. The MIT
+  license of the original Python wrapper/client does not relicense dnsmasq.
+  Python/Debian base components retain their own licenses as described above.
+  dnsmasq is in the separately imported image, not the native manager deb.
+
+This notice describes implemented HTTP and DNS components. Other protocol
 libraries and a complete offline distribution are not included or claimed here.

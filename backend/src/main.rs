@@ -1,5 +1,6 @@
 mod api;
 mod cli;
+mod dns;
 mod docker;
 mod manager;
 mod model;
@@ -160,7 +161,7 @@ async fn main() -> Result<()> {
             println!(
                 "{}",
                 serde_json::to_string_pretty(
-                    &json!({"config_path":settings.config,"config_error":doc.as_ref().err().map(|e|format!("{e:#}")),"config":doc.ok(),"docker_version":docker_version.as_ref().ok(),"docker_error":docker_version.as_ref().err().map(|e|format!("{e:#}")),"resources":resources,"image":settings.image,"image_available":docker::image_id(&settings.image).await.is_ok()})
+                    &json!({"config_path":settings.config,"config_error":doc.as_ref().err().map(|e|format!("{e:#}")),"config":doc.ok(),"docker_version":docker_version.as_ref().ok(),"docker_error":docker_version.as_ref().err().map(|e|format!("{e:#}")),"resources":resources,"image":settings.image,"image_available":docker::image_id(&settings.image).await.is_ok(),"dns_image":settings.dns_image,"dns_image_available":docker::image_id(&settings.dns_image).await.is_ok()})
                 )?
             );
             return Ok(());
@@ -214,6 +215,7 @@ mod cleanup_tests {
             data: root.clone(),
             listen: "127.0.0.1:0".into(),
             image: "unused".into(),
+            dns_image: "unused".into(),
         };
         struct Cleanup(std::path::PathBuf);
         impl Drop for Cleanup {

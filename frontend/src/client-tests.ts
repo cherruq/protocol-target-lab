@@ -85,6 +85,13 @@ export function visibleTestRun(
   return run;
 }
 
+export function acceptedTestWasReplaced(
+  acceptedId: string | null,
+  current: { id: string } | null,
+): boolean {
+  return Boolean(acceptedId && current?.id !== acceptedId);
+}
+
 export function elapsedSeconds(
   run: Pick<TestRun, "started_at" | "finished_at">,
   now = Date.now(),

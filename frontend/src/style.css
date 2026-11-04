@@ -276,8 +276,6 @@ h1 {
   border-color: #174c38;
 }
 
-
-
 .banner {
   display: flex;
   align-items: center;
@@ -1964,4 +1962,117 @@ select:disabled {
     margin-left: 0;
     width: 100%;
   }
+}
+.dns-config-fields {
+  display: grid;
+  gap: 16px;
+}
+.dns-transports {
+  border: 1px solid var(--border, #dfe5ed);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  gap: 24px;
+}
+.dns-transports legend {
+  font-size: 12px;
+  color: #667085;
+  padding: 0 4px;
+}
+.dns-transports label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dns-transports input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #2164d8;
+}
+.dns-record-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dns-record-heading h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.dns-record-heading span {
+  color: #667085;
+  font-size: 12px;
+}
+.dns-records {
+  display: grid;
+  gap: 16px;
+}
+.dns-record {
+  border: 1px solid var(--border, #dfe5ed);
+  border-radius: 9px;
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  background: #fbfcfe;
+}
+.dns-record legend {
+  padding: 0 6px;
+  color: #526174;
+  font-size: 12px;
+}
+.dns-record .dns-remove {
+  justify-self: end;
+  color: #ae3548;
+}
+.dns-applied-records {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+.dns-applied-records li {
+  display: grid;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+.dns-applied-records span {
+  font-size: 11px;
+  color: #667085;
+}
+.dns-wire {
+  padding: 12px;
+  border-radius: 6px;
+  background: #f4f6fa;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 420px;
+  overflow: auto;
+  font-size: 12px;
+}
+.draft-memory-note {
+  color: #8c6b28;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 12px 0 0;
+}
+.dns-answers {
+  margin-top: 16px;
+}
+.dns-answers ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.dns-answers li {
+  display: grid;
+  gap: 5px;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.dns-answers li span {
+  color: #667085;
 }

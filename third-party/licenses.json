@@ -2,7 +2,7 @@
   "target": "x86_64-unknown-linux-gnu",
   "scope": "Rust Linux dependency closure (including build/proc macros); bundled React runtime and Vite notices",
   "lock_sha256": {
-    "Cargo.lock": "450e0951b24f6247745c453fa8e12f800729cc036b915214aef72192642f9f9d",
+    "Cargo.lock": "a2ec3b789e6ac6025d330a2af1e5cfdbeb7a86c2c15096283a957f195b0866bc",
     "frontend/package-lock.json": "596877df070c193402f6f9539c201f6ce87ac86b19afd08f26ae8b9a3db6a75b"
   },
   "components": [

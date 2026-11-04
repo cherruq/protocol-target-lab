@@ -1,4 +1,4 @@
-use crate::model::HttpConfig;
+use crate::model::{HttpConfig, ProtocolConfig};
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 use tokio::process::Command;
@@ -53,9 +53,16 @@ pub async fn image_id(image: &str) -> Result<String> {
         .trim()
         .into())
 }
-pub async fn prepare_image(image: &str, config: &HttpConfig) -> Result<String> {
+pub async fn prepare_image(image: &str, config: &ProtocolConfig) -> Result<String> {
     let id = image_id(image).await?;
-    if config.legacy_body.is_none() {
+    if let ProtocolConfig::Dns(_) = config {
+        let metadata: Vec<Value> = serde_json::from_str(&cmd(&["image", "inspect", &id]).await?)?;
+        if metadata[0]["Config"]["Labels"]["io.protocol-target-lab.dns-response-schema"].as_str()
+            != Some("1")
+        {
+            bail!("DNS image is incompatible; import matching DNS assets");
+        }
+    } else if config.as_http().is_some_and(|c| c.legacy_body.is_none()) {
         let metadata: Vec<Value> = serde_json::from_str(&cmd(&["image", "inspect", &id]).await?)?;
         if metadata[0]["Config"]["Labels"]["io.protocol-target-lab.http-response-schema"].as_str()
             != Some("2")
@@ -107,7 +114,7 @@ pub fn container_id(v: &Value) -> Result<String> {
 pub fn running(v: &Value) -> bool {
     v["State"]["Running"].as_bool() == Some(true)
 }
-pub fn matches(v: &Value, config: &HttpConfig) -> bool {
+pub fn matches(v: &Value, config: &ProtocolConfig) -> bool {
     v["Config"]["Labels"][HASH].as_str() == Some(config.fingerprint().as_str())
 }
 pub async fn remove(v: &Value, deployment: &str, instance: &str) -> Result<()> {
@@ -127,7 +134,12 @@ pub async fn remove(v: &Value, deployment: &str, instance: &str) -> Result<()> {
     cmd(&["rm", &id]).await?;
     Ok(())
 }
-pub async fn start(deployment: &str, id: &str, config: &HttpConfig, image: &str) -> Result<String> {
+pub async fn start(
+    deployment: &str,
+    id: &str,
+    config: &ProtocolConfig,
+    image: &str,
+) -> Result<String> {
     let immutable_image = image_id(image).await?;
     let name = format!("plab-{}-{id}", &deployment[..8]);
     let mut args = vec![
@@ -135,7 +147,11 @@ pub async fn start(deployment: &str, id: &str, config: &HttpConfig, image: &str)
         "--name".into(),
         name,
         "--network".into(),
-        "host".into(),
+        if matches!(config, ProtocolConfig::Dns(_)) {
+            "bridge".into()
+        } else {
+            "host".into()
+        },
         "--restart".into(),
         "no".into(),
         "--pull".into(),
@@ -154,13 +170,37 @@ pub async fn start(deployment: &str, id: &str, config: &HttpConfig, image: &str)
         format!("{INSTANCE}={id}"),
         "--label".into(),
         format!("{HASH}={}", config.fingerprint()),
-        immutable_image,
-        "--bind-ip".into(),
-        config.bind_ip.clone(),
-        "--port".into(),
-        config.port.to_string(),
     ];
-    args.extend(worker_args(config));
+    match config {
+        ProtocolConfig::Http(c) => {
+            args.extend([
+                immutable_image,
+                "--bind-ip".into(),
+                c.bind_ip.clone(),
+                "--port".into(),
+                c.port.to_string(),
+            ]);
+            args.extend(worker_args(c));
+        }
+        ProtocolConfig::Dns(c) => {
+            for transport in c.transports() {
+                args.extend([
+                    "--publish".into(),
+                    format!(
+                        "{}:{}:15353/{}",
+                        c.bind_ip,
+                        c.port,
+                        transport.to_ascii_lowercase()
+                    ),
+                ]);
+            }
+            args.extend([
+                immutable_image,
+                "--config-json".into(),
+                serde_json::to_string(c)?,
+            ]);
+        }
+    }
     let container = command(&args).await?.trim().to_owned();
     if let Err(e) = cmd(&["start", &container]).await {
         let _ = cmd(&["rm", &container]).await;
@@ -168,7 +208,11 @@ pub async fn start(deployment: &str, id: &str, config: &HttpConfig, image: &str)
     }
     Ok(container)
 }
-pub async fn probe(config: &HttpConfig) -> Result<()> {
+pub async fn probe(config: &ProtocolConfig) -> Result<()> {
+    let config = match config {
+        ProtocolConfig::Dns(c) => return crate::dns::probe(c).await,
+        ProtocolConfig::Http(c) => c,
+    };
     let client = reqwest::Client::builder()
         .no_proxy()
         .timeout(std::time::Duration::from_secs(2))
@@ -202,7 +246,7 @@ pub async fn check_port(config: &HttpConfig) -> Result<()> {
     drop(socket);
     Ok(())
 }
-pub async fn preflight_port(config: &HttpConfig, own: Option<&HttpConfig>) -> Result<()> {
+async fn preflight_http(config: &HttpConfig, own: Option<&HttpConfig>) -> Result<()> {
     // Even when the current wildcard listener owns this port, validate that a
     // requested specific address exists before stopping the old service.
     let address_check = std::net::TcpListener::bind((config.bind_ip.as_str(), 0))
@@ -256,6 +300,130 @@ pub async fn preflight_port(config: &HttpConfig, own: Option<&HttpConfig>) -> Re
             && u16::from_str_radix(port, 16)? == config.port
         {
             bail!("config.port: wildcard IPv6 listener may conflict");
+        }
+    }
+    Ok(())
+}
+
+/// Check every requested transport before stopping a recognized existing worker.
+pub async fn preflight_port(
+    config: &ProtocolConfig,
+    own: Option<&ProtocolConfig>,
+    own_id: Option<&str>,
+) -> Result<()> {
+    let transports = match config {
+        ProtocolConfig::Http(_) => vec!["TCP"],
+        ProtocolConfig::Dns(c) => c.transports(),
+    };
+    let overlap = |a: &str, b: &str| a == b || a == "0.0.0.0" || b == "0.0.0.0";
+    // Docker may publish through NAT without a userland listening socket.
+    let ids = cmd(&["ps", "-q"]).await?;
+    if !ids.trim().is_empty() {
+        let mut args = vec!["inspect".into()];
+        args.extend(ids.split_whitespace().map(str::to_owned));
+        let containers: Vec<Value> = serde_json::from_str(&command(&args).await?)?;
+        for container in containers {
+            if container["Id"].as_str() == own_id {
+                continue;
+            }
+            if let Some(ports) = container["NetworkSettings"]["Ports"].as_object() {
+                for (key, bindings) in ports {
+                    let protocol = key.split('/').nth(1).unwrap_or("").to_ascii_uppercase();
+                    if !transports.contains(&protocol.as_str()) {
+                        continue;
+                    }
+                    if let Some(bindings) = bindings.as_array() {
+                        for binding in bindings {
+                            if binding["HostPort"].as_str()
+                                == Some(config.port().to_string().as_str())
+                                && (binding["HostIp"].as_str() == Some("::")
+                                    || binding["HostIp"]
+                                        .as_str()
+                                        .is_some_and(|ip| overlap(ip, config.bind_ip())))
+                            {
+                                bail!(
+                                    "config.port: another Docker {protocol} publication conflicts with requested endpoint"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let ProtocolConfig::Dns(c) = config else {
+        return preflight_http(
+            config.as_http().unwrap(),
+            own.and_then(ProtocolConfig::as_http),
+        )
+        .await;
+    };
+    let address_check = std::net::TcpListener::bind((c.bind_ip.as_str(), 0))
+        .context("config.bind_ip: address is not available on this host")?;
+    drop(address_check);
+    for transport in c.transports() {
+        let own_endpoint = own.and_then(|value| {
+            if let ProtocolConfig::Dns(old) = value {
+                (old.port == c.port
+                    && old.transports().contains(&transport)
+                    && overlap(&old.bind_ip, &c.bind_ip))
+                .then_some(old)
+            } else {
+                None
+            }
+        });
+        if own_endpoint.is_none() {
+            if transport == "TCP" {
+                drop(
+                    std::net::TcpListener::bind((c.bind_ip.as_str(), c.port)).with_context(
+                        || format!("config.port: TCP {}:{} is unavailable", c.bind_ip, c.port),
+                    )?,
+                );
+            } else {
+                drop(
+                    std::net::UdpSocket::bind((c.bind_ip.as_str(), c.port)).with_context(|| {
+                        format!("config.port: UDP {}:{} is unavailable", c.bind_ip, c.port)
+                    })?,
+                );
+            }
+            continue;
+        }
+        let old = own_endpoint.unwrap();
+        let proto = transport.to_ascii_lowercase();
+        for suffix in ["", "6"] {
+            let text = match std::fs::read_to_string(format!("/proc/net/{proto}{suffix}")) {
+                Ok(v) => v,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+                Err(e) => return Err(e.into()),
+            };
+            for line in text.lines().skip(1) {
+                let fields = line.split_whitespace().collect::<Vec<_>>();
+                if fields.len() < 4 || (transport == "TCP" && fields[3] != "0A") {
+                    continue;
+                }
+                let Some((address, port)) = fields[1].split_once(':') else {
+                    continue;
+                };
+                if u16::from_str_radix(port, 16)? != c.port {
+                    continue;
+                }
+                if suffix == "6" {
+                    if address == "00000000000000000000000000000000" {
+                        bail!("config.port: wildcard IPv6 {transport} listener may conflict");
+                    }
+                    continue;
+                }
+                let ip = std::net::Ipv4Addr::from(u32::from_str_radix(address, 16)?.to_le_bytes())
+                    .to_string();
+                if ip == old.bind_ip {
+                    continue;
+                }
+                if overlap(&ip, &c.bind_ip) {
+                    bail!(
+                        "config.port: another {transport} listener conflicts with requested endpoint"
+                    );
+                }
+            }
         }
     }
     Ok(())

@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation is **phase 1: HTTP**, with manager version **0.5.1**
-and HTTP server/client image **0.3.0**. Each protocol has one fixed workspace and
+The current implementation is **HTTP and DNS**, with manager version **0.6.1**,
+HTTP server/client image **0.3.0**, and DNS server/client image **0.1.1**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -52,8 +52,8 @@ for stdin configuration, asynchronous calls, exit codes and automation examples.
 The supported package baseline is **Ubuntu 24.04 LTS, amd64, systemd, Ubuntu docker.io**.
 The manager runs directly on the host and invokes the installed Docker CLI using
 argument arrays. Its Web files are embedded at compilation time; production does
-not need Node, npm, Python, Cargo, or Nginx on the host. The Python HTTP worker runs
-inside its own container.
+not need Node, npm, Python, Cargo, or Nginx on the host. The HTTP and DNS workers run
+inside their own containers.
 
 For development, install the Rust toolchain specified in `rust-toolchain.toml`,
 Node 22.12+ with npm (Node 24 was tested), Docker Engine with its CLI, GNU make, Python 3 (license inventory verification), and Debian packaging tools
@@ -67,6 +67,8 @@ rejects dependencies newer than Ubuntu 24.04's glibc 2.39.
 make fetch-deps
 make build-ubuntu24
 make images
+make fetch-dns-deps
+make dns-images
 make deb PLAB_BINARY=.local/build/ubuntu24/target/release/protocol-target-lab
 ```
 
@@ -93,7 +95,7 @@ build image.
 
 The HTTP image is
 `protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.5.1_amd64.deb`.
+The manager package is `dist/protocol-target-lab_0.6.1_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -126,7 +128,7 @@ Docker provider; a host with Docker CE can run development builds directly, whil
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.5.1_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.6.1_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
@@ -216,7 +218,7 @@ and may still support only the original GET/HEAD/POST methods. Automatic recover
 uses its saved legacy snapshot and the new worker's compatibility arguments.
 Explicit saves write schema version 2; both v1 and v2 files remain readable.
 
-Manager 0.5.1 continues to use HTTP image
+Manager 0.6.1 continues to use HTTP image
 `protocol-target-lab/http:0.3.0`; if a customized environment file still selects an
 older image, update `PLAB_HTTP_IMAGE` after importing the new version. The manager
 checks image capability before stopping the running HTTP service to apply new options.
@@ -316,3 +318,33 @@ Project source is MIT licensed; see [LICENSE](LICENSE) and
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Cargo/npm lockfiles identify the selected
 dependencies. Local reference material, plans, and environment-specific evidence
 are excluded from Git under `.local/` and are not part of package build contexts.
+
+## DNS workspace
+
+DNS uses real dnsmasq **2.90** with configurable host IPv4 binding, port,
+UDP/TCP switches, and A/AAAA static records (name, address, TTL). Both transports
+are enabled by default on port 15353 with `device.test A 192.0.2.28`, TTL 60.
+Unknown names receive negative answers; the worker has no upstream recursion.
+The container uses a bridge network and publishes only enabled transports.
+A port already used by an existing service must be changed before starting.
+
+```sh
+plabctl config get dns
+plabctl config set dns --port 15354
+plabctl start dns
+plabctl tests run dns --method ALL
+plabctl tests run dns --method TCP --name device.test
+plabctl logs dns
+plabctl stop dns
+```
+
+The Web and CLI share saved/applied state, lifecycle, logs, and the same
+single-use DNS client. Tests verify actual IDs, questions, answer sets, TTLs,
+negative answers, and TCP framing. Internal startup checks query every enabled
+transport. Existing HTTP workspace IDs, configuration fingerprints and containers
+remain compatible; valid older installations gain a disabled DNS workspace.
+No existing manual DNS service is stopped or imported automatically.
+
+See [DNS build and protocol details](docs/dns.md) and [CLI reference](docs/cli.md).
+The DNS image distribution includes dnsmasq source, build instructions and license
+materials. Keep those materials with redistributed images.

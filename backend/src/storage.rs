@@ -13,6 +13,7 @@ pub struct Settings {
     pub data: PathBuf,
     pub listen: String,
     pub image: String,
+    pub dns_image: String,
 }
 impl Settings {
     pub fn env() -> Result<Self> {
@@ -34,6 +35,7 @@ impl Settings {
                         "PLAB_DATA_DIR",
                         "PLAB_LISTEN",
                         "PLAB_HTTP_IMAGE",
+                        "PLAB_DNS_IMAGE",
                     ]
                     .contains(&key)
                     {
@@ -69,7 +71,15 @@ impl Settings {
             data: value("PLAB_DATA_DIR", "/var/lib/protocol-target-lab").into(),
             listen: value("PLAB_LISTEN", "0.0.0.0:18000"),
             image: value("PLAB_HTTP_IMAGE", "protocol-target-lab/http:0.3.0"),
+            dns_image: value("PLAB_DNS_IMAGE", "protocol-target-lab/dns:0.1.1"),
         })
+    }
+    pub fn image_for(&self, protocol: &str) -> &str {
+        if protocol == "dns" {
+            &self.dns_image
+        } else {
+            &self.image
+        }
     }
     pub fn lock(&self, name: &str) -> Result<File> {
         std::fs::create_dir_all(&self.data)?;
@@ -135,8 +145,24 @@ pub fn load(settings: &Settings) -> Result<Document> {
     // Older versions allowed deleting the last entry. Restore a disabled fixed
     // workspace only after validating the entire document and ownership marker.
     // Existing IDs, snapshots and container labels are never rewritten.
-    if d.instances.is_empty() {
-        d.instances = Document::new().instances;
+    let mut changed = false;
+    for mut default in Document::new().instances {
+        if d.instances
+            .iter()
+            .any(|i| i.protocol_id == default.protocol_id)
+        {
+            continue;
+        }
+        let base = default.id.clone();
+        let mut suffix = 2;
+        while d.instances.iter().any(|i| i.id == default.id) {
+            default.id = format!("{base}-{suffix}");
+            suffix += 1;
+        }
+        d.instances.push(default);
+        changed = true;
+    }
+    if changed {
         d.schema_version = 2;
         save(&settings.config, &d)?;
     }
@@ -171,6 +197,7 @@ mod tests {
                 data: self.0.clone(),
                 listen: "127.0.0.1:0".into(),
                 image: "unused".into(),
+                dns_image: "unused".into(),
             }
         }
     }
@@ -201,7 +228,9 @@ mod tests {
         let i = &mut d.instances[0];
         i.enabled = true;
         i.applied_config = Some(i.config.clone());
-        i.config.response_length = 128;
+        if let crate::model::ProtocolConfig::Http(c) = &mut i.config {
+            c.response_length = 128;
+        }
         save(&s.config, &d).unwrap();
         let loaded = load(&s).unwrap();
         assert!(loaded.instances[0].enabled);
@@ -210,10 +239,19 @@ mod tests {
                 .applied_config
                 .as_ref()
                 .unwrap()
+                .as_http()
+                .unwrap()
                 .response_length,
             64
         );
-        assert_eq!(loaded.instances[0].config.response_length, 128);
+        assert_eq!(
+            loaded.instances[0]
+                .config
+                .as_http()
+                .unwrap()
+                .response_length,
+            128
+        );
     }
     #[test]
     fn fixed_workspace_preserves_custom_id_legacy_bytes_and_snapshots() {
@@ -233,7 +271,7 @@ mod tests {
         save(&s.config, &d).unwrap();
         let bytes = std::fs::read(&s.config).unwrap();
         let loaded = load(&s).unwrap();
-        assert_eq!(loaded.instances.len(), 1);
+        assert_eq!(loaded.instances.len(), 2);
         assert_eq!(loaded.instances[0].id, "custom-http");
         assert!(loaded.instances[0].enabled);
         assert_eq!(loaded.instances[0].status, "checking");
@@ -275,17 +313,57 @@ mod tests {
         save(&s.config, &d).unwrap();
         let loaded = load(&s).unwrap();
         assert_eq!(loaded.deployment_id, d.deployment_id);
-        assert_eq!(loaded.instances.len(), 1);
+        assert_eq!(loaded.instances.len(), 2);
         let i = &loaded.instances[0];
         assert_eq!(i.id, "http-demo");
         assert!(!i.enabled);
         assert!(i.applied_config.is_none());
-        assert_eq!(load(&s).unwrap().instances.len(), 1);
+        assert_eq!(load(&s).unwrap().instances.len(), 2);
         d.deployment_id = uuid::Uuid::new_v4().to_string();
         save(&s.config, &d).unwrap();
         let bytes = std::fs::read(&s.config).unwrap();
         assert!(load(&s).is_err());
         assert_eq!(std::fs::read(&s.config).unwrap(), bytes);
+    }
+    #[test]
+    fn http_only_migration_keeps_identity_snapshots_and_hash_even_with_dns_id_collision() {
+        let f = Fixture::new();
+        let settings = f.settings();
+        let mut doc = load(&settings).unwrap();
+        doc.instances.retain(|i| i.protocol_id == "http");
+        let http = &mut doc.instances[0];
+        http.id = "dns-demo".into();
+        http.enabled = true;
+        http.applied_config = Some(http.config.clone());
+        let original = serde_json::to_value(&http).unwrap();
+        let hash = http.config.fingerprint();
+        save(&settings.config, &doc).unwrap();
+        let loaded = load(&settings).unwrap();
+        assert_eq!(loaded.deployment_id, doc.deployment_id);
+        assert_eq!(
+            serde_json::to_value(&loaded.instances[0]).unwrap(),
+            original
+        );
+        assert_eq!(loaded.instances[0].config.fingerprint(), hash);
+        let dns = &loaded.instances[1];
+        assert_eq!(dns.id, "dns-demo-2");
+        assert_eq!(dns.protocol_id, "dns");
+        assert!(!dns.enabled);
+        assert!(dns.applied_config.is_none());
+        let stable = std::fs::read(&settings.config).unwrap();
+        load(&settings).unwrap();
+        assert_eq!(std::fs::read(&settings.config).unwrap(), stable);
+    }
+    #[test]
+    fn mismatched_protocol_variant_is_rejected_without_migration() {
+        let f = Fixture::new();
+        let settings = f.settings();
+        let mut doc = load(&settings).unwrap();
+        doc.instances[0].protocol_id = "dns".into();
+        save(&settings.config, &doc).unwrap();
+        let bytes = std::fs::read(&settings.config).unwrap();
+        assert!(load(&settings).is_err());
+        assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);
     }
     #[test]
     fn deployment_mismatch_cannot_claim_resources() {

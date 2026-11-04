@@ -30,10 +30,10 @@ export const supportedMethods = [
   "OPTIONS",
 ];
 
-export function isLegacyConfig(
-  config: StoredConfig | null | undefined,
-): config is LegacyConfig {
-  return Boolean(config && "response_body" in config);
+export function isLegacyConfig(config: unknown): config is LegacyConfig {
+  return Boolean(
+    config && typeof config === "object" && "response_body" in config,
+  );
 }
 
 // This conversion is only an editor draft. Saving or applying remains explicit.

@@ -1,8 +1,4 @@
-use crate::{
-    docker,
-    manager::Shared,
-    model::{HttpConfig, HttpConfigPatch},
-};
+use crate::{docker, manager::Shared, model::ProtocolConfig};
 use axum::{
     Json, Router,
     body::Body,
@@ -87,39 +83,28 @@ pub fn router(manager: Shared) -> Router {
 }
 async fn protocols(State(m): State<Shared>) -> Json<Value> {
     let d = m.data.lock().await;
-    let workspace = d.doc.instances.iter().find(|i| i.protocol_id == "http");
-    // Runtime state comes from reconciliation, never from the enabled intent.
-    let status = if d.config_error.is_some() {
-        "unavailable"
-    } else if d.docker_error.is_some() {
-        "environment-unavailable"
-    } else {
-        workspace
-            .map(|i| i.status.as_str())
-            .unwrap_or("unavailable")
-    };
-    let error = d
-        .config_error
-        .as_deref()
-        .or(d.docker_error.as_deref())
-        .or_else(|| workspace.and_then(|i| i.runtime_error.as_deref().or(i.error.as_deref())));
-    Json(
-        json!([{"id":"http","name":"HTTP","implementation":"controlled responder",
-        "version":env!("CARGO_PKG_VERSION"),"available":true,
-        "supported_methods":crate::model::HTTP_METHODS,
-        "workspace":workspace.map(|i| i.view()),"status":status,"error":error,"session_id":m.session_id}]),
-    )
+    Json(json!(["http","dns"].map(|protocol| {
+        let workspace=d.doc.instances.iter().find(|i|i.protocol_id==protocol);
+        let status=if d.config_error.is_some() {"unavailable"} else if d.docker_error.is_some() {"environment-unavailable"} else {workspace.map(|i|i.status.as_str()).unwrap_or("unavailable")};
+        let error=d.config_error.as_deref().or(d.docker_error.as_deref()).or_else(||workspace.and_then(|i|i.runtime_error.as_deref().or(i.error.as_deref())));
+        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":if protocol=="dns" {"dnsmasq 2.90"} else {"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
+        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else {descriptor["supported_transports"]=json!(["UDP","TCP"]);}
+        descriptor
+    })))
 }
 async fn schema(Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
-    if id != "http" {
-        return Err(ApiError(
+    match id.as_str() {
+        "http" => Ok(Json(
+            json!({"protocol_id":"http","type":"object","supported_methods":crate::model::HTTP_METHODS,"properties":{"bind_ip":{"type":"string","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18090},"response_length":{"type":"integer","minimum":0,"maximum":crate::model::MAX_RESPONSE_LENGTH,"default":64},"response_mode":{"type":"string","enum":["fixed","random"],"default":"fixed"}},"required":["bind_ip","port","response_length","response_mode"]}),
+        )),
+        "dns" => Ok(Json(
+            json!({"protocol_id":"dns","type":"object","additionalProperties":false,"implementation":"dnsmasq 2.90","supported_transports":["UDP","TCP"],"default":crate::dns::DnsConfig::default(),"properties":{"bind_ip":{"type":"string","format":"ipv4","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":15353},"udp_enabled":{"type":"boolean","default":true},"tcp_enabled":{"type":"boolean","default":true},"records":{"type":"array","minItems":1,"maxItems":32,"items":{"type":"object","additionalProperties":false,"properties":{"name":{"type":"string","maxLength":254},"record_type":{"enum":["A","AAAA"]},"value":{"type":"string"},"ttl":{"type":"integer","minimum":0,"maximum":86400}},"required":["name","record_type","value","ttl"]}}},"required":["bind_ip","port","udp_enabled","tcp_enabled","records"],"constraints":["Enable at least one transport","ASCII DNS hostname labels <=63; canonical name <=253","Each name/type RRset has <=16 addresses and consistent TTL","No duplicate name/type/address","Unknown names are negative; no public recursion"]}),
+        )),
+        _ => Err(ApiError(
             StatusCode::NOT_FOUND,
             "protocol not implemented".into(),
-        ));
+        )),
     }
-    Ok(Json(
-        json!({"protocol_id":"http","type":"object","supported_methods":crate::model::HTTP_METHODS,"properties":{"bind_ip":{"type":"string","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18090},"response_length":{"type":"integer","minimum":0,"maximum":crate::model::MAX_RESPONSE_LENGTH,"default":64},"response_mode":{"type":"string","enum":["fixed","random"],"default":"fixed"}},"required":["bind_ip","port","response_length","response_mode"]}),
-    ))
 }
 async fn list(State(m): State<Shared>) -> Json<Value> {
     let d = m.data.lock().await;
@@ -144,7 +129,7 @@ async fn instance(
 async fn save_config(
     State(m): State<Shared>,
     Path(id): Path<String>,
-    body: Result<Json<HttpConfig>, JsonRejection>,
+    body: Result<Json<ProtocolConfig>, JsonRejection>,
 ) -> Result<Json<Value>, ApiError> {
     let config = decode(body)?;
     config.validate()?;
@@ -153,7 +138,7 @@ async fn save_config(
 async fn patch_config(
     State(m): State<Shared>,
     Path(id): Path<String>,
-    body: Result<Json<HttpConfigPatch>, JsonRejection>,
+    body: Result<Json<Value>, JsonRejection>,
 ) -> Result<Json<Value>, ApiError> {
     Ok(Json(m.patch_config(&id, decode(body)?).await?))
 }
@@ -171,13 +156,42 @@ async fn action(
 }
 async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
     let d = m.data.lock().await;
-    if !d.doc.instances.iter().any(|i| i.id == id) {
-        return Err(ApiError(StatusCode::NOT_FOUND, "instance not found".into()));
-    }
-    let mut cases = crate::model::HTTP_METHODS.to_vec();
-    cases.push("ALL");
+    let instance = d
+        .doc
+        .instances
+        .iter()
+        .find(|i| i.id == id)
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "instance not found".into()))?;
+    let config = instance.applied_config.as_ref().unwrap_or(&instance.config);
+    let (cases, paths) = match config {
+        ProtocolConfig::Http(_) => {
+            let mut cases = crate::model::HTTP_METHODS
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>();
+            cases.push("ALL".into());
+            (
+                cases,
+                crate::testing::PATHS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            )
+        }
+        ProtocolConfig::Dns(c) => {
+            let mut cases = c
+                .transports()
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>();
+            cases.push("ALL".into());
+            let mut paths = vec!["ALL".into()];
+            paths.extend(c.names());
+            (cases, paths)
+        }
+    };
     Ok(Json(
-        json!({"cases":cases,"paths":crate::testing::PATHS,"current":d.tests.get(&id),"session_id":m.session_id}),
+        json!({"cases":cases,"paths":paths,"current":d.tests.get(&id),"session_id":m.session_id}),
     ))
 }
 async fn start_test(
@@ -186,9 +200,6 @@ async fn start_test(
     body: Result<Json<crate::testing::TestRequest>, JsonRejection>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     let request = decode(body)?;
-    request
-        .validate()
-        .map_err(|e| ApiError(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()))?;
     let test_id = crate::testing::begin(&m, &id, request).await.map_err(|e| {
         let message = format!("{e:#}");
         let message = if message.contains("holds control.lock")
@@ -212,16 +223,30 @@ async fn start_test(
         Json(json!({"test_id":test_id,"session_id":m.session_id})),
     ))
 }
+async fn image_inventory(m: &Shared) -> Value {
+    let mut images = serde_json::Map::new();
+    for protocol in ["http", "dns"] {
+        let image = m.settings.image_for(protocol);
+        let id = docker::image_id(image).await.ok();
+        images.insert(
+            protocol.into(),
+            json!({"image":image,"available":id.is_some(),"image_id":id}),
+        );
+    }
+    Value::Object(images)
+}
 async fn environment(State(m): State<Shared>) -> Json<Value> {
-    let available = docker::image_id(&m.settings.image).await.is_ok();
+    let images = image_inventory(&m).await;
     let d = m.data.lock().await;
     Json(
-        json!({"docker_available":d.docker_error.is_none(),"docker_version":d.docker_version,"error":d.docker_error,"config_error":d.config_error,"kernel":std::fs::read_to_string("/proc/sys/kernel/osrelease").ok().map(|s|s.trim().to_owned()),"image":m.settings.image,"image_available":available,"config_path":m.settings.config,"deployment_id":d.doc.deployment_id}),
+        json!({"docker_available":d.docker_error.is_none(),"docker_version":d.docker_version,"error":d.docker_error,"config_error":d.config_error,"kernel":std::fs::read_to_string("/proc/sys/kernel/osrelease").ok().map(|s|s.trim().to_owned()),"image":m.settings.image,"image_available":images["http"]["available"],"images":images,"config_path":m.settings.config,"deployment_id":d.doc.deployment_id}),
     )
 }
 async fn assets(State(m): State<Shared>) -> Json<Value> {
-    let id = docker::image_id(&m.settings.image).await.ok();
-    Json(json!({"image":m.settings.image,"available":id.is_some(),"image_id":id}))
+    let images = image_inventory(&m).await;
+    let mut result = images["http"].clone();
+    result["protocols"] = images;
+    Json(result)
 }
 async fn connection_info(
     State(m): State<Shared>,
@@ -235,12 +260,31 @@ async fn connection_info(
         .find(|i| i.id == id)
         .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "instance not found".into()))?;
     let c = i.applied_config.as_ref().unwrap_or(&i.config);
-    let host = if c.bind_ip == "0.0.0.0" {
+    let host = if c.bind_ip() == "0.0.0.0" {
         "<target-ip>"
     } else {
-        &c.bind_ip
+        c.bind_ip()
     };
-    let url = format!("http://{host}:{}", c.port);
+    if let ProtocolConfig::Dns(config) = c {
+        let record = &config.records[0];
+        let commands = config
+            .transports()
+            .into_iter()
+            .map(|transport| {
+                format!(
+                    "dig @{host} -p {} {} {} +{}",
+                    config.port,
+                    crate::dns::canonical_name(&record.name),
+                    record.record_type,
+                    if transport == "TCP" { "tcp" } else { "notcp" }
+                )
+            })
+            .collect::<Vec<_>>();
+        return Ok(Json(
+            json!({"host":host,"port":config.port,"transports":config.transports(),"records":config.records,"commands":commands,"base_url":format!("dns://{host}:{}",config.port)}),
+        ));
+    }
+    let url = format!("http://{host}:{}", c.port());
     Ok(Json(
         json!({"base_url":url,"commands":[format!("curl --noproxy '*' '{url}/ok'"),format!("curl --noproxy '*' -I '{url}/ok'"),format!("curl --noproxy '*' '{url}/chunked'"),format!("curl --noproxy '*' '{url}/close'"),format!("curl --noproxy '*' --data-binary 'sample' '{url}/ok'"),format!("curl --noproxy '*' -X PUT --data-binary 'sample' '{url}/ok'"),format!("curl --noproxy '*' -X PATCH --data-binary 'sample' '{url}/ok'"),format!("curl --noproxy '*' -X DELETE '{url}/ok'"),format!("curl --noproxy '*' -X OPTIONS -i '{url}/ok'")]}),
     ))
