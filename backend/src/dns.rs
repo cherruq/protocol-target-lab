@@ -132,8 +132,10 @@ fn name_at(data: &[u8], at: &mut usize) -> Result<String> {
     let mut end = None;
     let mut labels = Vec::new();
     let mut seen = HashSet::new();
+    // 127 one-byte labels + terminator + a compression pointer need 129 steps.
+    // Keep a separate generous work bound as well as cycle/name-length checks.
     loop {
-        if !seen.insert(pos) || seen.len() > 128 {
+        if !seen.insert(pos) || seen.len() > 256 {
             bail!("DNS compression pointer cycle");
         }
         let size = *data.get(pos).context("DNS truncated name")? as usize;
@@ -324,6 +326,25 @@ mod tests {
             })
             .collect();
         assert!(c.validate().is_err());
+    }
+    #[test]
+    fn maximum_label_count_with_compressed_answer_is_valid() {
+        let name = vec!["a"; 127].join(".");
+        assert_eq!(name.len(), 253);
+        let mut response = vec![];
+        for field in [1234u16, 0x8180, 1, 1, 0, 0] {
+            response.extend_from_slice(&field.to_be_bytes());
+        }
+        for label in name.split('.') {
+            response.push(label.len() as u8);
+            response.extend_from_slice(label.as_bytes());
+        }
+        response.push(0);
+        response.extend_from_slice(&[
+            0, 1, 0, 1, 0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 192, 0, 2, 28,
+        ]);
+        let expected = BTreeSet::from([(vec![192, 0, 2, 28], 60)]);
+        verify(&response, 1234, &name, 1, &expected).unwrap();
     }
     #[test]
     fn compression_and_truncation_fail_closed() {

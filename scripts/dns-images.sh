@@ -17,6 +17,6 @@ for file in server.py client.py dns_wire.py; do install -m 0644 "workers/dns/$fi
 for file in Dockerfile build.Dockerfile dependencies.lock.json; do install -m 0644 "images/dns/$file" "$context/images/dns/$file"; done
 for file in dnsmasq-2.90.tar.xz COPYING COPYING-v3 README.md; do install -m 0644 "third-party/dnsmasq/$file" "$context/third-party/dnsmasq/$file"; done
 docker build --network=none --pull=false --build-arg "BASE_IMAGE=$base_image" --build-arg "BUILD_IMAGE=$build_image" \
-    --label org.opencontainers.image.title=protocol-target-lab-dns --label org.opencontainers.image.version=0.1.0 \
+    --label org.opencontainers.image.title=protocol-target-lab-dns --label org.opencontainers.image.version=0.1.1 \
     -f "$context/images/dns/Dockerfile" --tag "$image" "$context"
 docker image inspect "$image" > dist/dns-image-inspect.json

@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation is **HTTP and DNS**, with manager version **0.6.0**,
-HTTP server/client image **0.3.0**, and DNS server/client image **0.1.0**. Each protocol has one fixed workspace and
+The current implementation is **HTTP and DNS**, with manager version **0.6.1**,
+HTTP server/client image **0.3.0**, and DNS server/client image **0.1.1**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -95,7 +95,7 @@ build image.
 
 The HTTP image is
 `protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.6.0_amd64.deb`.
+The manager package is `dist/protocol-target-lab_0.6.1_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -128,7 +128,7 @@ Docker provider; a host with Docker CE can run development builds directly, whil
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.6.0_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.6.1_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
@@ -218,7 +218,7 @@ and may still support only the original GET/HEAD/POST methods. Automatic recover
 uses its saved legacy snapshot and the new worker's compatibility arguments.
 Explicit saves write schema version 2; both v1 and v2 files remain readable.
 
-Manager 0.6.0 continues to use HTTP image
+Manager 0.6.1 continues to use HTTP image
 `protocol-target-lab/http:0.3.0`; if a customized environment file still selects an
 older image, update `PLAB_HTTP_IMAGE` after importing the new version. The manager
 checks image capability before stopping the running HTTP service to apply new options.

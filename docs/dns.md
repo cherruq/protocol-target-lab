@@ -43,7 +43,7 @@ scripts/dns-images.sh
 scripts/dns-assets.sh
 ```
 
-The output image is `protocol-target-lab/dns:0.1.0`. Its base digest, pristine
+The output image is `protocol-target-lab/dns:0.1.1`. Its base digest, pristine
 source URL/SHA-256, and compiler flags are recorded in
 `images/dns/dependencies.lock.json`. The compiler image uses the same Debian
 bookworm base as runtime, avoiding a newer-libc build dependency. Online apt
@@ -67,7 +67,7 @@ The same image contains `/opt/protocol-target-lab/client.py`. Use it through a
 one-shot container, overriding the default server entrypoint:
 
 ```sh
-docker run --rm --network=host --entrypoint python3 protocol-target-lab/dns:0.1.0 \
+docker run --rm --network=host --entrypoint python3 protocol-target-lab/dns:0.1.1 \
   -u /opt/protocol-target-lab/client.py --host 127.0.0.1 --port 15353 \
   --method ALL --path ALL \
   --config-json '{"bind_ip":"0.0.0.0","port":15353,"udp_enabled":true,"tcp_enabled":true,"records":[{"name":"device.test","record_type":"A","value":"192.0.2.28","ttl":60}]}'

@@ -64,8 +64,10 @@ def query(name, qtype):
 
 def read_name(data, offset):
     pos, end, labels, seen = offset, None, [], set()
+    # A maximum-label name plus a compression pointer needs 129 positions.
+    # Bound work independently of the DNS name length while retaining cycle checks.
     while True:
-        if pos in seen or len(seen) >= 128 or pos >= len(data):
+        if pos in seen or len(seen) >= 256 or pos >= len(data):
             raise ValueError("invalid/truncated DNS name pointer")
         seen.add(pos)
         n = data[pos]

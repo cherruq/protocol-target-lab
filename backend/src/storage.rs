@@ -71,7 +71,7 @@ impl Settings {
             data: value("PLAB_DATA_DIR", "/var/lib/protocol-target-lab").into(),
             listen: value("PLAB_LISTEN", "0.0.0.0:18000"),
             image: value("PLAB_HTTP_IMAGE", "protocol-target-lab/http:0.3.0"),
-            dns_image: value("PLAB_DNS_IMAGE", "protocol-target-lab/dns:0.1.0"),
+            dns_image: value("PLAB_DNS_IMAGE", "protocol-target-lab/dns:0.1.1"),
         })
     }
     pub fn image_for(&self, protocol: &str) -> &str {

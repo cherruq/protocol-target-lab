@@ -48,3 +48,17 @@ run is required to establish reachability from another machine. Existing manual
 protocol services, the host resolver and unrelated containers are preserved.
 Other protocol families, IEC101 dual-channel implementation and whole-host reboot
 acceptance remain later milestones.
+
+## Pre-merge correction (0.6.1 / DNS image 0.1.1)
+
+A fresh review found that a valid 253-character name made from 127 short labels
+was rejected when an answer used a compression pointer. The previous name-decoder
+work limit counted labels, the terminating byte and pointers together. The
+initial maximum-name test used four long labels and did not cover this shape.
+
+Both the Rust startup-readiness decoder and the Python client now allow the
+maximum-label shape while retaining bounded work, cycle and total-name-length
+checks. A packet-level regression is part of Rust and Python tests, alongside
+malformed-cycle/excessive-chain cases. The Python tests are included in
+`make test`. The fix uses a new DNS image tag so existing image identities are
+not overwritten.

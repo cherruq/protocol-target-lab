@@ -37,6 +37,7 @@ licenses:
 	python3 scripts/collect-third-party-licenses.py
 
 test:
+	python3 -B -m unittest discover -s workers/dns -p 'test_*.py'
 	python3 scripts/collect-third-party-licenses.py --check
 	cd frontend && npm test && npm run typecheck && npm run build
 	cargo fmt --all -- --check
