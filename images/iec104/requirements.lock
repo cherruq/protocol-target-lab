@@ -1,0 +1,2 @@
+# Original official wheel for provenance/regression only; runtime uses generated patched-wheel hash lock.
+c104==2.2.1 --hash=sha256:0a91df4a1d746898a2ebb035da7e2d0a816a1446e4d6822f0a8b962aecc556a3

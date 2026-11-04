@@ -9,3 +9,5 @@ PLAB_DNS_IMAGE=protocol-target-lab/dns:0.1.1
 PLAB_MQTT_IMAGE=protocol-target-lab/mqtt:0.1.1
 
 PLAB_TELNET_IMAGE=protocol-target-lab/telnet:0.1.0
+
+PLAB_IEC104_IMAGE=protocol-target-lab/iec104:0.1.1

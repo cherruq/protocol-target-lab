@@ -1,0 +1,12 @@
+{
+  "id": "cs104-incremental-length-read-v1",
+  "source_file": "depends/lib60870/lib60870-C/src/iec60870/cs104/cs104_slave.c",
+  "original_sha256": "c6bed352961eb5ebad5c46277070694ff67181a57415723c8f5ba7a6f89b5220",
+  "patched_sha256": "bdf8ed7fe5c87fbe62646c3193da07b657cbb229264a2eeb823356ccc56759b3",
+  "patch_file": "0001-cs104-incremental-length-read.patch",
+  "patch_sha256": "80d81adaa5b8ebff22559731d3769c5a975eb8afb9352cd6477fd909a0c7e7e3",
+  "origin": "Original project compatibility correction, not an upstream backport",
+  "original_source_url": "https://pypi.org/pypi/c104/2.2.1/json",
+  "license": "GPL-3.0-or-later",
+  "reason": "Preserve recvBufPos=1 when the length byte is temporarily unavailable after receiving start0x68; retain native disconnect for negative read result. No other native parsing or application behavior is changed."
+}

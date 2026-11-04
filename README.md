@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation is **HTTP, DNS, MQTT and Telnet**, with manager version **0.8.0**,
-HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, and Telnet server/client image **0.1.0**. Each protocol has one fixed workspace and
+The current implementation is **HTTP, DNS, MQTT, Telnet and IEC104**, with manager version **0.9.0**,
+HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, and IEC104 server/client image **0.1.1**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -52,8 +52,7 @@ for stdin configuration, asynchronous calls, exit codes and automation examples.
 The supported package baseline is **Ubuntu 24.04 LTS, amd64, systemd, Ubuntu docker.io**.
 The manager runs directly on the host and invokes the installed Docker CLI using
 argument arrays. Its Web files are embedded at compilation time; production does
-not need Node, npm, Python, Cargo, or Nginx on the host. The HTTP and DNS workers run
-inside their own containers.
+not need Node, npm, Python, Cargo, or Nginx on the host. The protocol workers run inside their own containers.
 
 For development, install the Rust toolchain specified in `rust-toolchain.toml`,
 Node 22.12+ with npm (Node 24 was tested), Docker Engine with its CLI, GNU make, Python 3 (license inventory verification), and Debian packaging tools
@@ -95,7 +94,7 @@ build image.
 
 The HTTP image is
 `protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.8.0_amd64.deb`.
+The manager package is `dist/protocol-target-lab_0.9.0_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -128,15 +127,14 @@ Docker provider; a host with Docker CE can run development builds directly, whil
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.8.0_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.9.0_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
 
 The package starts the management service. Open `http://<target-address>:18000`.
-The Web application has no login. Its sidebar currently contains only the
-implemented HTTP protocol and shows the backend-reconciled state or diagnostic
-error. The fixed HTTP workspace starts with a disabled `http-demo` main
+The Web application has no login. Its sidebar lists the implemented protocols
+and shows each backend-reconciled state or diagnostic error. The fixed HTTP workspace starts with a disabled `http-demo` main
 configuration on a fresh installation; review its bind address, port, and
 response generation settings before starting it. The default target port is
 18090 and generated responses default to 64 bytes in fixed mode.
@@ -410,3 +408,33 @@ Disposable tests cover welcome, byte echo/IAC escaping, real native option
 callbacks and unsupported-option rejection. Use `make fetch-telnet-deps`,
 `make telnet-images` and `make telnet-assets` for explicit preparation, offline
 build and image/source/license export. See [Telnet details](docs/telnet.md).
+
+
+## IEC104 workspace
+
+IEC104 runs real **c104 2.2.1** with a documented native TCP framing correction over plain TCP with STARTDT/STOPDT/TESTFR,
+general interrogation, point reads and direct single commands. Three fixed
+roles expose editable CA/IOA addresses: one M_SP_NA_1 boolean, one M_ME_NC_1
+float32 measurement, and one C_SC_NA_1 command that updates the configured
+single point in simulated memory. Startup values are configuration, rather
+than live telemetry. TLS, physical control, reset services and additional
+command families are outside this workspace.
+
+```sh
+make fetch-iec104-deps
+make iec104-images OFFLINE=1
+make iec104-assets
+plabctl config set iec104 --port 24040
+plabctl start iec104
+plabctl tests run iec104 --method ALL
+plabctl logs iec104
+plabctl stop iec104
+```
+
+The same-image disposable client verifies real U/I/S frames, GI confirmation,
+monitoring data and termination, read values and direct-command confirmation.
+COMMAND changes the current simulated single value, checks it through READ/GI,
+then restores and verifies the prior value; it reports failure if restoration
+fails. It does not invent a command termination ASDU. Public pinned wheel,
+full native source, exact project framing patch and build/license materials accompany the runtime image.
+See [IEC104 details](docs/iec104.md) and [CLI reference](docs/cli.md).

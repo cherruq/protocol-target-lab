@@ -4,7 +4,7 @@
 point to the same native binary, using the management HTTP API for workspace
 commands. It does not edit the server's files or invoke local Docker for these
 commands. The Web UI is for interactive use; the CLI exposes the same implemented
-HTTP, DNS, MQTT and Telnet workspaces to automation. Both control the same saved settings and resources.
+HTTP, DNS, MQTT, Telnet and IEC104 workspaces to automation. Both control the same saved settings and resources.
 
 API commands default to `http://127.0.0.1:18000`. Set `PLAB_URL` or pass `--url`
 (the explicit option wins). HTTP root URLs only: no credentials, path, query or
@@ -235,3 +235,46 @@ checks actual responses or native session metadata. This is a finite experiment
 application (ECHO/INFO/CLOSE), not a remote operating-system shell. CLI JSON,
 exit codes, operation/session correlation and disposable-client cleanup follow
 the existing contract. The report cap is512 KiB.
+
+
+## IEC104 automation (manager 0.9.0)
+
+Use `iec104` with the shared schema/show/config/lifecycle/logs/connection-info
+and tests commands. Complete file/stdin/data JSON has bind_ip, port,
+max_connections and the fixed points object. Atomic options are `--bind-ip`,
+`--port`, `--max-connections` and `--points-json` (replaces the entire three-role
+point table). Other protocol fields are rejected. Saving preserves the applied
+service until an explicit start/restart.
+
+```sh
+plabctl schema iec104
+plabctl config set iec104 --port 24040 --max-connections 1
+plabctl config set iec104 --points-json '{"single":{"ca":1,"ioa":1,"value":false},"measured":{"ca":1,"ioa":100,"value":12.5},"command":{"ca":2,"ioa":1}}'
+plabctl start iec104
+plabctl tests run iec104 --method ALL
+plabctl tests run iec104 --method GI
+plabctl tests run iec104 --method COMMAND
+plabctl logs iec104
+plabctl stop iec104
+```
+
+CA is1..65534, IOA is1..16777215 and all three (CA,IOA) pairs must be unique;
+max_connections is1..64. The single initial value is a strict boolean and
+measured initial value is finite and in float32 range (wire value is rounded
+to float32). The command has no configurable value and always targets the
+configured single point in simulated memory, including across stations.
+Configuration snapshots describe startup settings and do not show live values.
+
+Cases are CONNECT, GI, READ, COMMAND and ALL, each selected case run twice with
+fixed `station` path. CONNECT includes STARTDT/TESTFR/STOPDT. GI checks every
+configured CA, actual monitoring values and ACT_TERM; a command-only station
+has no monitoring objects. READ checks actual values. COMMAND reads the current
+single value, changes it, confirms COT7 and READ/GI effects, then restores the
+previous value. Restoration failure makes the test fail. These are simulated
+point changes, not physical execution. Direct commands do not require an
+invented ACT_TERM. CLI JSON/exit/session/cleanup contracts remain unchanged;
+reports are bounded to512KiB.
+
+IEC104 image0.1.1 uses a source-rebuilt c1042.2.1 with a documented native TCP
+framing correction. Startup/adoption require the incremental-v1 capability;
+original image0.1.0 is a retained failing fixture and is not deployed.

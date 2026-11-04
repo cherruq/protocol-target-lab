@@ -4,6 +4,7 @@ import { defaults } from "../src/config.ts";
 import { dnsDefaults } from "../src/dns-config.ts";
 import { mqttDefaults } from "../src/mqtt-config.ts";
 import { telnetDefaults } from "../src/telnet-config.ts";
+import { iec104Defaults } from "../src/iec104-config.ts";
 import {
   discardWorkspaceDraft,
   sameWorkspaceConfig,
@@ -121,4 +122,53 @@ test("TELNET joins four isolated workspace drafts without overwriting another pr
     }),
     false,
   );
+});
+
+test("IEC104 nested startup edits preserve all five protocol drafts and clear only their own save", () => {
+  let drafts = updateWorkspaceDrafts(
+    {},
+    "http",
+    { ...defaults, response_length: 128 },
+    defaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "dns",
+    { ...dnsDefaults, port: 18253 },
+    dnsDefaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "mqtt",
+    { ...mqttDefaults, max_connections: 2 },
+    mqttDefaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "telnet",
+    { ...telnetDefaults, banner: "draft" },
+    telnetDefaults,
+  );
+  const iec = structuredClone(iec104Defaults);
+  iec.points.measured.value = 22.5;
+  iec.points.single.value = true;
+  drafts = updateWorkspaceDrafts(drafts, "iec104", iec, iec104Defaults);
+  assert.deepEqual(Object.keys(drafts), [
+    "http",
+    "dns",
+    "mqtt",
+    "telnet",
+    "iec104",
+  ]);
+  assert.deepEqual(Object.keys(discardWorkspaceDraft(drafts, "iec104")), [
+    "http",
+    "dns",
+    "mqtt",
+    "telnet",
+  ]);
+  assert.equal(iec104Defaults.points.single.value, false);
+  assert.equal(iec104Defaults.points.measured.value, 12.5);
+  for (const other of [defaults, dnsDefaults, mqttDefaults, telnetDefaults])
+    assert.equal(sameWorkspaceConfig(iec104Defaults, other), false);
+  assert.equal(sameWorkspaceConfig(iec104Defaults, iec), false);
 });

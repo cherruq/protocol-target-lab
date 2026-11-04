@@ -72,5 +72,16 @@ Telnet runtime image:
   materials. These Python components run in the separate image, not in the native
   manager binary; the Rust/Web license bundle index describes its own closure.
 
-This notice describes implemented HTTP, DNS, MQTT and Telnet components. Other protocol
+IEC104 runtime image:
+  c104 2.2.1 and its native lib60870 implementation are GPLv3 software. A documented
+  project patch preserves incremental state when a TCP length byte has not yet
+  arrived. It is not represented as an upstream backport. The full
+  public source distribution includes native sources and bundled mbedtls/pybind11
+  materials with their original notices. Pinned sources, wheel, build recipes
+  and separate dependency provenance are in third-party/iec104 and images/iec104,
+  and accompany the runtime/source export. These components run in the separate
+  worker image, not in the native Rust/Web manager. Preserve upstream licenses
+  and complete source/build materials when redistributing the image.
+
+This notice describes implemented HTTP, DNS, MQTT, Telnet and IEC104 components. Other protocol
 libraries and a complete offline distribution are not included or claimed here.
