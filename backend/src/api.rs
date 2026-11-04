@@ -88,8 +88,8 @@ async fn protocols(State(m): State<Shared>) -> Json<Value> {
         let workspace=d.doc.instances.iter().find(|i|i.protocol_id==protocol);
         let status=if d.config_error.is_some() {"unavailable"} else if d.docker_error.is_some() {"environment-unavailable"} else {workspace.map(|i|i.status.as_str()).unwrap_or("unavailable")};
         let error=d.config_error.as_deref().or(d.docker_error.as_deref()).or_else(||workspace.and_then(|i|i.runtime_error.as_deref().or(i.error.as_deref())));
-        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":match protocol {"bfd"=>"stdlib IPv4 single-hop active BFD Control with explicit target fault scenarios","iec101"=>"lib60870-C 2.4.1 native unbalanced dual-channel slave via PTY/TCP","dlt645"=>"software DL/T645-2007 meter over TCP byte stream","rtcp"=>"stdlib RFC3550 RTCPv2 SR+SDES compound receiver","rtp"=>"stdlib RFC3550v2 structural receiver; opaque payload","dns"=>"dnsmasq 2.90","mqtt"=>"Mosquitto 2.0.18 + packet-size backports","telnet"=>"telnetlib3 4.0.3","iec104"=>"c104 2.2.1 + incremental TCP framing fix","mqtt-sn"=>"Eclipse Paho MQTT-SN Gateway 1.5.1 + project capacity guard; private Mosquitto 2.0.18",_=>"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
-        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP"]);} else if protocol=="mqtt" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);} else if protocol=="bfd" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["single-hop TTL255/interface validation","Down/Init/Up","Poll/Final","normal/poll/quiet/wrong-your/ttl254/short target modes"]);} else if protocol=="iec101" {descriptor["supported_transports"]=json!(["TCP byte stream via software PTY"]);descriptor["supported_features"]=json!(["simultaneous single/double address channels","RESET/STATUS","CLASS2","GI ACT_CON/data/ACT_TERM","FCB duplicate handling"]);} else if protocol=="dlt645" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["wire_profiles"]=json!(["dlt645-2007-tcp"]);descriptor["software_function_classes"]=json!(["11","13","14","15","16","08","17","18","19","1A","1C","1D","03 reject/fixture"]);descriptor["crypto_verified"]=json!(false);} else if protocol=="rtcp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["packet_profiles"]=json!(["sr-sdes"]);descriptor["rtcp_reply_expected"]=json!(false);} else if protocol=="rtp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["RTPv2 header/CSRC/extension/padding","fresh receive observation"]);descriptor["rtp_reply_expected"]=json!(false);} else if protocol=="mqtt-sn" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["validated_qos"]=json!([1]);descriptor["validated_features"]=json!(["CONNECT/reconnect","REGISTER/PUBLISH","predefined topics","multicast GWINFO","independent MQTT broker delivery"]);} else if protocol=="iec104" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["STARTDT","STOPDT","TESTFR","GI","READ","C_SC_NA_1 DIRECT"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"]);}
+        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":match protocol {"vxlan"=>"stdlib IPv4 unicast VXLAN Ethernet/ARP responder with eleven target scenarios","bfd"=>"stdlib IPv4 single-hop active BFD Control with explicit target fault scenarios","iec101"=>"lib60870-C 2.4.1 native unbalanced dual-channel slave via PTY/TCP","dlt645"=>"software DL/T645-2007 meter over TCP byte stream","rtcp"=>"stdlib RFC3550 RTCPv2 SR+SDES compound receiver","rtp"=>"stdlib RFC3550v2 structural receiver; opaque payload","dns"=>"dnsmasq 2.90","mqtt"=>"Mosquitto 2.0.18 + packet-size backports","telnet"=>"telnetlib3 4.0.3","iec104"=>"c104 2.2.1 + incremental TCP framing fix","mqtt-sn"=>"Eclipse Paho MQTT-SN Gateway 1.5.1 + project capacity guard; private Mosquitto 2.0.18",_=>"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
+        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP"]);} else if protocol=="mqtt" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);} else if protocol=="vxlan" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["wire_profiles"]=json!(["vxlan-ipv4-arp"]);descriptor["supported_features"]=json!(["Ethernet/IPv4 ARP Request-to-Reply","eleven configured target scenarios","fixed peer receive port","fresh causal receive/send observation"]);} else if protocol=="bfd" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["single-hop TTL255/interface validation","Down/Init/Up","Poll/Final","normal/poll/quiet/wrong-your/ttl254/short target modes"]);} else if protocol=="iec101" {descriptor["supported_transports"]=json!(["TCP byte stream via software PTY"]);descriptor["supported_features"]=json!(["simultaneous single/double address channels","RESET/STATUS","CLASS2","GI ACT_CON/data/ACT_TERM","FCB duplicate handling"]);} else if protocol=="dlt645" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["wire_profiles"]=json!(["dlt645-2007-tcp"]);descriptor["software_function_classes"]=json!(["11","13","14","15","16","08","17","18","19","1A","1C","1D","03 reject/fixture"]);descriptor["crypto_verified"]=json!(false);} else if protocol=="rtcp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["packet_profiles"]=json!(["sr-sdes"]);descriptor["rtcp_reply_expected"]=json!(false);} else if protocol=="rtp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["RTPv2 header/CSRC/extension/padding","fresh receive observation"]);descriptor["rtp_reply_expected"]=json!(false);} else if protocol=="mqtt-sn" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["validated_qos"]=json!([1]);descriptor["validated_features"]=json!(["CONNECT/reconnect","REGISTER/PUBLISH","predefined topics","multicast GWINFO","independent MQTT broker delivery"]);} else if protocol=="iec104" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["STARTDT","STOPDT","TESTFR","GI","READ","C_SC_NA_1 DIRECT"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"]);}
         descriptor
     })))
 }
@@ -101,6 +101,7 @@ async fn schema(Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
         "dlt645" => Ok(Json(crate::dlt645::schema())),
         "iec101" => Ok(Json(crate::iec101::schema())),
         "bfd" => Ok(Json(crate::bfd::schema())),
+        "vxlan" => Ok(Json(crate::vxlan::schema())),
         "iec104" => Ok(Json(crate::iec104::schema())),
         "http" => Ok(Json(
             json!({"protocol_id":"http","type":"object","supported_methods":crate::model::HTTP_METHODS,"properties":{"bind_ip":{"type":"string","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18090},"response_length":{"type":"integer","minimum":0,"maximum":crate::model::MAX_RESPONSE_LENGTH,"default":64},"response_mode":{"type":"string","enum":["fixed","random"],"default":"fixed"}},"required":["bind_ip","port","response_length","response_mode"]}),
@@ -192,6 +193,10 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
                     .collect::<Vec<_>>(),
             )
         }
+        ProtocolConfig::Vxlan(_) => (
+            crate::vxlan::CASES.iter().map(|s| s.to_string()).collect(),
+            vec![crate::vxlan::PATH.into()],
+        ),
         ProtocolConfig::Bfd(c) => (
             c.cases().iter().map(|s| s.to_string()).collect(),
             vec![crate::bfd::PATH.into()],
@@ -270,6 +275,10 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
             .collect::<serde_json::Map<String, Value>>();
         result["case_labels"] = Value::Object(labels);
         result["path_label"] = "主题前缀".into();
+    }
+    if let ProtocolConfig::Vxlan(c) = config {
+        result["case_labels"] = json!({"ARP":"合法 ARP 与精确应答","RESERVED_BITS":"忽略保留位","REQUEST_THA":"忽略请求目标 MAC","INVALID_REQUEST":"拒绝错误 VNI 与目标 IP","ALL":format!("当前 {} 场景完整验证（8项）",c.scenario.mode())});
+        result["path_label"] = "内层请求".into();
     }
     if let ProtocolConfig::Bfd(c) = config {
         result["case_labels"] = json!({"NORMAL":"正常会话与周期收发","POLL":"目标 Poll 与真实 Final","QUIET":"目标静默、检测与恢复","WRONG_YOUR":"目标错误 Your 与恢复","TTL254":"目标实际 TTL254 与恢复","SHORT":"目标短报文与恢复","ALL":format!("当前 {} 场景完整验证（2轮）",c.scenario.mode())});
@@ -374,30 +383,29 @@ async fn runtime_info(
             .clone();
         (d.doc.deployment_id.clone(), i)
     };
-    if i.protocol_id != "bfd" {
+    if !["bfd", "vxlan"].contains(&i.protocol_id.as_str()) {
         return Err(ApiError(
             StatusCode::NOT_FOUND,
             "runtime state not implemented for this protocol".into(),
         ));
     }
-    let (Some(ProtocolConfig::Bfd(config)), Some(cid)) =
-        (i.applied_config.as_ref(), i.container_id.as_ref())
-    else {
+    let (Some(config), Some(cid)) = (i.applied_config.as_ref(), i.container_id.as_ref()) else {
         return Ok(Json(
-            json!({"available":false,"reason":"BFD workspace is not running"}),
+            json!({"available":false,"reason":"workspace is not running"}),
         ));
     };
     let start = tokio::time::Instant::now();
-    Ok(Json(
-        match crate::bfd::snapshot(&deployment, &id, cid, config).await {
-            Ok(runtime) => {
-                json!({"available":true,"source_container_id":cid,"runtime":runtime,"sample_age_ms":start.elapsed().as_millis() as u64})
-            }
-            Err(e) => {
-                json!({"available":false,"source_container_id":cid,"reason":format!("{e:#}")})
-            }
-        },
-    ))
+    let observation = match config {
+        ProtocolConfig::Bfd(c) => crate::bfd::snapshot(&deployment, &id, cid, c).await,
+        ProtocolConfig::Vxlan(c) => crate::vxlan::snapshot(&deployment, &id, cid, c).await,
+        _ => unreachable!("validated protocol/config variant"),
+    };
+    Ok(Json(match observation {
+        Ok(runtime) => {
+            json!({"available":true,"source_container_id":cid,"runtime":runtime,"sample_age_ms":start.elapsed().as_millis() as u64})
+        }
+        Err(e) => json!({"available":false,"source_container_id":cid,"reason":format!("{e:#}")}),
+    }))
 }
 async fn connection_info(
     State(m): State<Shared>,
@@ -416,6 +424,11 @@ async fn connection_info(
     } else {
         c.bind_ip()
     };
+    if let ProtocolConfig::Vxlan(config) = c {
+        return Ok(Json(
+            json!({"base_url":format!("vxlan://{}:{}",config.bind_ip,config.port),"host":config.bind_ip,"port":config.port,"peer_ip":config.peer_ip,"peer_port":config.peer_port,"source_port":config.source_port,"vni":config.vni,"scenario":config.scenario,"commands":["plabctl runtime vxlan","plabctl tests run vxlan --method ALL"],"client_execution":{"receiver_ip":config.peer_ip,"receiver_port":config.peer_port,"observer":"Private target loopback18085; external full verification requires explicit read-only SSH forwarding and validated source identities"},"notes":["Finite IPv4 VXLAN ARP responder; no general L2 forwarding or IPv4/ICMP service","Response uses fixed peer_port, never the Request source port","ALL verifies the current applied target mode with8checks; eleven-mode coverage requires eleven explicit configurations","Built-in client executes on manager host; peer_ip must already be local and peer_port free","Readiness proves local socket and event-loop health, not a connected tunnel"]}),
+        ));
+    }
     if let ProtocolConfig::Bfd(config) = c {
         return Ok(Json(
             json!({"base_url":format!("bfd://{}:{}",config.bind_ip,crate::bfd::PORT),"host":config.bind_ip,"port":crate::bfd::PORT,"peer_ip":config.peer_ip,"target_interface":config.interface,"source_port":config.source_port,"scenario":config.scenario,"commands":["plabctl runtime bfd".to_string(),"plabctl --timeout 150 tests run bfd --method ALL".to_string()],"client_execution":{"receiver_ip":config.peer_ip,"receiver_port":crate::bfd::PORT,"interface":"Use the actual counterpart interface; target_interface is not the remote client interface","observer":"Private target loopback18084. External complete verification requires an explicit task-owned read-only tunnel and validated boot/runtime identities; no application auto-SSH"},"notes":["Process running readiness and actual BFD peer Up are separate states","ALL verifies the currently applied target scenario twice; six-mode coverage requires six explicit configurations","Built-in tests require peer_ip to belong to the manager host and an idle peer; existing BFD peers are not evicted","IPv4 single-hop Control with actual incoming TTL255/interface checks; no Echo, authentication, Demand, multihop or routing SLA claim"]}),
@@ -540,6 +553,29 @@ async fn static_file(uri: Uri) -> Response {
 #[cfg(test)]
 mod bfd_input_tests {
     use super::*;
+    #[test]
+    fn vxlan_input_errors_are422_not_internal_failure() {
+        for patch in [
+            json!({"port":0}),
+            json!({"peer_ip":"127.0.0.1"}),
+            json!({"vni":16777216}),
+            json!({"bind_ip":"0.0.0.0"}),
+            json!({"inner_ip":"198.18.0.10"}),
+            json!({"inner_mac":"01:00:00:00:00:20"}),
+            json!({"scenario":{"mode":"normal","duration_ms":1}}),
+        ] {
+            let error = crate::vxlan::VxlanConfig::default()
+                .patch(patch.clone())
+                .unwrap_err();
+            let mapped = ApiError::from(error);
+            assert_eq!(
+                mapped.0,
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "{patch}: {}",
+                mapped.1
+            );
+        }
+    }
     #[test]
     fn invalid_tagged_bfd_patch_is_an_input_rejection_not_server_failure() {
         for patch in [

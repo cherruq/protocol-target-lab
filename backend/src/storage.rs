@@ -23,6 +23,7 @@ pub struct Settings {
     pub dlt645_image: String,
     pub iec101_image: String,
     pub bfd_image: String,
+    pub vxlan_image: String,
 }
 impl Settings {
     pub fn env() -> Result<Self> {
@@ -54,6 +55,7 @@ impl Settings {
                         "PLAB_DLT645_IMAGE",
                         "PLAB_IEC101_IMAGE",
                         "PLAB_BFD_IMAGE",
+                        "PLAB_VXLAN_IMAGE",
                     ]
                     .contains(&key)
                     {
@@ -99,10 +101,13 @@ impl Settings {
             dlt645_image: value("PLAB_DLT645_IMAGE", "protocol-target-lab/dlt645:0.1.0"),
             iec101_image: value("PLAB_IEC101_IMAGE", "protocol-target-lab/iec101:0.1.0"),
             bfd_image: value("PLAB_BFD_IMAGE", "protocol-target-lab/bfd:0.1.0"),
+            vxlan_image: value("PLAB_VXLAN_IMAGE", "protocol-target-lab/vxlan:0.1.0"),
         })
     }
     pub fn image_for(&self, protocol: &str) -> &str {
-        if protocol == "bfd" {
+        if protocol == "vxlan" {
+            &self.vxlan_image
+        } else if protocol == "bfd" {
             &self.bfd_image
         } else if protocol == "iec101" {
             &self.iec101_image
@@ -252,6 +257,7 @@ mod tests {
                 dlt645_image: "unused".into(),
                 iec101_image: "unused".into(),
                 bfd_image: "unused".into(),
+                vxlan_image: "unused".into(),
             }
         }
     }
@@ -536,7 +542,8 @@ mod tests {
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
         doc.instances.retain(|i| {
-            !["mqtt-sn", "rtp", "rtcp", "dlt645", "iec101", "bfd"].contains(&i.protocol_id.as_str())
+            !["mqtt-sn", "rtp", "rtcp", "dlt645", "iec101", "bfd", "vxlan"]
+                .contains(&i.protocol_id.as_str())
         });
         doc.instances[0].id = "mqtt-sn-demo".into();
         for i in &mut doc.instances {
@@ -575,7 +582,7 @@ mod tests {
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
         doc.instances.retain(|i| {
-            !["rtp", "rtcp", "dlt645", "iec101", "bfd"].contains(&i.protocol_id.as_str())
+            !["rtp", "rtcp", "dlt645", "iec101", "bfd", "vxlan"].contains(&i.protocol_id.as_str())
         });
         doc.instances[0].id = "rtp-demo".into();
         for i in &mut doc.instances {
@@ -613,8 +620,9 @@ mod tests {
         let fixture = Fixture::new();
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
-        doc.instances
-            .retain(|i| !["rtcp", "dlt645", "iec101", "bfd"].contains(&i.protocol_id.as_str()));
+        doc.instances.retain(|i| {
+            !["rtcp", "dlt645", "iec101", "bfd", "vxlan"].contains(&i.protocol_id.as_str())
+        });
         doc.instances[0].id = "rtcp-demo".into();
         for i in &mut doc.instances {
             i.enabled = true;
@@ -652,7 +660,7 @@ mod tests {
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
         doc.instances
-            .retain(|i| !["dlt645", "iec101", "bfd"].contains(&i.protocol_id.as_str()));
+            .retain(|i| !["dlt645", "iec101", "bfd", "vxlan"].contains(&i.protocol_id.as_str()));
         doc.instances[0].id = "dlt645-demo".into();
         for i in &mut doc.instances {
             i.enabled = true;
@@ -690,7 +698,7 @@ mod tests {
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
         doc.instances
-            .retain(|i| !["iec101", "bfd"].contains(&i.protocol_id.as_str()));
+            .retain(|i| !["iec101", "bfd", "vxlan"].contains(&i.protocol_id.as_str()));
         doc.instances[0].id = "iec101-demo".into();
         for i in &mut doc.instances {
             i.enabled = true;
@@ -728,7 +736,7 @@ mod tests {
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
         doc.instances
-            .retain(|i| !["bfd"].contains(&i.protocol_id.as_str()));
+            .retain(|i| !["bfd", "vxlan"].contains(&i.protocol_id.as_str()));
         doc.instances[0].id = "bfd-demo".into();
         for i in &mut doc.instances {
             i.enabled = true;
@@ -756,6 +764,44 @@ mod tests {
         );
         assert_eq!(loaded.instances[10].id, "bfd-demo-2");
         assert!(!loaded.instances[10].enabled && loaded.instances[10].applied_config.is_none());
+        let bytes = std::fs::read(&settings.config).unwrap();
+        load(&settings).unwrap();
+        assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);
+    }
+    #[test]
+    fn eleven_protocol_upgrade_preserves_snapshots_and_resolves_vxlan_id_collision() {
+        let fixture = Fixture::new();
+        let settings = fixture.settings();
+        let mut doc = load(&settings).unwrap();
+        doc.instances
+            .retain(|i| !["vxlan"].contains(&i.protocol_id.as_str()));
+        doc.instances[0].id = "vxlan-demo".into();
+        for i in &mut doc.instances {
+            i.enabled = true;
+            i.applied_config = Some(i.config.clone());
+        }
+        let original = serde_json::to_value(&doc.instances).unwrap();
+        let hashes = doc
+            .instances
+            .iter()
+            .map(|i| i.config.fingerprint())
+            .collect::<Vec<_>>();
+        save(&settings.config, &doc).unwrap();
+        let loaded = load(&settings).unwrap();
+        assert_eq!(loaded.deployment_id, doc.deployment_id);
+        assert_eq!(
+            serde_json::to_value(&loaded.instances[..11]).unwrap(),
+            original
+        );
+        assert_eq!(
+            loaded.instances[..11]
+                .iter()
+                .map(|i| i.config.fingerprint())
+                .collect::<Vec<_>>(),
+            hashes
+        );
+        assert_eq!(loaded.instances[11].id, "vxlan-demo-2");
+        assert!(!loaded.instances[11].enabled && loaded.instances[11].applied_config.is_none());
         let bytes = std::fs::read(&settings.config).unwrap();
         load(&settings).unwrap();
         assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);

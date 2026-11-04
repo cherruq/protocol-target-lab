@@ -424,3 +424,63 @@ test("BFD tagged scenarios add an eleventh isolated draft and only its explicit 
   assert.equal(sameWorkspaceConfig(bfdDefaults, defaults), false);
   assert.equal(sameWorkspaceConfig(bfdDefaults, bfd), false);
 });
+
+test("VXLAN is a twelfth isolated normalized workspace draft without changing the prior eleven", async () => {
+  const { vxlanDefaults, normalizeVxlanConfig } = await import(
+    "../src/vxlan-config.ts"
+  );
+  const { bfdDefaults, changeBfdMode } = await import("../src/bfd-config.ts");
+  const { iec101Defaults, updateIec101Channel } = await import(
+    "../src/iec101-config.ts"
+  );
+  const { rtpDefaults } = await import("../src/rtp-config.ts");
+  const { rtcpDefaults } = await import("../src/rtcp-config.ts");
+  const { dlt645Defaults } = await import("../src/dlt645-config.ts");
+  const configs = [
+    defaults,
+    dnsDefaults,
+    mqttDefaults,
+    telnetDefaults,
+    iec104Defaults,
+    mqttSnDefaults,
+    rtpDefaults,
+    rtcpDefaults,
+    dlt645Defaults,
+  ];
+  let drafts = {};
+  for (const [index, c] of configs.entries())
+    drafts = updateWorkspaceDrafts(
+      drafts,
+      `previous-${index}`,
+      { ...c, port: c.port + 2 },
+      c,
+    );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "iec101",
+    updateIec101Channel(iec101Defaults, "single", { point: { value: false } }),
+    iec101Defaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "bfd",
+    changeBfdMode(bfdDefaults, "quiet"),
+    bfdDefaults,
+  );
+  const edited = {
+    ...vxlanDefaults,
+    inner_mac: "02:AA:00:00:00:20",
+    scenario: { mode: "silent" as const },
+  };
+  drafts = updateWorkspaceDrafts(drafts, "vxlan", edited, vxlanDefaults);
+  assert.equal(Object.keys(drafts).length, 12);
+  const canonical = normalizeVxlanConfig(edited);
+  const saved = updateWorkspaceDrafts(drafts, "vxlan", edited, canonical);
+  assert.equal(Object.keys(saved).length, 11);
+  for (const [key, value] of Object.entries(drafts))
+    if (key !== "vxlan")
+      assert.deepEqual(saved[key as keyof typeof saved], value);
+  for (const c of [...configs, iec101Defaults, bfdDefaults])
+    assert.equal(sameWorkspaceConfig(vxlanDefaults, c), false);
+  assert.equal(sameWorkspaceConfig(edited, canonical), true);
+});
