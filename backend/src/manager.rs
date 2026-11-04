@@ -1,6 +1,6 @@
 use crate::{
     docker,
-    model::{Document, HttpConfig, Instance},
+    model::{Document, HttpConfig},
     storage::{self, Settings},
 };
 use anyhow::{Context, Result, bail};
@@ -79,6 +79,7 @@ impl Manager {
     pub fn persist(&self, d: &mut Data, mut next: Document) -> Result<()> {
         Self::writable(d)?;
         next.schema_version = 2;
+        next.validate()?;
         storage::save(&self.settings.config, &next)?;
         d.doc = next;
         Ok(())
@@ -93,19 +94,6 @@ impl Manager {
             d.events.pop_front();
         }
     }
-    pub async fn create(&self, id: String, config: HttpConfig) -> Result<Value> {
-        let _control = self.control().await?;
-        let mut d = self.data.lock().await;
-        if d.doc.instances.iter().any(|i| i.id == id) {
-            bail!("instance already exists");
-        }
-        let mut next = d.doc.clone();
-        let instance = Instance::new(id, config);
-        let view = instance.view();
-        next.instances.push(instance);
-        self.persist(&mut d, next)?;
-        Ok(view)
-    }
     pub async fn save_config(&self, id: &str, config: HttpConfig) -> Result<Value> {
         let _control = self.control().await?;
         let mut d = self.data.lock().await;
@@ -119,35 +107,6 @@ impl Manager {
         let view = i.view();
         self.persist(&mut d, next)?;
         Ok(view)
-    }
-    pub async fn delete(&self, id: &str) -> Result<()> {
-        let _control = self.control().await?;
-        let (deployment, instance) = {
-            let d = self.data.lock().await;
-            Self::writable(&d)?;
-            (
-                d.doc.deployment_id.clone(),
-                d.doc
-                    .instances
-                    .iter()
-                    .find(|i| i.id == id)
-                    .context("instance not found")?
-                    .clone(),
-            )
-        };
-        if instance.enabled || instance.current_operation.is_some() || instance.status != "stopped"
-        {
-            bail!("instance must be disabled and stopped before deletion");
-        }
-        if !docker::owned(&deployment, Some(id)).await?.is_empty() {
-            bail!("instance still has Docker resources; stop it before deletion");
-        }
-        let mut d = self.data.lock().await;
-        let mut next = d.doc.clone();
-        next.instances.retain(|i| i.id != id);
-        self.persist(&mut d, next)?;
-        d.tests.remove(id);
-        Ok(())
     }
     pub async fn begin(self: &Shared, id: &str, kind: &str) -> Result<String> {
         let control = self.control().await?;
@@ -352,6 +311,11 @@ impl Manager {
                         for id in ids {
                             if let Err(e) = self.reconcile(&deployment, &id).await {
                                 let mut d = self.data.lock().await;
+                                if let Some(i) = d.doc.instances.iter_mut().find(|i| i.id == id) {
+                                    i.status = "environment-unavailable".into();
+                                    i.runtime_error =
+                                        Some(format!("cannot verify container state: {e:#}"));
+                                }
                                 Self::event(&mut d, format!("{id}: reconcile: {e:#}"));
                             }
                         }
@@ -378,6 +342,7 @@ impl Manager {
             if i.current_operation.is_some() {
                 return Ok(());
             }
+            i.runtime_error = None;
             i.container_id = resources.first().and_then(|v| docker::container_id(v).ok());
             if resources.len() > 1 {
                 i.status = "error".into();

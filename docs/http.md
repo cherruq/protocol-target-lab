@@ -3,7 +3,33 @@
 The HTTP worker runs continuously in Docker until explicitly stopped. It uses
 Python 3.12's standard library and has no pip packages or external dependencies.
 The manager supplies bind address, port, generated response length, and generation
-mode as separate command arguments.
+mode as separate command arguments. Manager **0.4.0** uses the unchanged HTTP
+server/client image **0.3.0**.
+
+## Fixed HTTP workspace
+
+The sidebar contains the implemented HTTP protocol and its backend-reconciled
+status/error. Selecting HTTP opens its sole workspace directly, including main
+configuration, lifecycle controls, logs, and connection tests. There is no
+instance list and no create, copy, or delete configuration action.
+
+The single stored HTTP configuration keeps its stable ID. An existing custom ID
+is used as-is, along with its applied snapshot, ownership hash and running
+container. A valid empty configuration array restores a disabled `http-demo`
+default. Multiple HTTP configurations are diagnosed as ambiguous; the manager
+protects the original file and containers and does not automatically select,
+merge, rename, delete or start them.
+
+Protocol workspaces are distinct from internal resources. The one-shot client
+container is not a second HTTP workspace. Future IEC101 must retain its two
+independent channels in one protocol workspace, and MQTT-SN's private broker is
+an internal dependency; neither is currently implemented by the HTTP phase.
+
+`GET /api/protocols` returns `workspace` (the main configuration view or null),
+`status`, and `error`; the sidebar uses these runtime/diagnostic fields rather
+than the static `available` flag. `GET /api/instances` and the original ID-based
+configuration, lifecycle, log and test endpoints remain compatible. Configuration creation
+`POST /api/instances` and deletion `DELETE /api/instances/{id}` return 405.
 
 ## Methods and response generation
 
@@ -49,7 +75,7 @@ streaming. SIGTERM closes active sockets and the listening socket.
 
 ## Independent validation
 
-Validate an already-running instance without changing its configuration:
+Validate the running HTTP service without changing its configuration:
 
 ```sh
 python3 public-tests/http_smoke.py --host 192.0.2.20 --port 18090 --response-length 64 --response-mode fixed --output evidence/http-fixed.json
@@ -65,7 +91,7 @@ method/path; a few retries avoid treating a natural short random collision as a
 constant response. At lengths 0 and 1 it skips statistical variation checks.
 Reports include body length, SHA256 and at most 256 bytes of hexadecimal preview,
 so large response bodies do not become large evidence files. The client exits
-nonzero on failure and never starts containers or modifies instances.
+nonzero on failure and never starts containers or changes workspace configuration.
 
 ## Legacy applied-configuration compatibility
 
@@ -108,7 +134,7 @@ complete offline distribution.
 
 The HTTP image also contains `/opt/protocol-target-lab/client.py`. The default
 image entrypoint continues to start the HTTP server. Override it with `python3`
-to run a separate one-shot client container against an already-running instance:
+to run a separate one-shot client container against the running HTTP service:
 
 ```sh
 docker run --rm --network host --entrypoint python3 protocol-target-lab/http:0.3.0 -u /opt/protocol-target-lab/client.py --host 192.0.2.20 --port 18090 --method GET --path /ok --response-length 64 --response-mode fixed
@@ -149,8 +175,8 @@ server. A client-capable image has label
 
 ### Web test execution and cleanup
 
-The connection panel submits `POST /api/instances/{id}/tests` with a method and
-one of the three supported paths. HTTP 202 acknowledges a test ID. Poll
+The HTTP workspace connection panel submits `POST /api/instances/{id}/tests`
+with a method and one of the three supported paths. HTTP 202 acknowledges a test ID. Poll
 `GET /api/instances/{id}/tests` for the latest structured result; acknowledgement
 alone is not success. The result records the exact source container and applied
 configuration. Draft settings are never used or written by testing.
@@ -166,10 +192,10 @@ not produce an overall success.
 Normal completion and timeout paths explicitly verify cleanup. After manager
 restart, previous-session client containers are removed; failed cleanup is
 retried when Docker recovers. `stop-all` also cleans the deployment's clients.
-The UI shows cleanup failures and interrupted-session notices. Only the latest
-result per instance is kept in memory, up to 64 instances, with no persistent
-history. This is a same-host check; use an independent node to validate external
-reachability.
+The UI shows cleanup failures and interrupted-session notices. It displays only
+the latest result for the HTTP workspace, backed by a bounded in-memory cache
+with no persistent history. This is a same-host check; use an independent node
+to validate external reachability.
 
 Version 0.3.0 verification (2026-11-04) included 27 independent real Docker/API
 checks, real HTTP failures, 42 maximum-size method exchanges, malformed and

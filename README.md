@@ -4,10 +4,13 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation is **phase 1: HTTP**. It provides HTTP instance
-configuration, start/stop/restart, normal HTTP responses, logs, and native Debian
-packaging. The other planned protocol families and the complete offline release
-are later milestones.
+The current implementation is **phase 1: HTTP**, with manager version **0.4.0**
+and HTTP server/client image **0.3.0**. Each protocol has one fixed workspace and
+one main configuration. The sidebar shows the protocol and its actual state;
+selecting it opens configuration, start/stop/restart, responses, logs, and tests
+directly. There is no instance list or create/copy/delete configuration workflow.
+The other planned protocol families and the complete offline release are later
+milestones.
 
 ## Runtime and build baseline
 
@@ -55,7 +58,7 @@ build image.
 
 The HTTP image is
 `protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.3.0_amd64.deb`.
+The manager package is `dist/protocol-target-lab_0.4.0_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -88,15 +91,18 @@ Docker provider; a host with Docker CE can run development builds directly, whil
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.3.0_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.4.0_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
 
 The package starts the management service. Open `http://<target-address>:18000`.
-The Web application has no login. The initial `http-demo` instance is disabled;
-start it explicitly after reviewing its bind address, port, and response body.
-The default target port is 18090; new instances return 64 bytes in fixed mode.
+The Web application has no login. Its sidebar currently contains only the
+implemented HTTP protocol and shows the backend-reconciled state or diagnostic
+error. The fixed HTTP workspace starts with a disabled `http-demo` main
+configuration on a fresh installation; review its bind address, port, and
+response generation settings before starting it. The default target port is
+18090 and generated responses default to 64 bytes in fixed mode.
 
 The manager remains available when the Docker backend or HTTP image is missing
 and reports the reason. Image import is separate from installation:
@@ -114,8 +120,37 @@ Alternatively, export the versioned HTTP image and its checksum manifest with
 manifest before importing the image. This HTTP asset set is separate from the
 full offline installation bundle planned for a later phase.
 
-After an image becomes available, retry the instance operation in the Web UI.
+After an image becomes available, retry the workspace operation in the Web UI.
 Large image archives are not imported or downloaded by package-maintainer scripts.
+
+## Fixed protocol workspaces
+
+There is one main configuration per protocol. Start, stop, restart, logs, and
+connection tests operate directly on that protocol's workspace. Internal runtime
+components do not create more workspaces: future IEC101 support must keep both
+independent address-width channels in the same workspace, while an MQTT-SN
+private broker is an internal dependency. Temporary test containers also remain
+internal resources. Only HTTP is currently implemented.
+
+Existing single-HTTP configurations retain their original ID, ownership hash,
+applied snapshot, and running container, including custom IDs other than
+`http-demo`. An old valid file with an empty `instances` array is populated with
+a disabled default HTTP configuration. An old file containing multiple HTTP
+configurations enters diagnostic protection: the manager preserves the original
+file and containers and does not automatically choose, merge, rename, delete, or
+start any of them. The UI reports the ambiguity rather than presenting an
+arbitrarily selected configuration.
+
+`GET /api/protocols` returns `workspace` (the main configuration view or null),
+`status`, and `error` for each implemented protocol. These runtime/diagnostic
+fields drive the sidebar; the static `available` flag only identifies an
+implemented protocol. The persisted `instances` array and the read-only
+`GET /api/instances` endpoint remain for compatibility. Existing ID-based
+configuration, lifecycle, logs and test URLs continue to work; IDs are not
+renamed during upgrade. Disabled intent remains disabled across upgrades.
+`POST /api/instances` and
+`DELETE /api/instances/{id}` return 405 because configuration creation and
+deletion are no longer supported.
 
 ## HTTP and logs
 
@@ -141,15 +176,15 @@ and may still support only the original GET/HEAD/POST methods. Automatic recover
 uses its saved legacy snapshot and the new worker's compatibility arguments.
 Explicit saves write schema version 2; both v1 and v2 files remain readable.
 
-Upgrade the HTTP image together with the manager. The default image is now
+Manager 0.4.0 continues to use HTTP image
 `protocol-target-lab/http:0.3.0`; if a customized environment file still selects an
 older image, update `PLAB_HTTP_IMAGE` after importing the new version. The manager
-checks image capability before stopping a running instance to apply new options.
+checks image capability before stopping the running HTTP service to apply new options.
 
 The **Connection and verification** panel runs GET, POST and the other method
 checks directly. Select `/ok`, `/chunked` or `/close`, then a method or all methods.
 The HTTP image contains both server and client programs: a one-shot container
-runs the client against the instance's applied configuration, reports pass/fail
+runs the client against the workspace's applied configuration, reports pass/fail
 and bounded request/response details, and is removed after completion. No client
 packages are installed on the management host. Existing server containers are
 not restarted for a test.
@@ -160,12 +195,13 @@ and the Docker attachment to 45 seconds, and limits the report to 128 KiB.
 Cleanup is ownership-scoped and retried after Docker recovery. Manager restart
 cleans previous-session test containers; stop-all/remove also clean test
 containers. Missing client images and cleanup failures remain visible in the UI.
-Only the latest result per instance is held in bounded memory (up to 64
-instances); results are not a persistent history and are lost on manager restart.
+Only the latest result for the HTTP workspace is shown. The internal result
+cache remains bounded; results are not a persistent history and are lost on
+manager restart.
 This built-in test runs on the target host and does not prove external or
 cross-node reachability. The public standalone client remains available for that.
 
-The instance log panel shows worker stdout/stderr and management events through
+The workspace log panel shows worker stdout/stderr and management events through
 SSE, with pause, copy, and download controls. Body previews are bounded and include
 original body length and a truncation flag. Docker worker logs are capped at two
 5 MiB files per container; the manager does not maintain a historical database.
@@ -173,7 +209,7 @@ original body length and a truncation flag. Docker worker logs are capped at two
 ## Lifecycle and configuration
 
 ```sh
-sudo plabctl start       # Start the manager and restore enabled instances
+sudo plabctl start       # Start the manager and restore enabled services
 plabctl status
 plabctl doctor
 sudo plabctl stop-all    # Stop manager first, then this deployment's workers
@@ -183,7 +219,7 @@ sudo plabctl stop-all    # Stop manager first, then this deployment's workers
 existing labeled worker containers. `systemctl stop` stops the manager entry
 point; workers continue running. `plabctl stop-all` stops the manager before
 cleaning up this deployment's resources and preserves enabled intent for the next
-`plabctl start`. The Web UI's instance stop disables that instance persistently.
+`plabctl start`. The workspace Stop control disables its HTTP service persistently.
 
 Installed paths:
 
@@ -212,7 +248,7 @@ the host's Docker image store.
 
 ## Validate
 
-Start an instance using the Web UI, then run the independent client from another
+Start HTTP in its workspace, then run the independent client from another
 Linux node (or the local node during development):
 
 ```sh
@@ -223,7 +259,7 @@ make test
 ```
 
 The example is a documentation address; substitute the actual target. The client
-does not modify or start instances. It verifies two rounds of all three response
+does not change workspace configuration or start the service. It verifies two rounds of all three response
 forms, all seven methods, HEAD without a body, generated POST responses,
 repeated connections, Allow headers, and a 404 response. For
 retained JSON evidence, invoke `public-tests/http_smoke.py --output <new-file>`.

@@ -30,28 +30,39 @@ const statuses: Record<TestRun["status"], string> = {
 };
 
 async function testApi<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(
-    path,
-    body === undefined
-      ? {}
-      : {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        },
-  );
-  const text = await response.text();
-  let value;
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 10000);
   try {
-    value = text ? JSON.parse(text) : null;
-  } catch {
-    throw new Error(`测试接口返回异常（HTTP ${response.status}）`);
-  }
-  if (!response.ok)
-    throw new Error(
-      value?.error?.message || `测试请求失败（HTTP ${response.status}）`,
+    const response = await fetch(
+      path,
+      body === undefined
+        ? { signal: controller.signal }
+        : {
+            signal: controller.signal,
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          },
     );
-  return value as T;
+    const text = await response.text();
+    let value;
+    try {
+      value = text ? JSON.parse(text) : null;
+    } catch {
+      throw new Error(`测试接口返回异常（HTTP ${response.status}）`);
+    }
+    if (!response.ok)
+      throw new Error(
+        value?.error?.message || `测试请求失败（HTTP ${response.status}）`,
+      );
+    return value as T;
+  } catch (cause) {
+    if (controller.signal.aborted)
+      throw new Error("客户端测试接口请求超时，请检查管理服务后重试。");
+    throw cause;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 function configDescription(config: StoredConfig): string {
@@ -168,46 +179,56 @@ export default function ClientTests({
   const [sessionNotice, setSessionNotice] = useState("");
   const mounted = useRef(false);
   const fetchSequence = useRef(0);
+  const refreshInFlight = useRef<Promise<void> | null>(null);
   const session = useRef<string | null>(null);
   const hadActiveTest = useRef(false);
   hadActiveTest.current =
     submitting || Boolean(waitingId) || snapshot?.current?.status === "running";
   const endpoint = `/api/instances/${encodeURIComponent(instance.id)}/tests`;
 
-  async function refresh() {
+  async function refresh(force = false): Promise<void> {
+    if (refreshInFlight.current && !force) return refreshInFlight.current;
     const request = ++fetchSequence.current;
-    try {
-      const next = await testApi<TestSnapshot>(endpoint);
-      if (!mounted.current || request !== fetchSequence.current) return;
-      const restarted = Boolean(
-        session.current &&
-          next.session_id &&
-          session.current !== next.session_id,
-      );
-      if (restarted) {
-        if (hadActiveTest.current)
-          setSessionNotice(
-            "管理服务已重启，原测试结果未保留，请重新执行；中断的临时容器会清理。",
+    const task = (async () => {
+      try {
+        const next = await testApi<TestSnapshot>(endpoint);
+        if (!mounted.current || request !== fetchSequence.current) return;
+        const restarted = Boolean(
+          session.current &&
+            next.session_id &&
+            session.current !== next.session_id,
+        );
+        if (restarted) {
+          if (hadActiveTest.current)
+            setSessionNotice(
+              "管理服务已重启，原测试结果未保留，请重新执行；中断的临时容器会清理。",
+            );
+          setWaitingId(null);
+          setSubmitting(false);
+          setStartError("");
+        }
+        session.current = next.session_id || null;
+        if (next.current && next.current.instance_id !== instance.id) {
+          setSnapshot({ ...next, current: null });
+          setFetchError(
+            "测试接口返回的结果与当前 HTTP 服务不一致，已隐藏该结果。",
           );
-        setWaitingId(null);
-        setSubmitting(false);
-        setStartError("");
+          return;
+        }
+        setSnapshot(next);
+        setFetchError("");
+        setWaitingId((current) =>
+          !next.current || next.current.id === current ? null : current,
+        );
+      } catch (cause) {
+        if (mounted.current && request === fetchSequence.current)
+          setFetchError((cause as Error).message);
+      } finally {
+        if (request === fetchSequence.current) refreshInFlight.current = null;
       }
-      session.current = next.session_id || null;
-      if (next.current && next.current.instance_id !== instance.id) {
-        setSnapshot({ ...next, current: null });
-        setFetchError("测试接口返回的结果与当前实例不一致，已隐藏该结果。");
-        return;
-      }
-      setSnapshot(next);
-      setFetchError("");
-      setWaitingId((current) =>
-        !next.current || next.current.id === current ? null : current,
-      );
-    } catch (cause) {
-      if (mounted.current && request === fetchSequence.current)
-        setFetchError((cause as Error).message);
-    }
+    })();
+    refreshInFlight.current = task;
+    return task;
   }
 
   useEffect(() => {
@@ -219,6 +240,7 @@ export default function ClientTests({
     return () => {
       mounted.current = false;
       fetchSequence.current += 1;
+      refreshInFlight.current = null;
       window.clearInterval(timer);
     };
   }, [instance.id]);
@@ -235,7 +257,7 @@ export default function ClientTests({
       });
       if (!mounted.current) return;
       setWaitingId(result.test_id);
-      await refresh();
+      await refresh(true);
     } catch (cause) {
       if (mounted.current) {
         setStartError((cause as Error).message);
@@ -340,11 +362,11 @@ export default function ClientTests({
       </div>
       {!instance.enabled || instance.status !== "running" ? (
         <p className="test-availability">
-          启动实例并确认运行就绪后，可发起客户端测试。
+          启动 HTTP 服务并确认运行就绪后，可发起客户端测试。
         </p>
       ) : instance.current_operation ? (
         <p className="test-availability">
-          实例操作进行中，完成后可发起客户端测试。
+          协议操作进行中，完成后可发起客户端测试。
         </p>
       ) : null}
       {fetchError && (
@@ -406,7 +428,7 @@ export default function ClientTests({
           </div>
           {sourceChanged && (
             <p className="test-config-notice">
-              此结果来自先前的被测容器，不代表当前实例的新状态。
+              此结果来自先前的被测容器，不代表当前 HTTP 服务的新状态。
             </p>
           )}
           <div

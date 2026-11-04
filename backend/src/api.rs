@@ -1,8 +1,4 @@
-use crate::{
-    docker,
-    manager::Shared,
-    model::{HttpConfig, valid_id},
-};
+use crate::{docker, manager::Shared, model::HttpConfig};
 use axum::{
     Json, Router,
     body::Body,
@@ -15,7 +11,6 @@ use axum::{
     routing::{get, post},
 };
 use futures_util::stream;
-use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{convert::Infallible, time::Duration};
 
@@ -62,32 +57,55 @@ fn decode<T>(body: Result<Json<T>, JsonRejection>) -> Result<T, ApiError> {
     body.map(|Json(v)| v)
         .map_err(|e| ApiError(StatusCode::UNPROCESSABLE_ENTITY, e.body_text()))
 }
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Create {
-    id: String,
-    protocol_id: String,
-    config: HttpConfig,
-}
-
 pub fn router(manager: Shared) -> Router {
     Router::new()
-        .route("/healthz",get(|| async { Json(json!({"status":"ok","version":env!("CARGO_PKG_VERSION")})) }))
-        .route("/api/protocols",get(|| async { Json(json!([{"id":"http","name":"HTTP","implementation":"controlled responder","version":env!("CARGO_PKG_VERSION"),"available":true,"supported_methods":crate::model::HTTP_METHODS}])) }))
-        .route("/api/protocols/{id}/schema",get(schema))
-        .route("/api/instances",get(list).post(create))
-        .route("/api/instances/{id}",get(instance).delete(delete))
-        .route("/api/instances/{id}/config",axum::routing::put(save_config))
-        .route("/api/instances/{id}/logs",get(logs))
-        .route("/api/instances/{id}/connection-info",get(connection_info))
-        .route("/api/instances/{id}/probe",post(probe))
-        .route("/api/instances/{id}/tests",get(tests).post(start_test))
-        .route("/api/instances/{id}/{action}",post(action))
-        .route("/api/environment",get(environment))
-        .route("/api/assets",get(assets))
+        .route(
+            "/healthz",
+            get(|| async { Json(json!({"status":"ok","version":env!("CARGO_PKG_VERSION")})) }),
+        )
+        .route("/api/protocols", get(protocols))
+        .route("/api/protocols/{id}/schema", get(schema))
+        .route("/api/instances", get(list))
+        .route("/api/instances/{id}", get(instance))
+        .route(
+            "/api/instances/{id}/config",
+            axum::routing::put(save_config),
+        )
+        .route("/api/instances/{id}/logs", get(logs))
+        .route("/api/instances/{id}/connection-info", get(connection_info))
+        .route("/api/instances/{id}/probe", post(probe))
+        .route("/api/instances/{id}/tests", get(tests).post(start_test))
+        .route("/api/instances/{id}/{action}", post(action))
+        .route("/api/environment", get(environment))
+        .route("/api/assets", get(assets))
         .fallback(static_file)
-        .layer(axum::extract::DefaultBodyLimit::max(512*1024))
+        .layer(axum::extract::DefaultBodyLimit::max(512 * 1024))
         .with_state(manager)
+}
+async fn protocols(State(m): State<Shared>) -> Json<Value> {
+    let d = m.data.lock().await;
+    let workspace = d.doc.instances.iter().find(|i| i.protocol_id == "http");
+    // Runtime state comes from reconciliation, never from the enabled intent.
+    let status = if d.config_error.is_some() {
+        "unavailable"
+    } else if d.docker_error.is_some() {
+        "environment-unavailable"
+    } else {
+        workspace
+            .map(|i| i.status.as_str())
+            .unwrap_or("unavailable")
+    };
+    let error = d
+        .config_error
+        .as_deref()
+        .or(d.docker_error.as_deref())
+        .or_else(|| workspace.and_then(|i| i.runtime_error.as_deref().or(i.error.as_deref())));
+    Json(
+        json!([{"id":"http","name":"HTTP","implementation":"controlled responder",
+        "version":env!("CARGO_PKG_VERSION"),"available":true,
+        "supported_methods":crate::model::HTTP_METHODS,
+        "workspace":workspace.map(|i| i.view()),"status":status,"error":error}]),
+    )
 }
 async fn schema(Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
     if id != "http" {
@@ -120,27 +138,6 @@ async fn instance(
             .view(),
     ))
 }
-async fn create(
-    State(m): State<Shared>,
-    body: Result<Json<Create>, JsonRejection>,
-) -> Result<(StatusCode, Json<Value>), ApiError> {
-    let v = decode(body)?;
-    if !valid_id(&v.id) {
-        return Err(ApiError(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "id: use 1-48 lowercase letters, digits or hyphens, beginning with a letter/digit"
-                .into(),
-        ));
-    }
-    if v.protocol_id != "http" {
-        return Err(ApiError(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "protocol_id: only HTTP is implemented in phase one".into(),
-        ));
-    }
-    v.config.validate()?;
-    Ok((StatusCode::CREATED, Json(m.create(v.id, v.config).await?)))
-}
 async fn save_config(
     State(m): State<Shared>,
     Path(id): Path<String>,
@@ -149,10 +146,6 @@ async fn save_config(
     let config = decode(body)?;
     config.validate()?;
     Ok(Json(m.save_config(&id, config).await?))
-}
-async fn delete(State(m): State<Shared>, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
-    m.delete(&id).await?;
-    Ok(StatusCode::NO_CONTENT)
 }
 async fn action(
     State(m): State<Shared>,

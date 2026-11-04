@@ -159,6 +159,8 @@ pub struct Instance {
     #[serde(skip)]
     pub status: String,
     #[serde(skip)]
+    pub runtime_error: Option<String>,
+    #[serde(skip)]
     pub container_id: Option<String>,
     #[serde(skip)]
     pub current_operation: Option<Value>,
@@ -180,6 +182,7 @@ impl Instance {
             applied_config: None,
             error: None,
             status: "stopped".into(),
+            runtime_error: None,
             container_id: None,
             current_operation: None,
             last_result: None,
@@ -191,6 +194,10 @@ impl Instance {
         let mut value = serde_json::to_value(self).expect("serializable instance");
         let v = value.as_object_mut().unwrap();
         v.insert("status".into(), self.status.clone().into());
+        v.insert(
+            "error".into(),
+            serde_json::to_value(self.runtime_error.as_ref().or(self.error.as_ref())).unwrap(),
+        );
         v.insert(
             "container_id".into(),
             serde_json::to_value(&self.container_id).unwrap(),
@@ -236,12 +243,19 @@ impl Document {
         }
         uuid::Uuid::parse_str(&self.deployment_id)?;
         let mut ids = std::collections::HashSet::new();
+        let mut protocols = std::collections::HashSet::new();
         for i in &self.instances {
             if !valid_id(&i.id) || !ids.insert(&i.id) {
                 bail!("invalid or duplicate instance id");
             }
             if i.protocol_id != "http" || i.runtime != "docker" {
                 bail!("unsupported protocol or runtime");
+            }
+            if !protocols.insert(&i.protocol_id) {
+                bail!(
+                    "multiple workspaces for protocol {}; keep one configuration after reviewing existing resources; no configuration or containers were changed",
+                    i.protocol_id
+                );
             }
             i.config.validate()?;
             if let Some(c) = &i.applied_config {

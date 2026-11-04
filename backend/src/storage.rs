@@ -132,9 +132,19 @@ pub fn load(settings: &Settings) -> Result<Document> {
     } else {
         std::fs::write(marker, &d.deployment_id)?;
     }
+    // Older versions allowed deleting the last entry. Restore a disabled fixed
+    // workspace only after validating the entire document and ownership marker.
+    // Existing IDs, snapshots and container labels are never rewritten.
+    if d.instances.is_empty() {
+        d.instances = Document::new().instances;
+        d.schema_version = 2;
+        save(&settings.config, &d)?;
+    }
     for i in &mut d.instances {
         i.status = if i.error.is_some() {
             "error"
+        } else if i.enabled {
+            "checking"
         } else {
             "stopped"
         }
@@ -204,6 +214,78 @@ mod tests {
             64
         );
         assert_eq!(loaded.instances[0].config.response_length, 128);
+    }
+    #[test]
+    fn fixed_workspace_preserves_custom_id_legacy_bytes_and_snapshots() {
+        let f = Fixture::new();
+        let s = f.settings();
+        let mut d = load(&s).unwrap();
+        d.schema_version = 1;
+        let i = &mut d.instances[0];
+        i.id = "custom-http".into();
+        i.config = serde_json::from_str(
+            r#"{"bind_ip":"0.0.0.0","port":18091,"response_body":"old body"}"#,
+        )
+        .unwrap();
+        i.applied_config = Some(i.config.clone());
+        i.enabled = true;
+        let hash = i.config.fingerprint();
+        save(&s.config, &d).unwrap();
+        let bytes = std::fs::read(&s.config).unwrap();
+        let loaded = load(&s).unwrap();
+        assert_eq!(loaded.instances.len(), 1);
+        assert_eq!(loaded.instances[0].id, "custom-http");
+        assert!(loaded.instances[0].enabled);
+        assert_eq!(loaded.instances[0].status, "checking");
+        assert_eq!(
+            loaded.instances[0]
+                .applied_config
+                .as_ref()
+                .unwrap()
+                .fingerprint(),
+            hash
+        );
+        assert_eq!(std::fs::read(&s.config).unwrap(), bytes);
+    }
+    #[test]
+    fn duplicate_protocol_is_rejected_without_changing_file_or_marker() {
+        let f = Fixture::new();
+        let s = f.settings();
+        let mut d = load(&s).unwrap();
+        let mut second = d.instances[0].clone();
+        second.id = "http-second".into();
+        d.instances.push(second);
+        save(&s.config, &d).unwrap();
+        let bytes = std::fs::read(&s.config).unwrap();
+        let marker = std::fs::read(s.data.join("deployment-id")).unwrap();
+        assert!(
+            format!("{:#}", load(&s).err().unwrap())
+                .contains("multiple workspaces for protocol http")
+        );
+        assert_eq!(std::fs::read(&s.config).unwrap(), bytes);
+        assert_eq!(std::fs::read(s.data.join("deployment-id")).unwrap(), marker);
+    }
+    #[test]
+    fn empty_legacy_document_restores_only_disabled_workspace_after_marker_check() {
+        let f = Fixture::new();
+        let s = f.settings();
+        let mut d = load(&s).unwrap();
+        d.instances.clear();
+        d.schema_version = 1;
+        save(&s.config, &d).unwrap();
+        let loaded = load(&s).unwrap();
+        assert_eq!(loaded.deployment_id, d.deployment_id);
+        assert_eq!(loaded.instances.len(), 1);
+        let i = &loaded.instances[0];
+        assert_eq!(i.id, "http-demo");
+        assert!(!i.enabled);
+        assert!(i.applied_config.is_none());
+        assert_eq!(load(&s).unwrap().instances.len(), 1);
+        d.deployment_id = uuid::Uuid::new_v4().to_string();
+        save(&s.config, &d).unwrap();
+        let bytes = std::fs::read(&s.config).unwrap();
+        assert!(load(&s).is_err());
+        assert_eq!(std::fs::read(&s.config).unwrap(), bytes);
     }
     #[test]
     fn deployment_mismatch_cannot_claim_resources() {
