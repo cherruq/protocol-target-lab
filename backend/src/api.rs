@@ -103,7 +103,7 @@ async fn protocols(State(m): State<Shared>) -> Json<Value> {
         json!([{"id":"http","name":"HTTP","implementation":"controlled responder",
         "version":env!("CARGO_PKG_VERSION"),"available":true,
         "supported_methods":crate::model::HTTP_METHODS,
-        "workspace":workspace.map(|i| i.view()),"status":status,"error":error}]),
+        "workspace":workspace.map(|i| i.view()),"status":status,"error":error,"session_id":m.session_id}]),
     )
 }
 async fn schema(Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
@@ -155,7 +155,7 @@ async fn action(
     }
     Ok((
         StatusCode::ACCEPTED,
-        Json(json!({"operation_id":m.begin(&id,&action).await?})),
+        Json(json!({"operation_id":m.begin(&id,&action).await?,"session_id":m.session_id})),
     ))
 }
 async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
@@ -196,7 +196,10 @@ async fn start_test(
             message,
         )
     })?;
-    Ok((StatusCode::ACCEPTED, Json(json!({"test_id":test_id}))))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(json!({"test_id":test_id,"session_id":m.session_id})),
+    ))
 }
 async fn environment(State(m): State<Shared>) -> Json<Value> {
     let available = docker::image_id(&m.settings.image).await.is_ok();

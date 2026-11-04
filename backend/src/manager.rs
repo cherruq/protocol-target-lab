@@ -246,6 +246,11 @@ impl Manager {
         let mut d = self.data.lock().await;
         let mut next = d.doc.clone();
         if let Some(i) = next.instances.iter_mut().find(|i| i.id == id) {
+            let operation_id = i
+                .current_operation
+                .as_ref()
+                .and_then(|op| op.get("id"))
+                .cloned();
             i.current_operation = None;
             match result {
                 Ok(config) => {
@@ -258,7 +263,8 @@ impl Manager {
                     }
                     i.error = None;
                     i.retry_count = 0;
-                    i.last_result = Some(json!({"kind":kind,"success":true}));
+                    i.last_result =
+                        Some(json!({"operation_id":operation_id,"kind":kind,"success":true}));
                 }
                 Err(e) => {
                     let message = format!("{e:#}");
@@ -266,7 +272,9 @@ impl Manager {
                     i.error = Some(message.clone());
                     i.retry_count += 1;
                     i.retry_after = now() + 2u64.pow(i.retry_count.min(5));
-                    i.last_result = Some(json!({"kind":kind,"success":false,"error":message}));
+                    i.last_result = Some(
+                        json!({"operation_id":operation_id,"kind":kind,"success":false,"error":message}),
+                    );
                 }
             }
         }
