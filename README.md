@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation is **HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP and RTCP**, with manager version **0.12.0**,
-HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, and RTCP receiver/client image **0.1.0**. Each protocol has one fixed workspace and
+The current implementation is **HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP and DL/T645**, with manager version **0.13.0**,
+HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, and DL/T645 meter/client image **0.1.0**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -94,7 +94,7 @@ build image.
 
 The HTTP image is
 `protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.12.0_amd64.deb`.
+The manager package is `dist/protocol-target-lab_0.13.0_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -127,7 +127,7 @@ Docker provider; a host with Docker CE can run development builds directly, whil
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.12.0_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.13.0_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
@@ -515,3 +515,26 @@ Only UDP 5005 is published; observer TCP 18081 stays inside the private bridge.
 The native manager verifies the exact owned source container. Sender-declared
 counters and exact NTP hexadecimal fields describe received RTCP data, not
 media playback, clock synchronization or measured RTP loss/jitter.
+
+## DL/T645 software meter
+
+The fixed DL/T645-2007 workspace carries a finite software meter's serial bytes
+over TCP. Startup address/energy/period, simulated programming key, connection
+capacity and optional exact security fixture are configurable. Read-only ALL
+tests use current runtime values; explicit period-write tests restore their
+observed starting value. See [meter guide](docs/dlt645.md),
+[acceptance criteria](docs/dlt645-acceptance.md) and [CLI reference](docs/cli.md).
+
+```sh
+make dlt645-images OFFLINE=1
+make dlt645-assets OFFLINE=1
+sudo plabctl assets import ./dist/dlt645-assets
+plabctl config set dlt645 --port 20646
+plabctl start dlt645
+plabctl tests run dlt645 --method ALL
+```
+
+The original standard-library worker requires only the prepared locked Python
+base for offline rebuilds. It publishes TCP 20645 without device mounts or an
+observer port. It does not claim physical RS485/baud/relay/measurement or ESAM
+authentication; fixture transmission is explicitly non-cryptographic.

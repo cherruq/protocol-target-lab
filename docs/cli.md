@@ -386,3 +386,32 @@ requiring RTP to run. Native sender counters are declared values, not measured
 receiver statistics. NTP64 is reported as an exact hexadecimal string plus two
 uint32 words. Fresh private receive observations, not send/HTTP status, prove
 success; users cannot override the derived observer through configuration.
+
+## DL/T645 automation (manager 0.13.0)
+
+```sh
+plabctl config set dlt645 --port 20646 --meter-address 000000000001
+plabctl start dlt645
+plabctl tests run dlt645 --method ALL
+plabctl connection-info dlt645
+plabctl logs dlt645
+plabctl stop dlt645
+```
+
+Full JSON requires all fields shown by `schema dlt645`, including literal
+`wire_profile:"dlt645-2007-tcp"` and `security:{"mode":"reject"}`. Field flags
+include `--energy-hundredths`, `--period-minutes`, `--max-connections`,
+`--programming-key-enabled` and `--security-json` (replaces the complete tagged
+security object). Hexadecimal fixture strings retain their original case in
+saved/applied snapshots and fingerprints; validation accepts either case.
+
+Tests use path `meter`. ALL runs only READ_ADDRESS, READ_DATA, STREAM and
+ERROR_RESPONSE twice each. WRITE_PERIOD is separately available with the
+applied simulated programming key; it temporarily writes and verifies restoration
+of the period read at test start. SECURITY_FIXTURE is separately available in
+fixture mode; it verifies fixed bytes with `crypto_verified=false`.
+
+Read-only clients discover the current address and validate current values;
+startup configuration does not overwrite legitimate in-memory wire mutations.
+The TCP software profile supports the documented limited command set; serial
+hardware, actual energy/relay behavior, 1997 mode and ESAM are not implied.

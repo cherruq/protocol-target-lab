@@ -20,6 +20,7 @@ pub struct Settings {
     pub mqtt_sn_image: String,
     pub rtp_image: String,
     pub rtcp_image: String,
+    pub dlt645_image: String,
 }
 impl Settings {
     pub fn env() -> Result<Self> {
@@ -48,6 +49,7 @@ impl Settings {
                         "PLAB_MQTTSN_IMAGE",
                         "PLAB_RTP_IMAGE",
                         "PLAB_RTCP_IMAGE",
+                        "PLAB_DLT645_IMAGE",
                     ]
                     .contains(&key)
                     {
@@ -90,10 +92,13 @@ impl Settings {
             mqtt_sn_image: value("PLAB_MQTTSN_IMAGE", "protocol-target-lab/mqtt-sn:0.1.1"),
             rtp_image: value("PLAB_RTP_IMAGE", "protocol-target-lab/rtp:0.1.0"),
             rtcp_image: value("PLAB_RTCP_IMAGE", "protocol-target-lab/rtcp:0.1.0"),
+            dlt645_image: value("PLAB_DLT645_IMAGE", "protocol-target-lab/dlt645:0.1.0"),
         })
     }
     pub fn image_for(&self, protocol: &str) -> &str {
-        if protocol == "rtcp" {
+        if protocol == "dlt645" {
+            &self.dlt645_image
+        } else if protocol == "rtcp" {
             &self.rtcp_image
         } else if protocol == "rtp" {
             &self.rtp_image
@@ -234,6 +239,7 @@ mod tests {
                 mqtt_sn_image: "unused".into(),
                 rtp_image: "unused".into(),
                 rtcp_image: "unused".into(),
+                dlt645_image: "unused".into(),
             }
         }
     }
@@ -518,7 +524,7 @@ mod tests {
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
         doc.instances
-            .retain(|i| !["mqtt-sn", "rtp", "rtcp"].contains(&i.protocol_id.as_str()));
+            .retain(|i| !["mqtt-sn", "rtp", "rtcp", "dlt645"].contains(&i.protocol_id.as_str()));
         doc.instances[0].id = "mqtt-sn-demo".into();
         for i in &mut doc.instances {
             i.enabled = true;
@@ -556,7 +562,7 @@ mod tests {
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
         doc.instances
-            .retain(|i| !["rtp", "rtcp"].contains(&i.protocol_id.as_str()));
+            .retain(|i| !["rtp", "rtcp", "dlt645"].contains(&i.protocol_id.as_str()));
         doc.instances[0].id = "rtp-demo".into();
         for i in &mut doc.instances {
             i.enabled = true;
@@ -593,7 +599,8 @@ mod tests {
         let fixture = Fixture::new();
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
-        doc.instances.retain(|i| i.protocol_id != "rtcp");
+        doc.instances
+            .retain(|i| !["rtcp", "dlt645"].contains(&i.protocol_id.as_str()));
         doc.instances[0].id = "rtcp-demo".into();
         for i in &mut doc.instances {
             i.enabled = true;
@@ -621,6 +628,43 @@ mod tests {
         );
         assert_eq!(loaded.instances[7].id, "rtcp-demo-2");
         assert!(!loaded.instances[7].enabled && loaded.instances[7].applied_config.is_none());
+        let bytes = std::fs::read(&settings.config).unwrap();
+        load(&settings).unwrap();
+        assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);
+    }
+    #[test]
+    fn eight_protocol_upgrade_preserves_snapshots_and_resolves_dlt645_id_collision() {
+        let fixture = Fixture::new();
+        let settings = fixture.settings();
+        let mut doc = load(&settings).unwrap();
+        doc.instances.retain(|i| i.protocol_id != "dlt645");
+        doc.instances[0].id = "dlt645-demo".into();
+        for i in &mut doc.instances {
+            i.enabled = true;
+            i.applied_config = Some(i.config.clone());
+        }
+        let original = serde_json::to_value(&doc.instances).unwrap();
+        let hashes = doc
+            .instances
+            .iter()
+            .map(|i| i.config.fingerprint())
+            .collect::<Vec<_>>();
+        save(&settings.config, &doc).unwrap();
+        let loaded = load(&settings).unwrap();
+        assert_eq!(loaded.deployment_id, doc.deployment_id);
+        assert_eq!(
+            serde_json::to_value(&loaded.instances[..8]).unwrap(),
+            original
+        );
+        assert_eq!(
+            loaded.instances[..8]
+                .iter()
+                .map(|i| i.config.fingerprint())
+                .collect::<Vec<_>>(),
+            hashes
+        );
+        assert_eq!(loaded.instances[8].id, "dlt645-demo-2");
+        assert!(!loaded.instances[8].enabled && loaded.instances[8].applied_config.is_none());
         let bytes = std::fs::read(&settings.config).unwrap();
         load(&settings).unwrap();
         assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);

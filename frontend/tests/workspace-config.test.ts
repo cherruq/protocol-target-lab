@@ -296,3 +296,44 @@ test("RTCP fixed profile and capacity join eight isolated drafts without changin
   );
   assert.equal(sameWorkspaceConfig(rtcpDefaults, rtcp), false);
 });
+
+test("DLT645 tagged fixture joins nine drafts while retaining all prior configs", async () => {
+  const { dlt645Defaults, dlt645FixtureDefaults } = await import(
+    "../src/dlt645-config.ts"
+  );
+  const { rtpDefaults } = await import("../src/rtp-config.ts");
+  const { rtcpDefaults } = await import("../src/rtcp-config.ts");
+  const configs = [
+    defaults,
+    dnsDefaults,
+    mqttDefaults,
+    telnetDefaults,
+    iec104Defaults,
+    mqttSnDefaults,
+    rtpDefaults,
+    rtcpDefaults,
+  ];
+  let drafts = {};
+  for (const [index, config] of configs.entries())
+    drafts = updateWorkspaceDrafts(
+      drafts,
+      `prior-${index}`,
+      { ...config, port: config.port + 1 },
+      config,
+    );
+  const meter = {
+    ...dlt645Defaults,
+    programming_key_enabled: true,
+    security: { ...dlt645FixtureDefaults },
+  };
+  drafts = updateWorkspaceDrafts(drafts, "dlt645", meter, dlt645Defaults);
+  assert.equal(Object.keys(drafts).length, 9);
+  assert.equal(
+    Object.keys(updateWorkspaceDrafts(drafts, "dlt645", meter, meter)).length,
+    8,
+  );
+  for (const config of configs)
+    assert.equal(sameWorkspaceConfig(dlt645Defaults, config), false);
+  assert.equal(dlt645Defaults.security.mode, "reject");
+  assert.equal(sameWorkspaceConfig(dlt645Defaults, meter), false);
+});
