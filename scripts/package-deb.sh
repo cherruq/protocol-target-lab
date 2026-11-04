@@ -2,10 +2,15 @@
 set -euo pipefail
 project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$project_root"
-version=${VERSION:-0.4.1}
+version=${VERSION:-0.4.2}
 architecture=${ARCH:-amd64}
 [[ $architecture == amd64 ]] || { printf '%s\n' 'Phase 1 supports amd64 only.' >&2; exit 2; }
 dpkg --validate-version "$version"
+# Packaging is offline and must not silently ship stale/missing legal notices.
+if ! sha256sum --check --quiet third-party/license-inputs.sha256; then
+    printf '%s\n' 'Third-party notices are missing or stale. Prepare dependencies, run make licenses, and review the inventory.' >&2
+    exit 1
+fi
 binary=${PLAB_BINARY:-${BINARY:-$project_root/target/release/protocol-target-lab}}
 binary=$(realpath "$binary")
 [[ -x $binary ]] || { printf '%s\n' "Missing executable: $binary. Run make build or set PLAB_BINARY." >&2; exit 1; }
@@ -36,7 +41,11 @@ install -m 0755 "$binary" "$stage/root/usr/bin/protocol-target-lab"
 ln -s protocol-target-lab "$stage/root/usr/bin/plabctl"
 install -m 0644 packaging/debian/protocol-target-lab.service "$stage/root/usr/lib/systemd/system/"
 install -m 0644 packaging/debian/default "$stage/root/etc/default/protocol-target-lab"
-install -m 0644 README.md LICENSE THIRD_PARTY_NOTICES "$stage/root/usr/share/doc/protocol-target-lab/"
+install -m 0644 README.md LICENSE THIRD_PARTY_NOTICES THIRD_PARTY_LICENSES.txt "$stage/root/usr/share/doc/protocol-target-lab/"
+install -m 0644 third-party/licenses.json "$stage/root/usr/share/doc/protocol-target-lab/third-party-licenses.json"
+# Keep notices alongside the optional standalone binary distribution as well.
+install -m 0644 LICENSE THIRD_PARTY_NOTICES THIRD_PARTY_LICENSES.txt "$project_root/dist/"
+install -m 0644 third-party/licenses.json "$project_root/dist/third-party-licenses.json"
 install -m 0644 docs/http.md docs/phase1-acceptance.md "$stage/root/usr/share/doc/protocol-target-lab/docs/"
 for script in postinst prerm postrm; do install -m 0755 "packaging/debian/$script" "$stage/root/DEBIAN/$script"; done
 shlibs=$(cd "$stage" && dpkg-shlibdeps -O -e"$stage/root/usr/bin/protocol-target-lab")

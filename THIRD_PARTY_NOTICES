@@ -2,7 +2,18 @@ Protocol Target Lab third-party source notes — phase 1
 
 The project's original Rust manager, Web application, HTTP worker, test client,
 and integration scripts are distributed under the accompanying MIT LICENSE.
-Third-party components retain their original licenses.
+Third-party components retain their original licenses. Full license and copyright
+texts for the locked Linux Rust dependency closure and bundled Web components
+are in THIRD_PARTY_LICENSES.txt. The version/source/file index is
+third-party/licenses.json (third-party-licenses.json in the installed docs).
+The deb installs both files under /usr/share/doc/protocol-target-lab. Keep LICENSE,
+this notice, the full license bundle and its index with standalone binaries.
+
+The bundle includes nested upstream notices and the complete Vite notice file.
+The include_dir crates omit their license text from their published archives;
+third-party/upstream/include_dir preserves the license from the exact upstream
+commit recorded in those archives. Generation and verification require only
+prepared Cargo/npm caches; scripts/collect-third-party-licenses.py never downloads.
 
 Rust dependencies:
   Cargo.toml lists direct dependencies. Cargo.lock records exact resolved package

@@ -33,21 +33,33 @@ fn read_document(settings: &Settings) -> Result<model::Document> {
     }
     Ok(d)
 }
-async fn stop_all(settings: &Settings) -> Result<()> {
-    let _administration = settings.lock("administration.lock")?;
-    systemctl("stop").await?;
-    let _manager = settings.lock("manager.lock")?;
-    let _control = settings.lock("control.lock")?;
-    let deployment = match read_document(settings) {
-        Ok(doc) => doc.deployment_id,
+fn cleanup_deployment(settings: &Settings) -> Result<Option<String>> {
+    // A first startup can fail at bind before any ownership state is written.
+    // Uninstall must succeed in that case, without guessing container ownership.
+    if !settings.config.try_exists()? && !settings.data.join("deployment-id").try_exists()? {
+        return Ok(None);
+    }
+    match read_document(settings) {
+        Ok(doc) => Ok(Some(doc.deployment_id)),
         Err(e) => {
             eprintln!(
                 "Configuration unavailable ({e:#}); using persistent deployment ownership marker for bounded cleanup"
             );
             let id = std::fs::read_to_string(settings.data.join("deployment-id"))?;
             uuid::Uuid::parse_str(id.trim())?;
-            id.trim().to_owned()
+            Ok(Some(id.trim().to_owned()))
         }
+    }
+}
+
+async fn stop_all(settings: &Settings) -> Result<()> {
+    let _administration = settings.lock("administration.lock")?;
+    systemctl("stop").await?;
+    let _manager = settings.lock("manager.lock")?;
+    let _control = settings.lock("control.lock")?;
+    let Some(deployment) = cleanup_deployment(settings)? else {
+        println!("No initialized deployment; no owned resources to stop.");
+        return Ok(());
     };
     testing::cleanup_tests(&deployment, None).await?;
     for v in docker::owned(&deployment, None).await? {
@@ -175,4 +187,38 @@ async fn main() -> Result<()> {
     monitor.abort();
     result?;
     Ok(())
+}
+
+#[cfg(test)]
+mod cleanup_tests {
+    use super::*;
+    #[test]
+    fn absent_ownership_is_safe_but_partial_or_invalid_state_is_not_guessed() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("build/tests")
+            .join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir_all(&root).unwrap();
+        let settings = Settings {
+            config: root.join("instances.json"),
+            data: root.clone(),
+            listen: "127.0.0.1:0".into(),
+            image: "unused".into(),
+        };
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(root.clone());
+        assert!(cleanup_deployment(&settings).unwrap().is_none());
+        std::fs::write(&settings.config, b"broken").unwrap();
+        assert!(cleanup_deployment(&settings).is_err());
+        std::fs::remove_file(&settings.config).unwrap();
+        std::fs::write(root.join("deployment-id"), b"broken").unwrap();
+        assert!(cleanup_deployment(&settings).is_err());
+        let id = uuid::Uuid::new_v4().to_string();
+        std::fs::write(root.join("deployment-id"), &id).unwrap();
+        assert_eq!(cleanup_deployment(&settings).unwrap(), Some(id));
+    }
 }

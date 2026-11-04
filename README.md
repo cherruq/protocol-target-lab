@@ -4,13 +4,21 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation is **phase 1: HTTP**, with manager version **0.4.1**
+The current implementation is **phase 1: HTTP**, with manager version **0.4.2**
 and HTTP server/client image **0.3.0**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
 The other planned protocol families and the complete offline release are later
 milestones.
+
+Third-party license and copyright texts are shipped in `THIRD_PARTY_LICENSES.txt`,
+with a component index in `third-party/licenses.json`. The deb installs them in
+`/usr/share/doc/protocol-target-lab`; packaging also puts notice files beside
+standalone binaries in `dist/`. Include these notices whenever distributing a
+standalone manager. After changing Cargo/npm dependencies, prepare their caches,
+run `make licenses`, and review the regenerated inventory. `make test` checks
+reproducibility; packaging rejects stale lockfile/license hashes without network.
 
 ## Runtime and build baseline
 
@@ -21,7 +29,7 @@ not need Node, npm, Python, Cargo, or Nginx on the host. The Python HTTP worker 
 inside its own container.
 
 For development, install the Rust toolchain specified in `rust-toolchain.toml`,
-Node 22.12+ with npm (Node 24 was tested), Docker Engine with its CLI, GNU make, and Debian packaging tools
+Node 22.12+ with npm (Node 24 was tested), Docker Engine with its CLI, GNU make, Python 3 (license inventory verification), and Debian packaging tools
 (`dpkg-dev`, `binutils`, `file`). Use Ubuntu 24.04 to compile release packages.
 Binaries built on a newer Ubuntu may require a newer glibc; the packaging script
 rejects dependencies newer than Ubuntu 24.04's glibc 2.39.
@@ -58,7 +66,7 @@ build image.
 
 The HTTP image is
 `protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.4.1_amd64.deb`.
+The manager package is `dist/protocol-target-lab_0.4.2_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -91,7 +99,7 @@ Docker provider; a host with Docker CE can run development builds directly, whil
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.4.1_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.4.2_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
@@ -181,7 +189,7 @@ and may still support only the original GET/HEAD/POST methods. Automatic recover
 uses its saved legacy snapshot and the new worker's compatibility arguments.
 Explicit saves write schema version 2; both v1 and v2 files remain readable.
 
-Manager 0.4.1 continues to use HTTP image
+Manager 0.4.2 continues to use HTTP image
 `protocol-target-lab/http:0.3.0`; if a customized environment file still selects an
 older image, update `PLAB_HTTP_IMAGE` after importing the new version. The manager
 checks image capability before stopping the running HTTP service to apply new options.
