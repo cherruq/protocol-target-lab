@@ -1,6 +1,6 @@
 use crate::{
     docker,
-    model::{Document, HttpConfig, HttpConfigPatch},
+    model::{Document, ProtocolConfig},
     storage::{self, Settings},
 };
 use anyhow::{Context, Result, bail};
@@ -94,7 +94,7 @@ impl Manager {
             d.events.pop_front();
         }
     }
-    pub async fn save_config(&self, id: &str, config: HttpConfig) -> Result<Value> {
+    pub async fn save_config(&self, id: &str, config: ProtocolConfig) -> Result<Value> {
         let _control = self.control().await?;
         let mut d = self.data.lock().await;
         let mut next = d.doc.clone();
@@ -103,12 +103,15 @@ impl Manager {
             .iter_mut()
             .find(|i| i.id == id)
             .context("instance not found")?;
+        if config.protocol_id() != i.protocol_id {
+            bail!("config.protocol: configuration does not match workspace protocol");
+        }
         i.config = config;
         let view = i.view();
         self.persist(&mut d, next)?;
         Ok(view)
     }
-    pub async fn patch_config(&self, id: &str, patch: HttpConfigPatch) -> Result<Value> {
+    pub async fn patch_config(&self, id: &str, patch: Value) -> Result<Value> {
         let _control = self.control().await?;
         let mut d = self.data.lock().await;
         let mut next = d.doc.clone();
@@ -117,7 +120,7 @@ impl Manager {
             .iter_mut()
             .find(|i| i.id == id)
             .context("instance not found")?;
-        instance.config = patch.apply(instance.config.clone())?;
+        instance.config = instance.config.patch(patch)?;
         let view = instance.view();
         self.persist(&mut d, next)?;
         Ok(view)
@@ -165,8 +168,8 @@ impl Manager {
         &self,
         id: &str,
         kind: &str,
-        restore: Option<HttpConfig>,
-    ) -> Result<Option<HttpConfig>> {
+        restore: Option<ProtocolConfig>,
+    ) -> Result<Option<ProtocolConfig>> {
         let (deployment, instance) = {
             let d = self.data.lock().await;
             Self::writable(&d)?;
@@ -193,9 +196,12 @@ impl Manager {
         let config = restore.unwrap_or(instance.config.clone());
         config.validate()?;
         // Resolve image before stopping an existing service; start never pulls.
-        let prepared_image = docker::prepare_image(&self.settings.image, &config)
-            .await
-            .context("HTTP image is missing or incompatible; build/import matching assets first")?;
+        let prepared_image =
+            docker::prepare_image(self.settings.image_for(&instance.protocol_id), &config)
+                .await
+                .context(
+                    "Protocol image is missing or incompatible; build/import matching assets first",
+                )?;
         if let Some(existing) = resources.first() {
             if kind != "restart" && docker::running(existing) && docker::matches(existing, &config)
             {
@@ -219,12 +225,17 @@ impl Manager {
             .first()
             .filter(|v| docker::running(v))
             .and(instance.applied_config.as_ref());
-        docker::preflight_port(&config, own_endpoint).await?;
+        docker::preflight_port(
+            &config,
+            own_endpoint,
+            resources.first().and_then(|v| v["Id"].as_str()),
+        )
+        .await?;
         for v in &resources {
             docker::remove(v, &deployment, id).await?;
         }
         let container = docker::start(&deployment, id, &config, &prepared_image).await?;
-        let mut ready_error = "HTTP worker did not become ready".to_owned();
+        let mut ready_error = "Protocol worker did not become ready".to_owned();
         for _ in 0..40 {
             match docker::probe(&config).await {
                 Ok(()) => {
@@ -248,7 +259,7 @@ impl Manager {
                 docker::remove(&v, &deployment, id).await?;
             }
         }
-        bail!("HTTP readiness failed: {ready_error}")
+        bail!("Protocol readiness failed: {ready_error}")
     }
     async fn record_container(&self, id: &str, container: String) {
         let mut d = self.data.lock().await;
@@ -256,7 +267,7 @@ impl Manager {
             i.container_id = Some(container);
         }
     }
-    async fn finish(&self, id: &str, kind: &str, result: Result<Option<HttpConfig>>) {
+    async fn finish(&self, id: &str, kind: &str, result: Result<Option<ProtocolConfig>>) {
         let mut d = self.data.lock().await;
         let mut next = d.doc.clone();
         if let Some(i) = next.instances.iter_mut().find(|i| i.id == id) {

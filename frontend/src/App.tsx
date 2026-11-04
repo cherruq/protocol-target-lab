@@ -9,26 +9,47 @@ import {
   defaults,
   isLegacyConfig,
   normalizeConfig,
-  sameGeneratedConfig,
-  sameStoredConfig,
   supportedMethods,
   validateConfig,
   type Config,
   type StoredConfig,
 } from "./config";
 import ClientTests from "./ClientTests";
+import DnsConfigForm from "./DnsConfigForm";
+import DnsClientTests from "./DnsClientTests";
+import {
+  dnsDefaults,
+  isDnsConfig,
+  normalizeDnsConfig,
+  type DnsConfig,
+} from "./dns-config";
+import {
+  sameWorkspaceConfig,
+  updateWorkspaceDrafts,
+  discardWorkspaceDraft,
+  type WorkspaceConfig,
+  type DraftConfig,
+} from "./workspace-config";
 type Instance = {
   id: string;
   protocol_id: string;
   runtime: string;
   enabled: boolean;
-  config: StoredConfig;
-  applied_config: StoredConfig | null;
+  config: WorkspaceConfig;
+  applied_config: WorkspaceConfig | null;
   status: string;
   container_id: string | null;
   error: string | null;
   current_operation: { id: string; kind: string } | null;
   last_result: unknown;
+};
+type HttpInstance = Omit<Instance, "config" | "applied_config"> & {
+  config: StoredConfig;
+  applied_config: StoredConfig | null;
+};
+type DnsInstance = Omit<Instance, "config" | "applied_config"> & {
+  config: DnsConfig;
+  applied_config: DnsConfig | null;
 };
 type Environment = {
   docker_available: boolean;
@@ -39,8 +60,9 @@ type Environment = {
   image?: string;
   image_available?: boolean;
 };
-type Assets = { image: string; available: boolean };
-type Connection = { base_url: string; commands: string[] };
+type ImageAsset = { image: string; available: boolean; image_id?: string };
+type Assets = ImageAsset & { protocols?: Record<string, ImageAsset> };
+type Connection = { base_url?: string; endpoint?: string; commands: string[] };
 type Protocol = {
   id: string;
   name: string;
@@ -48,6 +70,8 @@ type Protocol = {
   version: string;
   available: boolean;
   supported_methods?: string[];
+  supported_transports?: string[];
+  image?: string;
   workspace: Instance | null;
   status: string;
   error: string | null;
@@ -302,10 +326,7 @@ export default function App() {
   const [environment, setEnvironment] = useState<Environment | null>(null);
   const [assets, setAssets] = useState<Assets | null>(null);
   const [selectedProtocolId, setSelectedProtocolId] = useState("http");
-  const [draft, setDraft] = useState<Config>({ ...defaults });
-  const [dirty, setDirty] = useState(false);
-  const dirtyRef = useRef(false);
-  const editingId = useRef<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, DraftConfig>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [connectionError, setConnectionError] = useState("");
@@ -324,6 +345,24 @@ export default function App() {
   );
   const selected = selectedProtocol?.workspace || null;
   const selectedId = selected?.id || null;
+  const isDns = selectedProtocol?.id === "dns";
+  const protocolName = selectedProtocol?.name || "协议";
+  const httpSelected = !isDns && selected ? (selected as HttpInstance) : null;
+  const dnsSelected = isDns && selected ? (selected as DnsInstance) : null;
+  const cachedDraft = selectedId ? drafts[selectedId] : undefined;
+  const draft: Config =
+    cachedDraft && !isDnsConfig(cachedDraft)
+      ? cachedDraft
+      : httpSelected
+        ? normalizeConfig(httpSelected.config)
+        : defaults;
+  const dnsDraft: DnsConfig = isDnsConfig(cachedDraft)
+    ? cachedDraft
+    : dnsSelected?.config || dnsDefaults;
+  const dirty = Boolean(cachedDraft);
+  const selectedAsset =
+    assets?.protocols?.[selectedProtocolId] ||
+    (selectedProtocolId === "http" ? assets : null);
   const displayedStatus = connectionError
     ? "checking"
     : selectedProtocol?.status || "unavailable";
@@ -384,19 +423,6 @@ export default function App() {
       window.clearInterval(timer);
     };
   }, []);
-
-  useEffect(() => {
-    if (!selected) {
-      editingId.current = null;
-      return;
-    }
-    if (editingId.current !== selected.id || !dirtyRef.current) {
-      setDraft(normalizeConfig(selected.config));
-      setDirty(false);
-      dirtyRef.current = false;
-      editingId.current = selected.id;
-    }
-  }, [selected]);
 
   useEffect(() => {
     setConnection(null);
@@ -472,27 +498,27 @@ export default function App() {
     }
   }
 
-  function edit(config: Config) {
-    setDraft(config);
-    const changed =
-      !selected ||
-      !sameGeneratedConfig(config, normalizeConfig(selected.config));
-    setDirty(changed);
-    dirtyRef.current = changed;
+  function edit(config: DraftConfig) {
+    if (!selected) return;
+    setDrafts((current) =>
+      updateWorkspaceDrafts(current, selected.id, config, selected.config),
+    );
   }
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!selected) return;
     await perform("save", async () => {
-      validateConfig(draft);
+      const payload = isDns ? normalizeDnsConfig(dnsDraft) : draft;
+      if (!isDns) validateConfig(draft);
       await api(
         `/api/instances/${encodeURIComponent(selected.id)}/config`,
         "PUT",
-        draft,
+        payload,
       );
-      dirtyRef.current = false;
-      setDirty(false);
-      setNotice("配置已保存。运行中的 HTTP 服务会继续使用当前生效参数。");
+      setDrafts((current) => discardWorkspaceDraft(current, selected.id));
+      setNotice(
+        `${protocolName} 配置已保存。运行中的服务会继续使用当前生效参数。`,
+      );
     });
   }
   async function operate(kind: "start" | "stop" | "restart") {
@@ -516,7 +542,7 @@ export default function App() {
   }
   const appliedDiffers = Boolean(
     selected?.applied_config &&
-      !sameStoredConfig(selected.config, selected.applied_config),
+      !sameWorkspaceConfig(selected.config, selected.applied_config),
   );
   const methods = selectedProtocol?.supported_methods || supportedMethods;
   const legacyApplied = isLegacyConfig(selected?.applied_config);
@@ -551,7 +577,11 @@ export default function App() {
               aria-current={
                 protocol.id === selectedProtocolId ? "page" : undefined
               }
-              onClick={() => setSelectedProtocolId(protocol.id)}
+              onClick={() => {
+                setSelectedProtocolId(protocol.id);
+                setError("");
+                setNotice("");
+              }}
             >
               <span className="protocol-symbol">
                 {protocol.name.slice(0, 1)}
@@ -561,6 +591,9 @@ export default function App() {
                 <Status
                   value={connectionError ? "checking" : protocol.status}
                 />
+                {protocol.workspace && drafts[protocol.workspace.id] && (
+                  <span className="protocol-nav-operation">草稿未保存</span>
+                )}
                 {protocol.workspace?.current_operation && (
                   <span className="protocol-nav-operation">
                     正在执行：{protocol.workspace.current_operation.kind}
@@ -695,19 +728,21 @@ export default function App() {
               <Icon name="terminal" />
             </span>
             <div>
-              <span>HTTP 运行镜像</span>
+              <span>{protocolName} 运行镜像</span>
               <strong className="summary-text">
                 {connectionError
                   ? "待核对"
-                  : assets
-                    ? assets.available
+                  : selectedAsset
+                    ? selectedAsset.available
                       ? "已就绪"
                       : "缺少镜像"
                     : "检查中"}
               </strong>
             </div>
-            <span className="summary-caption mono" title={assets?.image}>
-              {assets?.image || "检查本地资源"}
+            <span className="summary-caption mono" title={selectedAsset?.image}>
+              {selectedAsset?.image ||
+                selectedProtocol?.image ||
+                "检查本地资源"}
             </span>
           </div>
         </section>
@@ -718,28 +753,37 @@ export default function App() {
               <section className="panel detail-top">
                 <div className="detail-heading">
                   <div className="instance-title">
-                    <span className="protocol-badge">HTTP</span>
+                    <span className="protocol-badge">{protocolName}</span>
                     <h2>{selectedProtocol?.name || "HTTP"} 工作台</h2>
                     <Status value={displayedStatus} />
                   </div>
                 </div>
                 <p className="instance-description">
-                  受控 HTTP 测试服务 <span>·</span> Docker <span>·</span>{" "}
-                  HTTP/1.1
+                  受控 {protocolName} 测试服务 <span>·</span> Docker{" "}
+                  <span>·</span> {isDns ? "UDP / TCP" : "HTTP/1.1"}
                 </p>
                 <div className="method-support">
                   <span>
-                    {legacyApplied ? "新生成模式支持的方法" : "支持的方法"}
+                    {isDns
+                      ? "支持的传输"
+                      : legacyApplied
+                        ? "新生成模式支持的方法"
+                        : "支持的方法"}
                   </span>
                   <div>
-                    {methods.map((method) => (
+                    {(isDns
+                      ? selectedProtocol?.supported_transports || ["UDP", "TCP"]
+                      : methods
+                    ).map((method) => (
                       <code key={method}>{method}</code>
                     ))}
                   </div>
                   <p>
-                    {legacyApplied
-                      ? "旧生效配置保留旧版能力；保存新配置并重启后，切换到上述方法和响应生成规则。"
-                      : "HEAD 无正文；GET、POST、PUT、PATCH、DELETE、OPTIONS 均按配置生成响应正文。"}
+                    {isDns
+                      ? "按配置记录回答 A / AAAA 查询。UDP 和 TCP 可分别启用，使用同一组记录与端口。"
+                      : legacyApplied
+                        ? "旧生效配置保留旧版能力；保存新配置并重启后，切换到上述方法和响应生成规则。"
+                        : "HEAD 无正文；GET、POST、PUT、PATCH、DELETE、OPTIONS 均按配置生成响应正文。"}
                   </p>
                 </div>
                 <div className="instance-actions">
@@ -796,7 +840,7 @@ export default function App() {
               <div className="detail-columns">
                 <section className="panel config-panel">
                   <div className="panel-heading">
-                    <h2>HTTP 配置</h2>
+                    <h2>{protocolName} 配置</h2>
                     <span className={`draft-label ${dirty ? "dirty" : ""}`}>
                       {dirty
                         ? "尚未保存"
@@ -806,33 +850,46 @@ export default function App() {
                     </span>
                   </div>
                   <form onSubmit={(event) => void save(event)}>
-                    {(legacySaved || legacyApplied) && (
+                    {!isDns && (legacySaved || legacyApplied) && (
                       <div className="migration-note" role="note">
                         {legacySaved
                           ? "此工作台含旧版固定正文配置。旧运行配置仍保留；编辑草稿初始长度取旧正文的 UTF-8 字节数。保存并重启后使用新的内容生成模式，正文不再保留原文本，POST 不再回显请求正文。"
                           : "新配置已保存，旧生效配置仍保留固定正文和 POST 回显行为。显式重启后才切换到新的内容生成模式和方法支持。"}
                       </div>
                     )}
-                    <ConfigFields
-                      config={draft}
-                      onChange={edit}
-                      prefix="edit"
-                      disabled={
-                        Boolean(environment?.config_error) || busy === "save"
-                      }
-                    />
-                    <div className="config-meta">
-                      <span>精确按字节计数</span>
-                      <span>
-                        {Number.isFinite(draft.response_length)
-                          ? draft.response_length.toLocaleString()
-                          : "—"}{" "}
-                        字节 ·{" "}
-                        {draft.response_mode === "fixed"
-                          ? "固定内容"
-                          : "每次随机"}
-                      </span>
-                    </div>
+                    {isDns ? (
+                      <DnsConfigForm
+                        config={dnsDraft}
+                        onChange={edit}
+                        disabled={
+                          Boolean(environment?.config_error) || busy === "save"
+                        }
+                      />
+                    ) : (
+                      <>
+                        <ConfigFields
+                          config={draft}
+                          onChange={edit}
+                          prefix="edit"
+                          disabled={
+                            Boolean(environment?.config_error) ||
+                            busy === "save"
+                          }
+                        />
+                        <div className="config-meta">
+                          <span>精确按字节计数</span>
+                          <span>
+                            {Number.isFinite(draft.response_length)
+                              ? draft.response_length.toLocaleString()
+                              : "—"}{" "}
+                            字节 ·{" "}
+                            {draft.response_mode === "fixed"
+                              ? "固定内容"
+                              : "每次随机"}
+                          </span>
+                        </div>
+                      </>
+                    )}
                     <div className="form-footer">
                       <p>
                         保存配置不会自动重启。点击“运行”或“重启并应用配置”后生效。
@@ -846,6 +903,11 @@ export default function App() {
                       </button>
                     </div>
                   </form>
+                  {dirty && (
+                    <p className="draft-memory-note">
+                      此草稿会在协议切换时保留；刷新或关闭页面会丢失未保存的修改。
+                    </p>
+                  )}
                   <div className="applied-config">
                     <h3>当前生效参数</h3>
                     {selected.applied_config ? (
@@ -855,17 +917,41 @@ export default function App() {
                           <dd>{selected.applied_config.bind_ip}</dd>
                         </div>
                         <div>
-                          <dt>TCP 端口</dt>
+                          <dt>{isDns ? "DNS 端口" : "TCP 端口"}</dt>
                           <dd>{selected.applied_config.port}</dd>
                         </div>
                         <div>
-                          <dt>响应配置</dt>
+                          <dt>{isDns ? "启用传输" : "响应配置"}</dt>
                           <dd className="applied-body">
-                            {isLegacyConfig(selected.applied_config)
-                              ? `旧版固定正文 ${new TextEncoder().encode(selected.applied_config.response_body).length.toLocaleString()} 字节（POST 回显）`
-                              : `${selected.applied_config.response_length.toLocaleString()} 字节 · ${selected.applied_config.response_mode === "fixed" ? "固定内容" : "每次随机"}`}
+                            {isDnsConfig(selected.applied_config)
+                              ? [
+                                  selected.applied_config.udp_enabled && "UDP",
+                                  selected.applied_config.tcp_enabled && "TCP",
+                                ]
+                                  .filter(Boolean)
+                                  .join(" / ")
+                              : isLegacyConfig(selected.applied_config)
+                                ? `旧版固定正文 ${new TextEncoder().encode(selected.applied_config.response_body).length.toLocaleString()} 字节（POST 回显）`
+                                : `${selected.applied_config.response_length.toLocaleString()} 字节 · ${selected.applied_config.response_mode === "fixed" ? "固定内容" : "每次随机"}`}
                           </dd>
                         </div>
+                        {isDnsConfig(selected.applied_config) && (
+                          <div>
+                            <dt>生效记录</dt>
+                            <dd>
+                              <ul className="dns-applied-records">
+                                {selected.applied_config.records.map((r, i) => (
+                                  <li key={i}>
+                                    <code>
+                                      {r.name} {r.record_type} {r.value}
+                                    </code>
+                                    <span>TTL {r.ttl} 秒</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </dd>
+                          </div>
+                        )}
                         <div>
                           <dt>容器</dt>
                           <dd title={selected.container_id || ""}>
@@ -943,11 +1029,11 @@ export default function App() {
                     className="log-content"
                     ref={logRef}
                     tabIndex={0}
-                    aria-label="HTTP 服务日志"
+                    aria-label={`${protocolName} 服务日志`}
                   >
                     {logLines.length
                       ? logLines.join("\n")
-                      : "等待 HTTP 服务日志…\n启动 HTTP 服务后，在此查看请求与响应事件。"}
+                      : `等待 ${protocolName} 服务日志…\n启动 ${protocolName} 服务后，在此查看请求与响应事件。`}
                   </pre>
                   <div className="log-footer">
                     <span>
@@ -962,30 +1048,46 @@ export default function App() {
                   <h2>连接与验证</h2>
                   <span className="muted">内置测试与手动接入</span>
                 </div>
-                <ClientTests
-                  key={selected.id}
-                  instance={selected}
-                  hasUnappliedConfig={dirty || appliedDiffers}
-                  operationsLocked={locked}
-                />
+                {dnsSelected ? (
+                  <DnsClientTests
+                    key={dnsSelected.id}
+                    instance={dnsSelected}
+                    hasUnappliedConfig={dirty || appliedDiffers}
+                    operationsLocked={locked}
+                  />
+                ) : httpSelected ? (
+                  <ClientTests
+                    key={selected.id}
+                    instance={httpSelected}
+                    hasUnappliedConfig={dirty || appliedDiffers}
+                    operationsLocked={locked}
+                  />
+                ) : null}
                 <details className="connection-help">
-                  <summary>手动接入与 curl 命令</summary>
+                  <summary>手动接入与 {isDns ? "dig" : "curl"} 命令</summary>
                   <div className="connection-content">
                     <div className="endpoint">
-                      <span>HTTP 入口</span>
+                      <span>{protocolName} 入口</span>
                       <code>
                         {connection?.base_url ||
-                          `http://${(selected.applied_config || selected.config).bind_ip}:${(selected.applied_config || selected.config).port}`}
+                          connection?.endpoint ||
+                          `${isDns ? "" : "http://"}${(selected.applied_config || selected.config).bind_ip}:${(selected.applied_config || selected.config).port}`}
                       </code>
                       <p>绑定 0.0.0.0 时，请使用目标设备实际可达的 IP。</p>
                     </div>
                     <div className="command-list">
                       {(
-                        connection?.commands || [
-                          `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/ok`,
-                          `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/chunked`,
-                          `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/close`,
-                        ]
+                        connection?.commands ||
+                        (isDns
+                          ? [
+                              `dig @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
+                              `dig +tcp @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
+                            ]
+                          : [
+                              `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/ok`,
+                              `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/chunked`,
+                              `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/close`,
+                            ])
                       ).map((command, index) => (
                         <div className="command" key={index}>
                           <code>{command}</code>
@@ -1022,10 +1124,20 @@ export default function App() {
                     : "无法取得协议工作台配置，请查看管理服务诊断。")}
               </p>
               <div className="supported-paths">
-                <code>/ok</code>
-                <code>/chunked</code>
-                <code>/close</code>
-                <span>{methods.join(" · ")}</span>
+                {isDns ? (
+                  <>
+                    <code>A</code>
+                    <code>AAAA</code>
+                    <span>UDP · TCP</span>
+                  </>
+                ) : (
+                  <>
+                    <code>/ok</code>
+                    <code>/chunked</code>
+                    <code>/close</code>
+                    <span>{methods.join(" · ")}</span>
+                  </>
+                )}
               </div>
             </section>
           )}

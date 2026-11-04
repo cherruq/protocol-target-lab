@@ -213,14 +213,113 @@ impl HttpConfigPatch {
     }
 }
 
+/// Untagged serialization preserves existing HTTP ownership fingerprints.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum ProtocolConfig {
+    Http(HttpConfig),
+    Dns(crate::dns::DnsConfig),
+}
+impl From<HttpConfig> for ProtocolConfig {
+    fn from(c: HttpConfig) -> Self {
+        Self::Http(c)
+    }
+}
+impl From<crate::dns::DnsConfig> for ProtocolConfig {
+    fn from(c: crate::dns::DnsConfig) -> Self {
+        Self::Dns(c)
+    }
+}
+impl ProtocolConfig {
+    pub fn validate(&self) -> Result<()> {
+        match self {
+            Self::Http(c) => c.validate(),
+            Self::Dns(c) => c.validate(),
+        }
+    }
+    pub fn as_http(&self) -> Option<&HttpConfig> {
+        if let Self::Http(c) = self {
+            Some(c)
+        } else {
+            None
+        }
+    }
+    pub fn protocol_id(&self) -> &'static str {
+        match self {
+            Self::Http(_) => "http",
+            Self::Dns(_) => "dns",
+        }
+    }
+    pub fn bind_ip(&self) -> &str {
+        match self {
+            Self::Http(c) => &c.bind_ip,
+            Self::Dns(c) => &c.bind_ip,
+        }
+    }
+    pub fn port(&self) -> u16 {
+        match self {
+            Self::Http(c) => c.port,
+            Self::Dns(c) => c.port,
+        }
+    }
+    pub fn probe_ip(&self) -> &str {
+        if self.bind_ip() == "0.0.0.0" {
+            "127.0.0.1"
+        } else {
+            self.bind_ip()
+        }
+    }
+    pub fn fingerprint(&self) -> String {
+        match self {
+            Self::Http(c) => c.fingerprint(),
+            Self::Dns(_) => format!(
+                "{:x}",
+                Sha256::digest(serde_json::to_vec(self).expect("serializable config"))
+            ),
+        }
+    }
+    pub fn patch(&self, value: Value) -> Result<Self> {
+        match self {
+            Self::Http(c) => Ok(serde_json::from_value::<HttpConfigPatch>(value)
+                .map_err(|e| anyhow::anyhow!("config.patch: {e}"))?
+                .apply(c.clone())?
+                .into()),
+            Self::Dns(_) => {
+                let patch = value
+                    .as_object()
+                    .ok_or_else(|| anyhow::anyhow!("config.patch: expected object"))?;
+                if patch.is_empty()
+                    || patch.iter().any(|(k, v)| {
+                        !["bind_ip", "port", "udp_enabled", "tcp_enabled", "records"]
+                            .contains(&k.as_str())
+                            || v.is_null()
+                    })
+                {
+                    bail!(
+                        "config.patch: provide DNS fields; unknown fields and null are not allowed"
+                    );
+                }
+                let mut full = serde_json::to_value(self)?;
+                for (k, v) in patch {
+                    full[k] = v.clone();
+                }
+                let c: crate::dns::DnsConfig = serde_json::from_value(full)
+                    .map_err(|e| anyhow::anyhow!("config.patch: {e}"))?;
+                c.validate()?;
+                Ok(c.into())
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Instance {
     pub id: String,
     pub protocol_id: String,
     pub runtime: String,
     pub enabled: bool,
-    pub config: HttpConfig,
-    pub applied_config: Option<HttpConfig>,
+    pub config: ProtocolConfig,
+    pub applied_config: Option<ProtocolConfig>,
     #[serde(default)]
     pub error: Option<String>,
     #[serde(skip)]
@@ -239,10 +338,11 @@ pub struct Instance {
     pub retry_after: u64,
 }
 impl Instance {
-    pub fn new(id: String, config: HttpConfig) -> Self {
+    pub fn new(id: String, config: impl Into<ProtocolConfig>) -> Self {
+        let config = config.into();
         Self {
             id,
-            protocol_id: "http".into(),
+            protocol_id: config.protocol_id().into(),
             runtime: "docker".into(),
             enabled: false,
             config,
@@ -301,7 +401,10 @@ impl Document {
         Self {
             schema_version: 2,
             deployment_id: uuid::Uuid::new_v4().to_string(),
-            instances: vec![Instance::new("http-demo".into(), HttpConfig::default())],
+            instances: vec![
+                Instance::new("http-demo".into(), HttpConfig::default()),
+                Instance::new("dns-demo".into(), crate::dns::DnsConfig::default()),
+            ],
         }
     }
     pub fn validate(&self) -> Result<()> {
@@ -315,7 +418,13 @@ impl Document {
             if !valid_id(&i.id) || !ids.insert(&i.id) {
                 bail!("invalid or duplicate instance id");
             }
-            if i.protocol_id != "http" || i.runtime != "docker" {
+            if !["http", "dns"].contains(&i.protocol_id.as_str())
+                || i.runtime != "docker"
+                || i.config.protocol_id() != i.protocol_id
+                || i.applied_config
+                    .as_ref()
+                    .is_some_and(|c| c.protocol_id() != i.protocol_id)
+            {
                 bail!("unsupported protocol or runtime");
             }
             if !protocols.insert(&i.protocol_id) {
@@ -359,8 +468,10 @@ mod tests {
         ] {
             assert!(serde_json::from_str::<HttpConfig>(raw).is_err());
         }
-        let mut c = HttpConfig::default();
-        c.response_length = 0;
+        let mut c = HttpConfig {
+            response_length: 0,
+            ..HttpConfig::default()
+        };
         assert!(c.validate().is_ok());
         assert!(c.expected_body().unwrap().is_empty());
         c.response_length = 17;
@@ -372,6 +483,36 @@ mod tests {
         c.response_length = 64;
         c.response_mode = ResponseMode::Random;
         assert!(c.expected_body().is_none());
+    }
+    #[test]
+    fn protocol_config_keeps_http_bytes_and_dns_patches_are_atomic() {
+        let raw = r#"{"bind_ip":"127.0.0.1","port":18090,"response_body":"hello"}"#;
+        let http: ProtocolConfig = serde_json::from_str(raw).unwrap();
+        assert_eq!(serde_json::to_string(&http).unwrap(), raw);
+        assert_eq!(
+            http.fingerprint(),
+            format!("{:x}", Sha256::digest(raw.as_bytes()))
+        );
+        let dns: ProtocolConfig = crate::dns::DnsConfig::default().into();
+        let patched = dns
+            .patch(serde_json::json!({"port":15453,"udp_enabled":false}))
+            .unwrap();
+        assert_eq!(patched.port(), 15453);
+        let ProtocolConfig::Dns(c) = patched else {
+            panic!("DNS variant lost")
+        };
+        assert_eq!(c.records, crate::dns::DnsConfig::default().records);
+        assert!(c.tcp_enabled);
+        assert!(!c.udp_enabled);
+        for patch in [
+            serde_json::json!({}),
+            serde_json::json!({"records":null}),
+            serde_json::json!({"response_length":4}),
+            serde_json::json!({"udp_enabled":false,"tcp_enabled":false}),
+        ] {
+            assert!(dns.patch(patch).is_err());
+        }
+        assert!(http.patch(serde_json::json!({"udp_enabled":true})).is_err());
     }
     #[test]
     fn atomic_patch_preserves_unmentioned_fields_and_rejects_empty_null_or_unknown() {

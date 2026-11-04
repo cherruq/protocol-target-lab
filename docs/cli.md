@@ -4,7 +4,7 @@
 point to the same native binary, using the management HTTP API for workspace
 commands. It does not edit the server's files or invoke local Docker for these
 commands. The Web UI is for interactive use; the CLI exposes the same implemented
-HTTP workspace to automation. Both control the same saved settings and resources.
+HTTP and DNS workspaces to automation. Both control the same saved settings and resources.
 
 API commands default to `http://127.0.0.1:18000`. Set `PLAB_URL` or pass `--url`
 (the explicit option wins). HTTP root URLs only: no credentials, path, query or
@@ -145,3 +145,39 @@ continues to serve the Web application. Local commands accept only their exact
 listed argument forms; extra or unknown arguments are rejected before any local
 service/Docker operation. A help-looking value after an option is treated as
 that option's value, not as a successful help request.
+
+## DNS automation (manager 0.6.0)
+
+Use `dns` with the same `schema`, `show`, `config get/set`, lifecycle, logs,
+connection-info and tests commands. `--file`, stdin and `--data` accept the full
+DNS configuration. Field edits use atomic PATCH; shared binding flags remain
+`--bind-ip` and `--port`. DNS-specific fields are `--udp-enabled true|false`,
+`--tcp-enabled true|false`, and `--records-json '[...]'` (replaces the record list).
+HTTP response fields are rejected for DNS and DNS fields are rejected for HTTP.
+
+```sh
+plabctl config set dns --port 15354 --udp-enabled true --tcp-enabled true
+plabctl config set dns --records-json '[{"name":"device.test","record_type":"A","value":"192.0.2.28","ttl":60},{"name":"device.test","record_type":"AAAA","value":"2001:db8::28","ttl":60}]'
+plabctl start dns
+plabctl tests list dns
+plabctl tests run dns --method UDP --name device.test
+plabctl tests run dns --method TCP --name device.test
+plabctl tests run dns --method ALL
+plabctl connection-info dns
+plabctl logs dns
+plabctl stop dns
+```
+
+DNS tests default to enabled transports and all configured names. `--method` is
+`UDP`, `TCP`, or `ALL`; disabled transports are rejected. `--name` (alias for
+`--path`) selects a configured name or `ALL`, never an arbitrary resolver/target.
+`--name` and `--path` are mutually exclusive. Tests use the applied snapshot,
+including when the saved draft differs. Response summaries contain wire DNS
+RCODE, question, addresses, TTL and framing rather than HTTP status codes.
+
+DNS validation permits 1..32 A/AAAA records and at most 16 addresses per name/type
+RRset. Names use ASCII hostname labels (1..63 bytes, total <=253), are matched
+case-insensitively and may have one trailing dot. Each RRset needs a consistent
+TTL (0..86400); duplicate canonical name/type/address entries are rejected.
+At least one transport must remain enabled. The DNS report limit is 512 KiB;
+client and manager deadlines remain 30 and 45 seconds.

@@ -1,5 +1,5 @@
 //! JSON API client for automated callers. Resource mutations stay in the manager.
-use crate::model::{HttpConfig, HttpConfigPatch, valid_id};
+use crate::model::{ProtocolConfig, valid_id};
 use reqwest::{Client, Method, Url};
 use serde_json::{Value, json};
 use std::{
@@ -18,11 +18,12 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config get PROTOCOL [--applied]
   config set PROTOCOL --file FILE|- | --data JSON
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
+  config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
   start PROTOCOL | stop PROTOCOL | restart PROTOCOL [--wait | --no-wait]
   connection-info PROTOCOL
   logs PROTOCOL [--follow]
   tests list PROTOCOL
-  tests run PROTOCOL [--method ALL] [--path /ok] [--wait | --no-wait]
+  tests run PROTOCOL [--method ALL] [--path /ok | --name DNS_NAME] (DNS defaults to ALL) [--wait | --no-wait]
   tests result PROTOCOL [--id TEST_ID] [--wait | --no-wait]
 
 API mutations wait for their exact operation/test by default; config set only saves.
@@ -38,7 +39,7 @@ Local administrative commands (retain existing behavior; may require root):
   plabctl stop-all              stop manager and owned resources
   plabctl status | doctor       local persisted state and Docker diagnostics
   plabctl assets import DIR     local image import from a checked manifest
-Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DOCKER_SOCKET
+Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_DOCKER_SOCKET
 "#;
 const LIMIT: usize = 8 * 1024 * 1024;
 type Result<T> = std::result::Result<T, Failure>;
@@ -132,6 +133,10 @@ const VALUE_OPTIONS: &[&str] = &[
     "--method",
     "--path",
     "--id",
+    "--name",
+    "--udp-enabled",
+    "--tcp-enabled",
+    "--records-json",
 ];
 fn wants_help(args: &[String]) -> bool {
     if args.len() == 1 && args[0] == "help" {
@@ -260,6 +265,9 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--port",
                 "--response-length",
                 "--response-mode",
+                "--udp-enabled",
+                "--tcp-enabled",
+                "--records-json",
             ] {
                 if let Some(value) = values.remove(name) {
                     fields.insert(name.into(), value);
@@ -295,7 +303,23 @@ fn parse(args: &[String]) -> Result<Options> {
                 .remove("--method")
                 .unwrap_or_else(|| "ALL".into())
                 .to_ascii_uppercase(),
-            values.remove("--path").unwrap_or_else(|| "/ok".into()),
+            {
+                let path = values.remove("--path");
+                let name = values.remove("--name");
+                if path.is_some() && name.is_some() {
+                    return Err(Failure::usage("--name and --path are mutually exclusive"));
+                }
+                if name.is_some() && *p != "dns" {
+                    return Err(Failure::usage("--name applies to DNS tests"));
+                }
+                path.or(name).unwrap_or_else(|| {
+                    if *p == "dns" {
+                        "ALL".into()
+                    } else {
+                        "/ok".into()
+                    }
+                })
+            },
             waiting(&mut flags, true)?,
         ),
         ["tests", "result", p] => Command::TestResult(
@@ -576,7 +600,7 @@ impl Api {
         ))
     }
 }
-fn config_patch(fields: BTreeMap<String, String>) -> Result<HttpConfigPatch> {
+fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
     let mut patch = serde_json::Map::new();
     for (key, value) in fields {
         let value = match key.as_str() {
@@ -585,19 +609,28 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<HttpConfigPatch> {
                     .parse::<u32>()
                     .map_err(|_| Failure::usage(format!("{key} must be a nonnegative integer")))?
             ),
+            "--udp-enabled" | "--tcp-enabled" => Value::Bool(
+                value
+                    .parse::<bool>()
+                    .map_err(|_| Failure::usage(format!("{key} must be true or false")))?,
+            ),
+            "--records-json" => serde_json::from_str(&value)
+                .map_err(|e| Failure::usage(format!("invalid records JSON: {e}")))?,
             _ => Value::String(value),
         };
-        patch.insert(key.trim_start_matches("--").replace('-', "_"), value);
+        patch.insert(
+            if key == "--records-json" {
+                "records".into()
+            } else {
+                key.trim_start_matches("--").replace('-', "_")
+            },
+            value,
+        );
     }
-    let patch: HttpConfigPatch = serde_json::from_value(Value::Object(patch))
-        .map_err(|e| Failure::usage(format!("invalid configuration fields: {e}")))?;
-    patch
-        .clone()
-        .apply(HttpConfig::default())
-        .map_err(|e| Failure::usage(e.to_string()))?;
-    Ok(patch)
+    Ok(Value::Object(patch))
 }
-async fn configuration(input: ConfigInput, current: Value) -> Result<HttpConfig> {
+
+async fn configuration(input: ConfigInput, current: Value) -> Result<ProtocolConfig> {
     let config = match input {
         ConfigInput::File(path) => {
             let mut bytes = vec![];
@@ -630,10 +663,10 @@ async fn configuration(input: ConfigInput, current: Value) -> Result<HttpConfig>
                 .map_err(|e| Failure::usage(format!("invalid configuration JSON: {e}")))?
         }
         ConfigInput::Fields(fields) => {
-            let config: HttpConfig = serde_json::from_value(current)
-                .map_err(|_| Failure::reply("invalid saved HTTP configuration"))?;
-            config_patch(fields)?
-                .apply(config)
+            let config: ProtocolConfig = serde_json::from_value(current)
+                .map_err(|_| Failure::reply("invalid saved protocol configuration"))?;
+            config
+                .patch(config_patch(fields)?)
                 .map_err(|e| Failure::usage(e.to_string()))?
         }
     };
@@ -665,6 +698,12 @@ async fn execute(api: &Api, command: Command) -> Result<Value> {
             let (id, d) = api.target(&p).await?;
             if let ConfigInput::Fields(fields) = input {
                 let patch = config_patch(fields)?;
+                let current: ProtocolConfig =
+                    serde_json::from_value(d["workspace"]["config"].clone())
+                        .map_err(|_| Failure::reply("invalid saved protocol configuration"))?;
+                current
+                    .patch(patch.clone())
+                    .map_err(|e| Failure::usage(e.to_string()))?;
                 // Never turn a field edit into a stale full-document PUT. Older
                 // managers reject PATCH rather than silently losing an update.
                 return api
@@ -676,6 +715,9 @@ async fn execute(api: &Api, command: Command) -> Result<Value> {
                     .await;
             }
             let c = configuration(input, d["workspace"]["config"].clone()).await?;
+            if c.protocol_id() != p {
+                return Err(Failure::usage("configuration does not match protocol"));
+            }
             api.request(
                 Method::PUT,
                 &format!("/api/instances/{id}/config"),
@@ -881,7 +923,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(c.legacy_body.as_deref(), Some("旧正文"));
+        assert_eq!(c.as_http().unwrap().legacy_body.as_deref(), Some("旧正文"));
         let c = configuration(
             ConfigInput::Fields(BTreeMap::from([(
                 "--response-mode".into(),
@@ -891,9 +933,34 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(c.legacy_body.is_none());
-        assert_eq!(c.response_length, 9);
-        assert_eq!(c.response_mode, ResponseMode::Random);
+        assert!(c.as_http().unwrap().legacy_body.is_none());
+        assert_eq!(c.as_http().unwrap().response_length, 9);
+        assert_eq!(c.as_http().unwrap().response_mode, ResponseMode::Random);
+    }
+    #[tokio::test]
+    async fn dns_parser_and_config_follow_protocol_contract() {
+        let options = parse(&args("tests run dns --method tcp --name device.test")).unwrap();
+        assert!(
+            matches!(options.command,Command::TestRun(ref p,ref method,ref name,true) if p=="dns" && method=="TCP" && name=="device.test")
+        );
+        assert!(parse(&args("tests run dns --name device.test --path ALL")).is_err());
+        assert!(parse(&args("tests run http --name device.test")).is_err());
+        let c = configuration(
+            ConfigInput::Fields(BTreeMap::from([
+                ("--udp-enabled".into(), "false".into()),
+                ("--port".into(), "15453".into()),
+            ])),
+            serde_json::to_value(crate::dns::DnsConfig::default()).unwrap(),
+        )
+        .await
+        .unwrap();
+        let ProtocolConfig::Dns(c) = c else {
+            panic!("DNS variant lost")
+        };
+        assert!(!c.udp_enabled);
+        assert!(c.tcp_enabled);
+        assert_eq!(c.port, 15453);
+        assert!(config_patch(BTreeMap::from([("--tcp-enabled".into(), "yes".into())])).is_err());
     }
     #[test]
     fn help_flags_are_not_taken_from_values_and_local_commands_are_exact() {

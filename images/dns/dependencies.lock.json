@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "base_image": "python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337",
+  "build_image": "protocol-target-lab/dns-build:2.90",
+  "image": "protocol-target-lab/dns:0.1.0",
+  "dnsmasq": {
+    "version": "2.90",
+    "url": "https://thekelleys.org.uk/dnsmasq/dnsmasq-2.90.tar.xz",
+    "file": "third-party/dnsmasq/dnsmasq-2.90.tar.xz",
+    "sha256": "8e50309bd837bfec9649a812e066c09b6988b73d749b7d293c06c57d46a109e4",
+    "license": "GPL-2.0-only OR GPL-3.0-only",
+    "copts": "-DNO_DHCP -DNO_TFTP -DNO_SCRIPT -DNO_AUTH -DNO_IPSET -DNO_LOOP -DNO_DUMPFILE -DNO_INOTIFY"
+  }
+}
