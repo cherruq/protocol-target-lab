@@ -2,6 +2,8 @@ Protocol Target Lab third-party source notes — protocol workers
 
 The project's original Rust manager, Web application, HTTP/DNS/MQTT/Telnet/IEC104/MQTT-SN/RTP/RTCP/DL-T645 wrappers and test clients,
 and integration scripts are distributed under the accompanying MIT LICENSE.
+The IEC101 native C wrapper is instead GPL-3.0-or-later, as identified in its
+source; its Python supervisor/client and local serial helper use MIT.
 Third-party components retain their original licenses. Full license and copyright
 texts for the locked Linux Rust dependency closure and bundled Web components
 are in THIRD_PARTY_LICENSES.txt. The version/source/file index is
@@ -120,5 +122,26 @@ DL/T645 runtime image:
   independent acceptance oracle keeps its own MIT license; it is not bundled
   into the manager or worker, nor represented as a complete native meter.
 
-This notice describes implemented HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP and DL/T645 components. Other protocol
+IEC101 runtime image and local helper:
+  Official lib60870-C 2.4.1, fixed public commit
+  7a388e3e133999e1ca77ba7521d55d074b7cd2bc, copyright Michael Zillgith and
+  upstream contributors, is distributed under GPL-3.0-or-later. The project
+  native C wrapper is also GPL-3.0-or-later. No native library patches are
+  applied. The complete corresponding original source archive, full COPYING,
+  wrapper, source SHA-256 and build recipes are in third-party/lib60870,
+  workers/iec101 and images/iec101; the runtime includes them under
+  /usr/share/doc/protocol-target-lab-iec101 and scripts/iec101-assets.sh exports
+  them beside the runtime archive. Retain these corresponding sources and
+  notices when redistributing the image/native binary; the MIT project license
+  does not relicense this native component. The separate Rust/Web license index
+  does not describe the worker's native dependency closure.
+  The original Python bridge/master and local PTY helper use MIT and the Python
+  standard library. The image preserves base CPython and OS notices. The deb
+  installs the optional helper and depends on the host's Python3 package,
+  retaining its upstream license through that package; Python is not linked
+  into the Rust manager. No physical serial driver or proprietary stack is
+  copied into the manager deb.
+
+This notice describes implemented HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP,
+RTCP, DL/T645 and IEC101 components. Other protocol
 libraries and a complete offline distribution are not included or claimed here.

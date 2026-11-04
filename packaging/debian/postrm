@@ -3,7 +3,11 @@ set -e
 case "$1" in
     purge)
         # These fixed directories belong exclusively to this package.
-        rm -rf -- /etc/protocol-target-lab /var/lib/protocol-target-lab /run/protocol-target-lab
+        rm -rf -- /etc/protocol-target-lab /var/lib/protocol-target-lab
+        # Never recursively erase serial ownership IPC after the helper has been
+        # removed. A stale/unknown daemon must retain its recovery metadata.
+        # Harmless lock files can remain in volatile /run until reboot.
+        rmdir /run/protocol-target-lab/serial /run/protocol-target-lab 2>/dev/null || true
         rm -f -- /etc/default/protocol-target-lab
         ;;
 esac
