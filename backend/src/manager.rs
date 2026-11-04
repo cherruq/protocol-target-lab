@@ -205,7 +205,8 @@ impl Manager {
         if let Some(existing) = resources.first() {
             if kind != "restart" && docker::running(existing) && docker::matches(existing, &config)
             {
-                docker::probe(&config).await?;
+                docker::probe_owned(&deployment, id, &docker::container_id(existing)?, &config)
+                    .await?;
                 self.record_container(id, docker::container_id(existing)?)
                     .await;
                 return Ok(Some(config));
@@ -237,7 +238,7 @@ impl Manager {
         let container = docker::start(&deployment, id, &config, &prepared_image).await?;
         let mut ready_error = "Protocol worker did not become ready".to_owned();
         for _ in 0..40 {
-            match docker::probe(&config).await {
+            match docker::probe_owned(&deployment, id, &container, &config).await {
                 Ok(()) => {
                     let owned = docker::owned(&deployment, Some(id)).await?;
                     if owned.len() == 1

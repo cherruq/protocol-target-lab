@@ -62,6 +62,7 @@ export default function ProtocolClientTests<C>({
   describeConfig,
   caseLabels,
   pathLabel = "测试参数",
+  receiveEvidence = false,
 }: {
   instance: Target<C>;
   protocolName: string;
@@ -70,6 +71,7 @@ export default function ProtocolClientTests<C>({
   describeConfig: (config: C) => string;
   caseLabels?: Record<string, string>;
   pathLabel?: string;
+  receiveEvidence?: boolean;
 }) {
   const state = useProtocolTests<C>(instance.id);
   const {
@@ -131,7 +133,9 @@ export default function ProtocolClientTests<C>({
             {protocolName} 内置客户端测试
           </h3>
           <p>
-            使用当前生效参数，在目标宿主机运行一次性客户端容器，核对实际协议收发。此测试不能替代跨节点验收。
+            {receiveEvidence
+              ? "使用当前生效参数发送真实数据报，再通过受管接收容器的私有只读观察器核对新鲜接收记录、字段和完整哈希；观察器不是 RTP ACK，发送成功或观察接口 HTTP 200 本身均不代表通过。此测试不能替代跨节点验收。"
+              : "使用当前生效参数，在目标宿主机运行一次性客户端容器，核对实际协议收发。此测试不能替代跨节点验收。"}
           </p>
         </div>
       </div>
@@ -301,11 +305,11 @@ export default function ProtocolClientTests<C>({
                     )}
                     <div className="test-wire-grid">
                       <Wire
-                        title={`${protocolName} 请求 / 发送`}
+                        title={`${protocolName} ${receiveEvidence ? "发送的数据报" : "请求 / 发送"}`}
                         message={check.request}
                       />
                       <Wire
-                        title={`${protocolName} 响应 / 交付`}
+                        title={`${protocolName} ${receiveEvidence ? "目标实际接收证据（私有观察器）" : "响应 / 交付"}`}
                         message={check.response}
                       />
                     </div>
@@ -324,7 +328,9 @@ export default function ProtocolClientTests<C>({
           ) : (
             <p className="test-empty">
               {current.status === "running"
-                ? "正在发送请求并收集实际协议响应，结果将自动刷新。"
+                ? receiveEvidence
+                  ? "正在发送数据报并核对目标实际接收证据，结果将自动刷新。"
+                  : "正在发送请求并收集实际协议响应，结果将自动刷新。"
                 : "没有可展示的逐项结果，请查看本次状态与错误原因。"}
             </p>
           )}

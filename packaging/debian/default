@@ -13,3 +13,5 @@ PLAB_TELNET_IMAGE=protocol-target-lab/telnet:0.1.0
 PLAB_IEC104_IMAGE=protocol-target-lab/iec104:0.1.1
 
 PLAB_MQTTSN_IMAGE=protocol-target-lab/mqtt-sn:0.1.1
+
+PLAB_RTP_IMAGE=protocol-target-lab/rtp:0.1.0

@@ -231,3 +231,32 @@ test("MQTT-SN topic edits join six isolated drafts without becoming another prot
     assert.equal(sameWorkspaceConfig(mqttSnDefaults, other), false);
   assert.equal(sameWorkspaceConfig(mqttSnDefaults, sn), false);
 });
+
+test("RTP capacity edits preserve all six previous drafts and save only their own workspace", async () => {
+  const { rtpDefaults } = await import("../src/rtp-config.ts");
+  const configs = [
+    defaults,
+    dnsDefaults,
+    mqttDefaults,
+    telnetDefaults,
+    iec104Defaults,
+    mqttSnDefaults,
+  ];
+  let drafts = {};
+  for (const [index, config] of configs.entries())
+    drafts = updateWorkspaceDrafts(
+      drafts,
+      `previous-${index}`,
+      { ...config, port: config.port + 1 },
+      config,
+    );
+  const rtp = { ...rtpDefaults, port: 18324, max_packet_size: 64 };
+  drafts = updateWorkspaceDrafts(drafts, "rtp", rtp, rtpDefaults);
+  assert.equal(Object.keys(drafts).length, 7);
+  const next = updateWorkspaceDrafts(drafts, "rtp", rtp, rtp);
+  assert.equal(Object.keys(next).length, 6);
+  assert.equal(Object.keys(drafts).length, 7);
+  for (const config of configs)
+    assert.equal(sameWorkspaceConfig(rtpDefaults, config), false);
+  assert.equal(sameWorkspaceConfig(rtpDefaults, rtp), false);
+});

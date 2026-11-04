@@ -27,26 +27,31 @@ import {
   sameMqttSnConfig,
   type MqttSnConfig,
 } from "./mqtt-sn-config.ts";
+import { isRtpConfig, sameRtpConfig, type RtpConfig } from "./rtp-config.ts";
 export type WorkspaceConfig =
   | StoredConfig
   | DnsConfig
   | MqttConfig
   | TelnetConfig
   | Iec104Config
-  | MqttSnConfig;
+  | MqttSnConfig
+  | RtpConfig;
 export type DraftConfig =
   | Config
   | DnsConfig
   | MqttConfig
   | TelnetConfig
   | Iec104Config
-  | MqttSnConfig;
+  | MqttSnConfig
+  | RtpConfig;
 export type WorkspaceDrafts = Record<string, DraftConfig>;
 
 export function sameWorkspaceConfig(
   a: WorkspaceConfig,
   b: WorkspaceConfig,
 ): boolean {
+  if (isRtpConfig(a) || isRtpConfig(b))
+    return isRtpConfig(a) && isRtpConfig(b) && sameRtpConfig(a, b);
   if (isDnsConfig(a) || isDnsConfig(b))
     return isDnsConfig(a) && isDnsConfig(b) && sameDnsConfig(a, b);
   if (isMqttConfig(a) || isMqttConfig(b))
@@ -75,8 +80,10 @@ export function updateWorkspaceDrafts(
           ? !isIec104Config(saved) || !sameIec104Config(edited, saved)
           : isMqttSnConfig(edited)
             ? !isMqttSnConfig(saved) || !sameMqttSnConfig(edited, saved)
-            : !isHttpConfig(saved) ||
-              !sameGeneratedConfig(edited, normalizeConfig(saved));
+            : isRtpConfig(edited)
+              ? !isRtpConfig(saved) || !sameRtpConfig(edited, saved)
+              : !isHttpConfig(saved) ||
+                !sameGeneratedConfig(edited, normalizeConfig(saved));
   const next = { ...drafts };
   if (changed) next[id] = edited;
   else delete next[id];
