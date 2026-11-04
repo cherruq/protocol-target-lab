@@ -1,0 +1,9 @@
+# Local reference materials, source snapshots, evidence, and project plans.
+/.local/
+/target/
+/build/
+/dist/
+/frontend/node_modules/
+/frontend/dist/
+__pycache__/
+*.pyc
