@@ -363,3 +363,26 @@ through Web/API/CLI configuration. The client sends RTP to the published host
 UDP endpoint. Opaque payload validation does not imply media decoding/playback,
 RTCP feedback, measured network loss or jitter. Same-host tests do not establish
 separate-node reachability.
+
+## RTCP automation (manager 0.12.0)
+
+```sh
+plabctl config set rtcp --port 15005 --max-packet-size 2048
+plabctl start rtcp
+plabctl tests run rtcp --method ALL
+plabctl connection-info rtcp
+plabctl logs rtcp
+plabctl stop rtcp
+```
+
+Full JSON requires `bind_ip`, `port`, `max_packet_size` and the literal
+`packet_profile:"sr-sdes"`. Partial flags preserve that profile. Capacity is
+64..65507 complete UDP bytes; RTCP alignment limits a legal compound to 65504
+but does not require capacity settings to be aligned. The fixed path is `session`;
+cases are `SR_SDES`, `REPORT_BLOCKS`, `SDES_ITEMS`, `PADDING` and `ALL`, twice each.
+
+The receiver accepts its supported SR+SDES CNAME profile without replying or
+requiring RTP to run. Native sender counters are declared values, not measured
+receiver statistics. NTP64 is reported as an exact hexadecimal string plus two
+uint32 words. Fresh private receive observations, not send/HTTP status, prove
+success; users cannot override the derived observer through configuration.

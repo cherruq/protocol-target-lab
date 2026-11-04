@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation is **HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN and RTP**, with manager version **0.11.0**,
-HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, and RTP receiver/client image **0.1.0**. Each protocol has one fixed workspace and
+The current implementation is **HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP and RTCP**, with manager version **0.12.0**,
+HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, and RTCP receiver/client image **0.1.0**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -94,7 +94,7 @@ build image.
 
 The HTTP image is
 `protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.11.0_amd64.deb`.
+The manager package is `dist/protocol-target-lab_0.12.0_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -127,7 +127,7 @@ Docker provider; a host with Docker CE can run development builds directly, whil
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.11.0_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.12.0_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
@@ -492,3 +492,26 @@ The image uses the already prepared locked Python base. Startup never pulls.
 The observer is not a configurable external service or a protocol reply; only
 the RTP UDP endpoint is published. Host-to-private-bridge connectivity on the
 supported rootful Linux Docker setup is required for managed receive verification.
+
+## RTCP receiver
+
+The independent RTCP workspace receives SR+SDES CNAME compounds using its fixed
+`sr-sdes` profile. It does not send RR/ACK or depend on RTP running. Readiness and
+clients prove fresh actual UDP reception through a private read-only observer.
+See [RTCP guide](docs/rtcp.md), [acceptance criteria](docs/rtcp-acceptance.md)
+and [CLI reference](docs/cli.md).
+
+```sh
+make rtcp-images OFFLINE=1
+make rtcp-assets OFFLINE=1
+sudo plabctl assets import ./dist/rtcp-assets
+plabctl config set rtcp --port 15005 --max-packet-size 2048
+plabctl start rtcp
+plabctl tests run rtcp --method ALL
+```
+
+The same prepared locked Python base is required for offline worker builds.
+Only UDP 5005 is published; observer TCP 18081 stays inside the private bridge.
+The native manager verifies the exact owned source container. Sender-declared
+counters and exact NTP hexadecimal fields describe received RTCP data, not
+media playback, clock synchronization or measured RTP loss/jitter.

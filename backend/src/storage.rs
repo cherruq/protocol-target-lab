@@ -19,6 +19,7 @@ pub struct Settings {
     pub iec104_image: String,
     pub mqtt_sn_image: String,
     pub rtp_image: String,
+    pub rtcp_image: String,
 }
 impl Settings {
     pub fn env() -> Result<Self> {
@@ -46,6 +47,7 @@ impl Settings {
                         "PLAB_IEC104_IMAGE",
                         "PLAB_MQTTSN_IMAGE",
                         "PLAB_RTP_IMAGE",
+                        "PLAB_RTCP_IMAGE",
                     ]
                     .contains(&key)
                     {
@@ -87,10 +89,13 @@ impl Settings {
             iec104_image: value("PLAB_IEC104_IMAGE", "protocol-target-lab/iec104:0.1.1"),
             mqtt_sn_image: value("PLAB_MQTTSN_IMAGE", "protocol-target-lab/mqtt-sn:0.1.1"),
             rtp_image: value("PLAB_RTP_IMAGE", "protocol-target-lab/rtp:0.1.0"),
+            rtcp_image: value("PLAB_RTCP_IMAGE", "protocol-target-lab/rtcp:0.1.0"),
         })
     }
     pub fn image_for(&self, protocol: &str) -> &str {
-        if protocol == "rtp" {
+        if protocol == "rtcp" {
+            &self.rtcp_image
+        } else if protocol == "rtp" {
             &self.rtp_image
         } else if protocol == "mqtt-sn" {
             &self.mqtt_sn_image
@@ -228,6 +233,7 @@ mod tests {
                 iec104_image: "unused".into(),
                 mqtt_sn_image: "unused".into(),
                 rtp_image: "unused".into(),
+                rtcp_image: "unused".into(),
             }
         }
     }
@@ -512,7 +518,7 @@ mod tests {
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
         doc.instances
-            .retain(|i| !["mqtt-sn", "rtp"].contains(&i.protocol_id.as_str()));
+            .retain(|i| !["mqtt-sn", "rtp", "rtcp"].contains(&i.protocol_id.as_str()));
         doc.instances[0].id = "mqtt-sn-demo".into();
         for i in &mut doc.instances {
             i.enabled = true;
@@ -549,7 +555,8 @@ mod tests {
         let fixture = Fixture::new();
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
-        doc.instances.retain(|i| i.protocol_id != "rtp");
+        doc.instances
+            .retain(|i| !["rtp", "rtcp"].contains(&i.protocol_id.as_str()));
         doc.instances[0].id = "rtp-demo".into();
         for i in &mut doc.instances {
             i.enabled = true;
@@ -577,6 +584,43 @@ mod tests {
         );
         assert_eq!(loaded.instances[6].id, "rtp-demo-2");
         assert!(!loaded.instances[6].enabled && loaded.instances[6].applied_config.is_none());
+        let bytes = std::fs::read(&settings.config).unwrap();
+        load(&settings).unwrap();
+        assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);
+    }
+    #[test]
+    fn seven_protocol_upgrade_preserves_snapshots_and_resolves_rtcp_id_collision() {
+        let fixture = Fixture::new();
+        let settings = fixture.settings();
+        let mut doc = load(&settings).unwrap();
+        doc.instances.retain(|i| i.protocol_id != "rtcp");
+        doc.instances[0].id = "rtcp-demo".into();
+        for i in &mut doc.instances {
+            i.enabled = true;
+            i.applied_config = Some(i.config.clone());
+        }
+        let original = serde_json::to_value(&doc.instances).unwrap();
+        let hashes = doc
+            .instances
+            .iter()
+            .map(|i| i.config.fingerprint())
+            .collect::<Vec<_>>();
+        save(&settings.config, &doc).unwrap();
+        let loaded = load(&settings).unwrap();
+        assert_eq!(loaded.deployment_id, doc.deployment_id);
+        assert_eq!(
+            serde_json::to_value(&loaded.instances[..7]).unwrap(),
+            original
+        );
+        assert_eq!(
+            loaded.instances[..7]
+                .iter()
+                .map(|i| i.config.fingerprint())
+                .collect::<Vec<_>>(),
+            hashes
+        );
+        assert_eq!(loaded.instances[7].id, "rtcp-demo-2");
+        assert!(!loaded.instances[7].enabled && loaded.instances[7].applied_config.is_none());
         let bytes = std::fs::read(&settings.config).unwrap();
         load(&settings).unwrap();
         assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);

@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "image": "protocol-target-lab/rtcp:0.1.0",
+  "base_image": "python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337",
+  "implementation": "Original Python standard-library RFC3550v2 SR/SDES compound profile receiver and private observer",
+  "runtime_dependencies": [],
+  "new_external_sources": [],
+  "source_license": "MIT",
+  "observer_schema": 1,
+  "public_transport": "UDP 5005; bridge host publish only",
+  "private_observer": "TCP 18081; never publish",
+  "packet_profile": "sr-sdes"
+}
