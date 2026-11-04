@@ -92,19 +92,4 @@ export function currentBfdRuntime(
     : null;
 }
 
-/** Monotonic elapsed plus conservative server-side sample age; never renew a cached heartbeat. */
-export function bfdHeartbeatAge(
-  workerAgeMs: number,
-  receivedAt: number,
-  now: number,
-  serverSampleAgeMs = 0,
-): number {
-  if (
-    ![workerAgeMs, receivedAt, now, serverSampleAgeMs].every(
-      (v) => Number.isFinite(v) && v >= 0,
-    ) ||
-    now < receivedAt
-  )
-    return Infinity;
-  return workerAgeMs + serverSampleAgeMs + now - receivedAt;
-}
+export { runtimeHeartbeatAge as bfdHeartbeatAge } from "./runtime-status.ts";

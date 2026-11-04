@@ -1,0 +1,13 @@
+Protocol Target Lab VXLAN software target and client use original MIT project
+code and the Python standard library. The accompanying project LICENSE applies.
+There is no RTP service dependency or third-party VXLAN runtime stack.
+
+The digest-locked public Python base retains its CPython license at
+/usr/local/lib/python3.12/LICENSE.txt and Debian package notices under
+/usr/share/doc. Their licenses are not replaced by the wrapper's MIT license.
+
+Original Linux kernel VXLAN/iproute2/capture tools are used only as independent
+validation infrastructure in a task-owned namespace. They are not copied into
+this runtime or its source asset set. Any redistribution of an oracle tools
+image retains its own package/source/license obligations. This image is a
+finite ARP VTEP, not a generic kernel L2 carrier or complete OS/source bundle.

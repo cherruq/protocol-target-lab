@@ -20,6 +20,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
   config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
   config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
+  config set vxlan [--bind-ip IP] [--port N] [--peer-ip IP] [--peer-port N] [--source-port N] [--vni N] [--inner-ip IP] [--inner-mac MAC] [--requester-ip IP] [--requester-mac MAC] [--reply-padding 0|18] [--scenario-json JSON]
   config set bfd [--bind-ip IP] [--peer-ip IP] [--interface IFACE] [--source-port N] [--local-discriminator N] [--min-tx-us N] [--min-rx-us N] [--detect-mult N] [--scenario-json JSON]
   config set iec101 [--bind-ip IP] [--single-port N] [--double-port N] [--single-json JSON] [--double-json JSON] [--serial-json JSON]
   config set dlt645 [--port N] [--meter-address DIGITS] [--energy-hundredths N] [--period-minutes N] [--programming-key-enabled true|false] [--security-json JSON]
@@ -29,7 +30,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set iec104 [--bind-ip IP] [--port N] [--max-connections N] [--points-json JSON]
   config set telnet [--bind-ip IP] [--port N] [--banner TEXT] [--max-connections N] [--max-line-bytes N]
   start PROTOCOL | stop PROTOCOL | restart PROTOCOL [--wait | --no-wait]
-  connection-info PROTOCOL | runtime bfd
+  connection-info PROTOCOL | runtime bfd|vxlan
   logs PROTOCOL [--follow]
   tests list PROTOCOL
   tests run PROTOCOL [--method ALL] [--path /ok | --name DNS_NAME] (DNS defaults to ALL) [--wait | --no-wait]
@@ -50,7 +51,7 @@ Local administrative commands (retain existing behavior; may require root):
   plabctl serial start --host IPv4 --single-port N --double-port N
   plabctl serial status | stop   local root-owned dual PTY helper
   plabctl assets import DIR     local image import from a checked manifest
-Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_IEC104_IMAGE, PLAB_MQTTSN_IMAGE, PLAB_DOCKER_SOCKET
+Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_IEC104_IMAGE, PLAB_MQTTSN_IMAGE, PLAB_RTP_IMAGE, PLAB_RTCP_IMAGE, PLAB_DLT645_IMAGE, PLAB_IEC101_IMAGE, PLAB_BFD_IMAGE, PLAB_VXLAN_IMAGE, PLAB_DOCKER_SOCKET
 "#;
 const LIMIT: usize = 8 * 1024 * 1024;
 type Result<T> = std::result::Result<T, Failure>;
@@ -162,6 +163,13 @@ const VALUE_OPTIONS: &[&str] = &[
     "--packet-profile",
     "--wire-profile",
     "--peer-ip",
+    "--peer-port",
+    "--vni",
+    "--inner-ip",
+    "--inner-mac",
+    "--requester-ip",
+    "--requester-mac",
+    "--reply-padding",
     "--interface",
     "--source-port",
     "--local-discriminator",
@@ -329,6 +337,13 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--packet-profile",
                 "--wire-profile",
                 "--peer-ip",
+                "--peer-port",
+                "--vni",
+                "--inner-ip",
+                "--inner-mac",
+                "--requester-ip",
+                "--requester-mac",
+                "--reply-padding",
                 "--interface",
                 "--source-port",
                 "--local-discriminator",
@@ -394,7 +409,9 @@ fn parse(args: &[String]) -> Result<Options> {
                     return Err(Failure::usage("--name applies to DNS tests"));
                 }
                 path.or(name).unwrap_or_else(|| {
-                    if *p == "bfd" {
+                    if *p == "vxlan" {
+                        crate::vxlan::PATH.into()
+                    } else if *p == "bfd" {
                         crate::bfd::PATH.into()
                     } else if *p == "iec101" {
                         "dual".into()
@@ -727,7 +744,10 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
             continue;
         }
         let value = match key.as_str() {
-            "--source-port"
+            "--peer-port"
+            | "--vni"
+            | "--reply-padding"
+            | "--source-port"
             | "--local-discriminator"
             | "--min-tx-us"
             | "--min-rx-us"
@@ -1045,6 +1065,36 @@ mod tests {
     use crate::model::ResponseMode;
     fn args(s: &str) -> Vec<String> {
         s.split_whitespace().map(str::to_owned).collect()
+    }
+    #[test]
+    fn vxlan_cli_types_ports_modes_and_uses_arp_path() {
+        let opts = parse(&args("tests run vxlan")).unwrap();
+        assert_eq!(opts.timeout, 120);
+        assert!(
+            matches!(opts.command,Command::TestRun(p,m,path,true) if p=="vxlan"&&m=="ALL"&&path=="arp")
+        );
+        let p = config_patch(BTreeMap::from([
+            ("--peer-port".into(), "4790".into()),
+            ("--vni".into(), "16777215".into()),
+            ("--reply-padding".into(), "18".into()),
+            ("--inner-mac".into(), "02:AA:BB:CC:DD:20".into()),
+            ("--scenario-json".into(), r#"{"mode":"short-arp"}"#.into()),
+        ]))
+        .unwrap();
+        let c: ProtocolConfig = crate::vxlan::VxlanConfig::default().into();
+        if let ProtocolConfig::Vxlan(changed) = c.patch(p).unwrap() {
+            assert_eq!(changed.vni, 16777215);
+            assert_eq!(changed.peer_port, 4790);
+            assert_eq!(changed.reply_padding, 18);
+            assert_eq!(changed.inner_mac, "02:aa:bb:cc:dd:20");
+            assert_eq!(changed.scenario.mode(), "short-arp");
+        } else {
+            panic!("VXLAN shape lost");
+        }
+        assert!(
+            matches!(parse(&args("runtime vxlan")).unwrap().command,Command::Runtime(p) if p=="vxlan")
+        );
+        assert!(parse(&args("config set vxlan --vni 0 --peer-port 4789")).is_ok());
     }
     #[test]
     fn bfd_cli_uses_complete_scenarios_and_a_bounded_longer_wait() {

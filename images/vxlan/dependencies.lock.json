@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "image": "protocol-target-lab/vxlan:0.1.0",
+  "base_image": "python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337",
+  "implementation": "Autonomous finite IPv4 VXLAN Ethernet/ARP target with eleven target-side modes and causal read-only observer",
+  "runtime_dependencies": [],
+  "new_external_sources": [],
+  "source_license": "MIT",
+  "public_transport": "host network exact receiver and fixed high source UDP sockets; private127.0.0.1:18085 observer",
+  "oracle": {
+    "implementation": "original host Linux kernel VXLAN in private task namespace",
+    "runtime_dependency": false,
+    "scope": "native ARP neighbor resolution/encapsulation/decapsulation; not an arbitrary L2 carrier/helper product"
+  }
+}

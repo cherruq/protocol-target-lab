@@ -4,7 +4,7 @@
 point to the same native binary, using the management HTTP API for workspace
 commands. It does not edit the server's files or invoke local Docker for these
 commands. The Web UI is for interactive use; the CLI exposes the same implemented
-HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101 and BFD
+HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD and VXLAN
 workspaces to automation. Both control the same saved settings and resources.
 
 API commands default to `http://127.0.0.1:18000`. Set `PLAB_URL` or pass `--url`
@@ -574,3 +574,20 @@ Cleanup sends a real AdminDown only after revalidating the same source and own
 epoch, then requires observed Down. It never labels administrative release as a
 detection timeout or touches a replaced peer. Standard JSON/exit/session/cleanup
 contracts still apply, with a512KiB report cap.
+
+## VXLAN
+
+Use `plabctl config set vxlan` with `--bind-ip`, `--port`, `--peer-ip`,
+`--peer-port`, `--source-port`, `--vni`, `--inner-ip`, `--inner-mac`,
+`--requester-ip`, `--requester-mac`, `--reply-padding` (0 or18), and
+`--scenario-json '{"mode":"normal"}'`. MAC values are normalized to lowercase.
+VNI0 is legal, and requester0.0.0.0 preserves ARP probing. Same outer address
+requires separate listen/source/counterpart receive ports.
+
+`plabctl runtime vxlan` reads current local readiness and counters without sending
+ARP. `plabctl tests run vxlan --method ALL` runs four cases twice for the applied
+mode: ARP, RESERVED_BITS, REQUEST_THA and INVALID_REQUEST. Each checks fresh source
+causality and actual wire bytes or a bounded silent observation. Configure each
+of the eleven target modes explicitly for the full mode matrix. The disposable
+client must bind the configured counterpart IP and receive port on the manager
+host; a remote CLI invocation does not move that client to the CLI host.

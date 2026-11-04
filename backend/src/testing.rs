@@ -51,6 +51,16 @@ impl TestRequest {
     pub fn validate_for(&self, config: &ProtocolConfig) -> Result<()> {
         match config {
             ProtocolConfig::Http(_) => self.validate(),
+            ProtocolConfig::Vxlan(_) => {
+                if !crate::vxlan::CASES.contains(&self.method.as_str())
+                    || self.path != crate::vxlan::PATH
+                {
+                    bail!(
+                        "config.test: choose VXLAN ARP/RESERVED_BITS/REQUEST_THA/INVALID_REQUEST/ALL and arp path"
+                    );
+                }
+                Ok(())
+            }
             ProtocolConfig::Bfd(c) => {
                 if !c.cases().contains(&self.method.as_str()) || self.path != crate::bfd::PATH {
                     bail!(
@@ -303,6 +313,15 @@ pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) ->
         let state = crate::bfd::snapshot(&deployment, instance_id, &source_id, c).await?;
         crate::bfd::client_preflight(c, &state).await?;
     }
+    if let ProtocolConfig::Vxlan(c) = &config {
+        if resources[0]["Image"] != image_id {
+            bail!(
+                "config.test: VXLAN client image differs from running source image; restart explicitly to apply configured image"
+            );
+        }
+        crate::vxlan::snapshot(&deployment, instance_id, &source_id, c).await?;
+        crate::vxlan::client_preflight(c).await?;
+    }
     cleanup_tests(&deployment, None)
         .await
         .context("cannot clean previous client resources")?;
@@ -442,7 +461,8 @@ async fn run_client(
         | ProtocolConfig::Rtcp(_)
         | ProtocolConfig::Dlt645(_)
         | ProtocolConfig::Iec101(_)
-        | ProtocolConfig::Bfd(_) => args.extend([
+        | ProtocolConfig::Bfd(_)
+        | ProtocolConfig::Vxlan(_) => args.extend([
             "--config-json".into(),
             serde_json::to_string(&run.applied_config)?,
         ]),
@@ -504,6 +524,56 @@ async fn run_client(
                 .into(),
         ]);
         bfd_identity = Some((
+            before[0]["State"]["Pid"].clone(),
+            before[0]["State"]["StartedAt"].clone(),
+            state["boot_id"].clone(),
+            state["runtime_id"].clone(),
+        ));
+    }
+    let mut vxlan_identity = None;
+    if let ProtocolConfig::Vxlan(c) = &run.applied_config {
+        let before = docker::owned(deployment, Some(&run.instance_id)).await?;
+        if before.len() != 1 || before[0]["Image"] != image {
+            bail!("VXLAN source image changed before client execution");
+        }
+        let state =
+            crate::vxlan::snapshot(deployment, &run.instance_id, &run.source_container_id, c)
+                .await?;
+        crate::vxlan::client_preflight(c).await?;
+        let index = args
+            .iter()
+            .position(|s| s == image)
+            .context("client image argument missing")?;
+        args.splice(
+            index..index,
+            [
+                "--user".into(),
+                "0:0".into(),
+                "--cap-drop".into(),
+                "ALL".into(),
+                "--cap-add".into(),
+                "NET_BIND_SERVICE".into(),
+                "--ipc".into(),
+                "private".into(),
+            ],
+        );
+        args.extend([
+            "--observer-host".into(),
+            "127.0.0.1".into(),
+            "--observer-port".into(),
+            crate::vxlan::OBSERVER_PORT.to_string(),
+            "--expected-boot-id".into(),
+            state["boot_id"]
+                .as_str()
+                .context("VXLAN boot missing")?
+                .into(),
+            "--expected-runtime-id".into(),
+            state["runtime_id"]
+                .as_str()
+                .context("VXLAN runtime missing")?
+                .into(),
+        ]);
+        vxlan_identity = Some((
             before[0]["State"]["Pid"].clone(),
             before[0]["State"]["StartedAt"].clone(),
             state["boot_id"].clone(),
@@ -661,6 +731,27 @@ async fn run_client(
                     .err()
                     .map(|e| format!("{e:#}"))
                     .unwrap_or_else(|| "BFD source PID/boot changed during testing".into())
+            );
+        }
+    }
+    if let (ProtocolConfig::Vxlan(c), Some((pid, start, boot, nonce))) =
+        (&run.applied_config, vxlan_identity)
+    {
+        let result =
+            crate::vxlan::snapshot(deployment, &run.instance_id, &run.source_container_id, c).await;
+        let unchanged = target.len() == 1
+            && target[0]["State"]["Pid"] == pid
+            && target[0]["State"]["StartedAt"] == start
+            && result
+                .as_ref()
+                .is_ok_and(|s| s["boot_id"] == boot && s["runtime_id"] == nonce);
+        if !unchanged {
+            report["passed"] = false.into();
+            report["source_verification_error"] = json!(
+                result
+                    .err()
+                    .map(|e| format!("{e:#}"))
+                    .unwrap_or_else(|| "VXLAN source PID/boot changed during testing".into())
             );
         }
     }

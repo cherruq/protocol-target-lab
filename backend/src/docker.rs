@@ -74,6 +74,14 @@ pub async fn prepare_image(image: &str, config: &ProtocolConfig) -> Result<Strin
         {
             bail!("BFD image lacks required control/observer/client capability");
         }
+        if matches!(config, ProtocolConfig::Vxlan(_))
+            && ["control", "observer", "client"].iter().any(|k| {
+                metadata[0]["Config"]["Labels"][format!("io.protocol-target-lab.vxlan-{k}-schema")]
+                    != "1"
+            })
+        {
+            bail!("VXLAN image lacks required control/observer/client capability");
+        }
         if matches!(config, ProtocolConfig::Iec101(_))
             && metadata[0]["Config"]["Labels"]["io.protocol-target-lab.iec101-dual-schema"] != "1"
         {
@@ -173,6 +181,9 @@ pub fn matches(v: &Value, config: &ProtocolConfig) -> bool {
     if matches!(config, ProtocolConfig::Bfd(_)) && !crate::bfd::container_matches(v) {
         return false;
     }
+    if matches!(config, ProtocolConfig::Vxlan(_)) && !crate::vxlan::container_matches(v) {
+        return false;
+    }
     if let ProtocolConfig::Iec101(c) = config
         && (v["HostConfig"]["NetworkMode"] != "bridge"
             || v["HostConfig"]["Privileged"] != false
@@ -253,7 +264,10 @@ pub async fn start(
         "--network".into(),
         if matches!(
             config,
-            ProtocolConfig::Http(_) | ProtocolConfig::MqttSn(_) | ProtocolConfig::Bfd(_)
+            ProtocolConfig::Http(_)
+                | ProtocolConfig::MqttSn(_)
+                | ProtocolConfig::Bfd(_)
+                | ProtocolConfig::Vxlan(_)
         ) {
             "host".into()
         } else {
@@ -302,6 +316,26 @@ pub async fn start(
                 "private".into(),
                 "--label".into(),
                 format!("{}={nonce}", crate::bfd::RUNTIME_LABEL),
+                "--env".into(),
+                format!("PLAB_RUNTIME_ID={nonce}"),
+                immutable_image,
+                "--config-json".into(),
+                serde_json::to_string(config)?,
+            ]);
+        }
+        ProtocolConfig::Vxlan(_) => {
+            let nonce = uuid::Uuid::new_v4().simple().to_string();
+            args.extend([
+                "--user".into(),
+                "0:0".into(),
+                "--cap-drop".into(),
+                "ALL".into(),
+                "--cap-add".into(),
+                "NET_BIND_SERVICE".into(),
+                "--ipc".into(),
+                "private".into(),
+                "--label".into(),
+                format!("{}={nonce}", crate::vxlan::RUNTIME_LABEL),
                 "--env".into(),
                 format!("PLAB_RUNTIME_ID={nonce}"),
                 immutable_image,
@@ -369,6 +403,10 @@ pub async fn probe_owned(
         crate::bfd::snapshot(deployment, instance, source_id, c).await?;
         return Ok(());
     }
+    if let ProtocolConfig::Vxlan(c) = config {
+        crate::vxlan::snapshot(deployment, instance, source_id, c).await?;
+        return Ok(());
+    }
     if let ProtocolConfig::Iec101(c) = config {
         let before = owned(deployment, Some(instance)).await?;
         if before.len() != 1
@@ -420,6 +458,9 @@ pub async fn probe(config: &ProtocolConfig) -> Result<()> {
     let config = match config {
         ProtocolConfig::Bfd(_) => {
             bail!("BFD readiness requires exact owned source and private state")
+        }
+        ProtocolConfig::Vxlan(_) => {
+            bail!("VXLAN readiness requires exact owned source and private state")
         }
         ProtocolConfig::Dlt645(c) => return crate::dlt645::probe(c).await,
         ProtocolConfig::Iec101(c) => return crate::iec101::probe(c).await,
@@ -539,6 +580,16 @@ pub async fn preflight_port(
             }
         });
         return crate::bfd::preflight(c, old, own_id).await;
+    }
+    if let ProtocolConfig::Vxlan(c) = config {
+        let old = own.and_then(|o| {
+            if let ProtocolConfig::Vxlan(c) = o {
+                Some(c)
+            } else {
+                None
+            }
+        });
+        return crate::vxlan::preflight(c, old, own_id).await;
     }
     if let ProtocolConfig::Iec101(c) = config {
         let old = own.and_then(|o| {

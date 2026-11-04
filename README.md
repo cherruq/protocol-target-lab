@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation supports **eleven protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101 and BFD**, with manager version **0.15.0**,
-HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, IEC101 dual-channel slave/client image **0.1.0**, and BFD peer/client image **0.1.0**. Each protocol has one fixed workspace and
+The current implementation supports **twelve protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD and VXLAN**, with manager version **0.16.0**,
+HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, IEC101 dual-channel slave/client image **0.1.0**, BFD peer/client image **0.1.0**, and VXLAN ARP responder/client image **0.1.0**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -100,7 +100,7 @@ build image.
 
 The HTTP image is
 `protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.15.0_amd64.deb`.
+The manager package is `dist/protocol-target-lab_0.16.0_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -134,7 +134,7 @@ Docker provider; a host with Docker CE can run development builds directly, whil
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.15.0_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.16.0_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
@@ -171,7 +171,7 @@ There is one main configuration per protocol. Start, stop, restart, logs, and
 connection tests operate directly on that protocol's workspace. Internal runtime
 components do not create more workspaces: IEC101 keeps both independent
 address-width channels simultaneously in one workspace, while an MQTT-SN private broker is an internal dependency. Temporary
-test containers also remain internal resources. The eleven implemented protocols
+test containers also remain internal resources. The twelve implemented protocols
 listed above each have one fixed workspace.
 
 Existing single-HTTP configurations retain their original ID, ownership hash,
@@ -634,3 +634,20 @@ separate independent oracle, not a dependency bundled into the worker or deb.
 Software-loopback/native-oracle evidence does not establish a physical fault,
 routing convergence or whole-host reboot. See [BFD guide](docs/bfd.md),
 [acceptance scope](docs/bfd-acceptance.md) and [CLI reference](docs/cli.md).
+
+## VXLAN ARP target
+
+The fixed VXLAN workspace implements a finite unicast IPv4 Ethernet/ARP responder
+with eleven persistent target response modes. It validates each complete Request
+before constructing or suppressing a Reply. The server uses two exclusive UDP
+sockets and sends to the configured fixed counterpart receive port, independently
+of the incoming source port. Web and CLI expose the same configuration, local
+runtime observation, lifecycle, logs and disposable same-image client.
+
+`plabctl tests run vxlan --method ALL` checks the current applied mode with eight
+fresh Requests and actual receive plus causal source evidence. It does not switch
+modes. A remote counterpart must run the client on its own node; built-in API
+clients execute on the manager host. Local readiness does not mean a connected
+tunnel. This profile provides ARP behavior rather than a general L2 bridge or
+IPv4/ICMP service. See [VXLAN details](docs/vxlan.md) and
+[acceptance scope](docs/vxlan-acceptance.md).
