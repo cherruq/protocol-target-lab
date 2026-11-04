@@ -20,6 +20,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
   config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
   config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
+  config set rtcp [--bind-ip IP] [--port N] [--max-packet-size N] [--packet-profile sr-sdes]
   config set rtp [--bind-ip IP] [--port N] [--max-packet-size N]
   config set mqtt-sn [--port N] [--discovery-group IP] [--discovery-port N] [--gateway-id N] [--broker-port N] [--predefined-topics-json JSON]
   config set iec104 [--bind-ip IP] [--port N] [--max-connections N] [--points-json JSON]
@@ -151,6 +152,7 @@ const VALUE_OPTIONS: &[&str] = &[
     "--discovery-group",
     "--max-connections",
     "--max-packet-size",
+    "--packet-profile",
     "--banner",
     "--max-line-bytes",
 ];
@@ -293,6 +295,7 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--discovery-group",
                 "--max-connections",
                 "--max-packet-size",
+                "--packet-profile",
                 "--banner",
                 "--max-line-bytes",
             ] {
@@ -344,6 +347,8 @@ fn parse(args: &[String]) -> Result<Options> {
                         "ALL".into()
                     } else if *p == "mqtt" {
                         crate::mqtt::TEST_TOPIC.into()
+                    } else if *p == "rtcp" {
+                        crate::rtcp::PATH.into()
                     } else if *p == "rtp" {
                         crate::rtp::PATH.into()
                     } else if *p == "mqtt-sn" {
@@ -1036,6 +1041,25 @@ mod tests {
         ] {
             assert!(full.patch(patch).is_err());
         }
+    }
+    #[test]
+    fn rtcp_cli_preserves_profile_and_uses_session_path() {
+        let o = parse(&args("tests run rtcp")).unwrap();
+        assert!(
+            matches!(o.command,Command::TestRun(ref p,ref m,ref path,true) if p=="rtcp" && m=="ALL" && path==crate::rtcp::PATH)
+        );
+        let patch = config_patch(BTreeMap::from([
+            ("--packet-profile".into(), "sr-sdes".into()),
+            ("--port".into(), "15005".into()),
+        ]))
+        .unwrap();
+        let c: ProtocolConfig = crate::rtcp::RtcpConfig::default().into();
+        let c = c.patch(patch).unwrap();
+        assert_eq!(c.port(), 15005);
+        assert_eq!(
+            serde_json::to_value(c).unwrap()["packet_profile"],
+            "sr-sdes"
+        );
     }
     #[test]
     fn rtp_cli_defaults_and_partial_capacity_are_protocol_specific() {

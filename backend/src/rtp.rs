@@ -4,7 +4,6 @@ use serde_json::{Value, json};
 
 pub const CASES: [&str; 5] = ["BASIC", "CSRC_EXTENSION", "PADDING", "SEQUENCE", "ALL"];
 pub const PATH: &str = "stream";
-pub const OBSERVER_PORT: u16 = 18081;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct RtpConfig {
@@ -44,54 +43,6 @@ impl RtpConfig {
 pub fn schema() -> Value {
     json!({"protocol_id":"rtp","type":"object","additionalProperties":false,"required":["bind_ip","port","max_packet_size"],"properties":{"bind_ip":{"type":"string","format":"ipv4"},"port":{"type":"integer","minimum":1,"maximum":65535},"max_packet_size":{"type":"integer","minimum":64,"maximum":65507}},"default":RtpConfig::default(),"notes":["RTPv2 structural receiver with opaque payload; no RTP response or media decoding","max_packet_size limits the complete UDP payload, not a minimum RTP header size","Client success requires fresh received evidence from a private, read-only receiver observer"]})
 }
-/// The address comes only from the exact, already owned Docker target.
-pub fn observer_host(
-    v: &Value,
-    deployment: &str,
-    instance: &str,
-    config: &crate::model::ProtocolConfig,
-) -> Result<String> {
-    let l = &v["Config"]["Labels"];
-    if l[crate::docker::OWNER] != deployment
-        || l[crate::docker::INSTANCE] != instance
-        || l["io.protocol-target-lab.managed"] != "true"
-        || !crate::docker::running(v)
-        || !crate::docker::matches(v, config)
-    {
-        bail!("RTP observer target has mismatched ownership, state or configuration");
-    }
-    let networks = v["NetworkSettings"]["Networks"]
-        .as_object()
-        .ok_or_else(|| anyhow::anyhow!("RTP target has no bridge network"))?;
-    if networks.len() != 1 || !networks.contains_key("bridge") {
-        bail!("RTP observer requires its private Docker bridge address");
-    }
-    let ip: std::net::Ipv4Addr = networks["bridge"]["IPAddress"]
-        .as_str()
-        .unwrap_or("")
-        .parse()?;
-    if ip.is_unspecified() || ip.is_loopback() || ip.is_multicast() || ip.is_broadcast() {
-        bail!("invalid RTP bridge address");
-    }
-    Ok(ip.to_string())
-}
-async fn observer_get(client: &reqwest::Client, host: &str, path: &str) -> Result<Value> {
-    let mut response = client
-        .get(format!("http://{host}:{OBSERVER_PORT}{path}"))
-        .send()
-        .await?;
-    if response.status() != 200 {
-        bail!("RTP observer returned {}", response.status());
-    }
-    let mut body = Vec::new();
-    while let Some(chunk) = response.chunk().await? {
-        if body.len() + chunk.len() > 65536 {
-            bail!("RTP observer response exceeded 64 KiB");
-        }
-        body.extend_from_slice(&chunk);
-    }
-    Ok(serde_json::from_slice(&body)?)
-}
 pub async fn probe(config: &RtpConfig, observer: &str) -> Result<()> {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
     tokio::time::timeout_at(deadline, probe_inner(config, observer))
@@ -109,7 +60,7 @@ async fn probe_inner(config: &RtpConfig, observer: &str) -> Result<()> {
         .redirect(reqwest::redirect::Policy::none())
         .timeout(std::time::Duration::from_secs(2))
         .build()?;
-    let status = observer_get(&client, observer, "/v1/status").await?;
+    let status = crate::receiver::observer_get(&client, observer, "/v1/status").await?;
     let boot = status["boot_id"]
         .as_str()
         .filter(|s| s.len() == 32)
@@ -140,7 +91,7 @@ async fn probe_inner(config: &RtpConfig, observer: &str) -> Result<()> {
     socket.send_to(&packet, (target, config.port)).await?;
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
     loop {
-        let seen = observer_get(
+        let seen = crate::receiver::observer_get(
             &client,
             observer,
             &format!("/v1/observations?after={after}&raw_sha256={raw}"),
@@ -183,7 +134,7 @@ mod tests {
         let c: crate::model::ProtocolConfig = RtpConfig::default().into();
         let v = json!({"Id":"abc","State":{"Running":true},"Config":{"Labels":{crate::docker::OWNER:"deploy",crate::docker::INSTANCE:"rtp-demo","io.protocol-target-lab.managed":"true",crate::docker::HASH:c.fingerprint(),"io.protocol-target-lab.rtp-response-schema":"1","io.protocol-target-lab.rtp-observer-schema":"1"}},"HostConfig":{"NetworkMode":"bridge","PortBindings":{"5004/udp":[{"HostIp":"0.0.0.0","HostPort":"5004"}]}},"NetworkSettings":{"Networks":{"bridge":{"IPAddress":"172.17.0.2"}}}});
         assert_eq!(
-            observer_host(&v, "deploy", "rtp-demo", &c).unwrap(),
+            crate::receiver::observer_host(&v, "deploy", "rtp-demo", &c).unwrap(),
             "172.17.0.2"
         );
         for (pointer, value) in [
@@ -200,12 +151,12 @@ mod tests {
         ] {
             let mut bad = v.clone();
             *bad.pointer_mut(pointer).unwrap() = value;
-            assert!(observer_host(&bad, "deploy", "rtp-demo", &c).is_err());
+            assert!(crate::receiver::observer_host(&bad, "deploy", "rtp-demo", &c).is_err());
         }
         let mut bad = v.clone();
         bad["HostConfig"]["PortBindings"]["18081/tcp"] =
             json!([{"HostIp":"0.0.0.0","HostPort":"18081"}]);
-        assert!(observer_host(&bad, "deploy", "rtp-demo", &c).is_err());
+        assert!(crate::receiver::observer_host(&bad, "deploy", "rtp-demo", &c).is_err());
     }
     #[test]
     fn full_and_partial_config_bounds_are_strict() {

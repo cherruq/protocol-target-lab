@@ -1,6 +1,6 @@
 Protocol Target Lab third-party source notes — protocol workers
 
-The project's original Rust manager, Web application, HTTP/DNS/MQTT/Telnet/IEC104/MQTT-SN/RTP wrappers and test clients,
+The project's original Rust manager, Web application, HTTP/DNS/MQTT/Telnet/IEC104/MQTT-SN/RTP/RTCP wrappers and test clients,
 and integration scripts are distributed under the accompanying MIT LICENSE.
 Third-party components retain their original licenses. Full license and copyright
 texts for the locked Linux Rust dependency closure and bundled Web components
@@ -104,5 +104,12 @@ RTP runtime image:
   Offline worker rebuilds require that prepared base; the export does not claim
   a complete operating-system/compiler source distribution.
 
-This notice describes implemented HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN and RTP components. Other protocol
+RTCP runtime image:
+  The original SR+SDES compound parser, private observer and clients use MIT
+  licensed project code with Python standard-library facilities. The pinned
+  Python base retains its CPython/OS notices and licenses. No GStreamer or other
+  media/session stack is bundled. Original sources, tests and build/base
+  provenance accompany the worker export; rebuilding requires the prepared base.
+
+This notice describes implemented HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP and RTCP components. Other protocol
 libraries and a complete offline distribution are not included or claimed here.

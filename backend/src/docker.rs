@@ -66,10 +66,15 @@ pub async fn prepare_image(image: &str, config: &ProtocolConfig) -> Result<Strin
         {
             bail!("Protocol image is incompatible; import matching assets");
         }
-        if matches!(config, ProtocolConfig::Rtp(_))
-            && metadata[0]["Config"]["Labels"]["io.protocol-target-lab.rtp-observer-schema"] != "1"
+        if matches!(config, ProtocolConfig::Rtp(_) | ProtocolConfig::Rtcp(_))
+            && metadata[0]["Config"]["Labels"][format!(
+                "io.protocol-target-lab.{}-observer-schema",
+                config.protocol_id()
+            )] != "1"
         {
-            bail!("RTP image lacks the private receive observer schema; import matching assets");
+            bail!(
+                "Receiver image lacks the private receive observer schema; import matching assets"
+            );
         }
         if matches!(config, ProtocolConfig::Mqtt(_))
             && metadata[0]["Config"]["Labels"]["io.protocol-target-lab.mqtt-packet-size"].as_str()
@@ -150,14 +155,20 @@ pub fn running(v: &Value) -> bool {
     v["State"]["Running"].as_bool() == Some(true)
 }
 pub fn matches(v: &Value, config: &ProtocolConfig) -> bool {
-    if let ProtocolConfig::Rtp(c) = config {
+    if matches!(config, ProtocolConfig::Rtp(_) | ProtocolConfig::Rtcp(_)) {
         let p = &v["HostConfig"]["PortBindings"];
         if v["HostConfig"]["NetworkMode"] != "bridge"
-            || v["Config"]["Labels"]["io.protocol-target-lab.rtp-response-schema"] != "1"
-            || v["Config"]["Labels"]["io.protocol-target-lab.rtp-observer-schema"] != "1"
+            || v["Config"]["Labels"][format!(
+                "io.protocol-target-lab.{}-response-schema",
+                config.protocol_id()
+            )] != "1"
+            || v["Config"]["Labels"][format!(
+                "io.protocol-target-lab.{}-observer-schema",
+                config.protocol_id()
+            )] != "1"
             || p.as_object().is_none_or(|p| p.len() != 1)
-            || p["5004/udp"]
-                != serde_json::json!([{"HostIp":c.bind_ip,"HostPort":c.port.to_string()}])
+            || p[format!("{}/udp", config.internal_port())]
+                != serde_json::json!([{"HostIp":config.bind_ip(),"HostPort":config.port().to_string()}])
         {
             return false;
         }
@@ -285,13 +296,17 @@ pub async fn probe_owned(
     source_id: &str,
     config: &ProtocolConfig,
 ) -> Result<()> {
-    if let ProtocolConfig::Rtp(c) = config {
+    if matches!(config, ProtocolConfig::Rtp(_) | ProtocolConfig::Rtcp(_)) {
         let before = owned(deployment, Some(instance)).await?;
         if before.len() != 1 || container_id(&before[0])? != source_id {
             bail!("RTP readiness target changed");
         }
-        let host = crate::rtp::observer_host(&before[0], deployment, instance, config)?;
-        crate::rtp::probe(c, &host).await?;
+        let host = crate::receiver::observer_host(&before[0], deployment, instance, config)?;
+        match config {
+            ProtocolConfig::Rtp(c) => crate::rtp::probe(c, &host).await?,
+            ProtocolConfig::Rtcp(c) => crate::rtcp::probe(c, &host).await?,
+            _ => unreachable!(),
+        }
         let after = owned(deployment, Some(instance)).await?;
         if after.len() != 1
             || container_id(&after[0])? != source_id
@@ -308,6 +323,7 @@ pub async fn probe_owned(
 }
 pub async fn probe(config: &ProtocolConfig) -> Result<()> {
     let config = match config {
+        ProtocolConfig::Rtcp(_) => bail!("RTCP readiness requires exact owned container observer"),
         ProtocolConfig::Rtp(_) => bail!("RTP readiness requires exact owned container observer"),
         ProtocolConfig::Dns(c) => return crate::dns::probe(c).await,
         ProtocolConfig::Mqtt(c) => return crate::mqtt::probe(c).await,

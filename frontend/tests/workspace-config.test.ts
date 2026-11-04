@@ -260,3 +260,39 @@ test("RTP capacity edits preserve all six previous drafts and save only their ow
     assert.equal(sameWorkspaceConfig(rtpDefaults, config), false);
   assert.equal(sameWorkspaceConfig(rtpDefaults, rtp), false);
 });
+
+test("RTCP fixed profile and capacity join eight isolated drafts without changing RTP", async () => {
+  const { rtcpDefaults } = await import("../src/rtcp-config.ts");
+  const { rtpDefaults } = await import("../src/rtp-config.ts");
+  const configs = [
+    defaults,
+    dnsDefaults,
+    mqttDefaults,
+    telnetDefaults,
+    iec104Defaults,
+    mqttSnDefaults,
+    rtpDefaults,
+  ];
+  let drafts = {};
+  for (const [index, config] of configs.entries())
+    drafts = updateWorkspaceDrafts(
+      drafts,
+      `prior-${index}`,
+      { ...config, port: config.port + 1 },
+      config,
+    );
+  const rtcp = { ...rtcpDefaults, max_packet_size: 65507, port: 18424 };
+  drafts = updateWorkspaceDrafts(drafts, "rtcp", rtcp, rtcpDefaults);
+  assert.equal(Object.keys(drafts).length, 8);
+  assert.equal(
+    Object.keys(updateWorkspaceDrafts(drafts, "rtcp", rtcp, rtcp)).length,
+    7,
+  );
+  for (const config of configs)
+    assert.equal(sameWorkspaceConfig(rtcpDefaults, config), false);
+  assert.equal(
+    sameWorkspaceConfig(rtcpDefaults, structuredClone(rtcpDefaults)),
+    true,
+  );
+  assert.equal(sameWorkspaceConfig(rtcpDefaults, rtcp), false);
+});

@@ -51,6 +51,14 @@ impl TestRequest {
     pub fn validate_for(&self, config: &ProtocolConfig) -> Result<()> {
         match config {
             ProtocolConfig::Http(_) => self.validate(),
+            ProtocolConfig::Rtcp(_) => {
+                if !crate::rtcp::CASES.contains(&self.method.as_str())
+                    || self.path != crate::rtcp::PATH
+                {
+                    bail!("config.test: choose available RTCP case and session path");
+                }
+                Ok(())
+            }
             ProtocolConfig::Rtp(_) => {
                 if !crate::rtp::CASES.contains(&self.method.as_str())
                     || self.path != crate::rtp::PATH
@@ -396,7 +404,8 @@ async fn run_client(
         | ProtocolConfig::Telnet(_)
         | ProtocolConfig::Iec104(_)
         | ProtocolConfig::MqttSn(_)
-        | ProtocolConfig::Rtp(_) => args.extend([
+        | ProtocolConfig::Rtp(_)
+        | ProtocolConfig::Rtcp(_) => args.extend([
             "--config-json".into(),
             serde_json::to_string(&run.applied_config)?,
         ]),
@@ -413,19 +422,22 @@ async fn run_client(
             }
         }
     }
-    let mut rtp_identity = None;
-    if matches!(run.applied_config, ProtocolConfig::Rtp(_)) {
+    let mut observer_identity = None;
+    if matches!(
+        run.applied_config,
+        ProtocolConfig::Rtp(_) | ProtocolConfig::Rtcp(_)
+    ) {
         let targets = docker::owned(deployment, Some(&run.instance_id)).await?;
         if targets.len() != 1 || docker::container_id(&targets[0])? != run.source_container_id {
             bail!("RTP target changed before testing");
         }
-        let host = crate::rtp::observer_host(
+        let host = crate::receiver::observer_host(
             &targets[0],
             deployment,
             &run.instance_id,
             &run.applied_config,
         )?;
-        rtp_identity = Some((
+        observer_identity = Some((
             targets[0]["State"]["Pid"].clone(),
             targets[0]["State"]["StartedAt"].clone(),
         ));
@@ -433,7 +445,7 @@ async fn run_client(
             "--observer-host".into(),
             host,
             "--observer-port".into(),
-            crate::rtp::OBSERVER_PORT.to_string(),
+            crate::receiver::OBSERVER_PORT.to_string(),
         ]);
     }
     let report_limit = if !matches!(run.applied_config, ProtocolConfig::Http(_)) {
@@ -512,7 +524,7 @@ async fn run_client(
         || !docker::running(&target[0])
         || docker::container_id(&target[0])? != run.source_container_id
         || !docker::matches(&target[0], &run.applied_config)
-        || rtp_identity.is_some_and(|(pid, start)| {
+        || observer_identity.is_some_and(|(pid, start)| {
             target[0]["State"]["Pid"] != pid || target[0]["State"]["StartedAt"] != start
         })
     {

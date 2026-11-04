@@ -91,3 +91,27 @@ test("RTP summaries preserve actual receiver evidence without interpreting it as
   assert.deepEqual(JSON.parse(summary.text), evidence);
   assert.equal(summary.truncated, false);
 });
+
+test("RTCP observer evidence preserves exact NTP words and 64-bit hex without number conversion", () => {
+  const evidence = {
+    observation_source: "private receiver observer",
+    rtcp_reply_expected: false,
+    observations: [
+      {
+        boot_id: "rtcp-boot",
+        event_id: 8,
+        rtcp: {
+          primary_sr: {
+            ntp_msw: 4294967295,
+            ntp_lsw: 4294967295,
+            ntp64_hex: "ffffffffffffffff",
+            packet_count: 4294967295,
+            octet_count: 4294967294,
+          },
+          matching_cname: "receiver-test",
+        },
+      },
+    ],
+  };
+  assert.deepEqual(JSON.parse(boundedWireSummary(evidence).text), evidence);
+});
