@@ -20,6 +20,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
   config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
   config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
+  config set dlt645 [--port N] [--meter-address DIGITS] [--energy-hundredths N] [--period-minutes N] [--programming-key-enabled true|false] [--security-json JSON]
   config set rtcp [--bind-ip IP] [--port N] [--max-packet-size N] [--packet-profile sr-sdes]
   config set rtp [--bind-ip IP] [--port N] [--max-packet-size N]
   config set mqtt-sn [--port N] [--discovery-group IP] [--discovery-port N] [--gateway-id N] [--broker-port N] [--predefined-topics-json JSON]
@@ -153,6 +154,12 @@ const VALUE_OPTIONS: &[&str] = &[
     "--max-connections",
     "--max-packet-size",
     "--packet-profile",
+    "--wire-profile",
+    "--meter-address",
+    "--energy-hundredths",
+    "--period-minutes",
+    "--programming-key-enabled",
+    "--security-json",
     "--banner",
     "--max-line-bytes",
 ];
@@ -296,6 +303,12 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--max-connections",
                 "--max-packet-size",
                 "--packet-profile",
+                "--wire-profile",
+                "--meter-address",
+                "--energy-hundredths",
+                "--period-minutes",
+                "--programming-key-enabled",
+                "--security-json",
                 "--banner",
                 "--max-line-bytes",
             ] {
@@ -347,6 +360,8 @@ fn parse(args: &[String]) -> Result<Options> {
                         "ALL".into()
                     } else if *p == "mqtt" {
                         crate::mqtt::TEST_TOPIC.into()
+                    } else if *p == "dlt645" {
+                        crate::dlt645::PATH.into()
                     } else if *p == "rtcp" {
                         crate::rtcp::PATH.into()
                     } else if *p == "rtp" {
@@ -646,25 +661,35 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
     let mut patch = serde_json::Map::new();
     for (key, value) in fields {
         let value = match key.as_str() {
-            "--port" | "--response-length" | "--max-connections" | "--max-packet-size"
-            | "--max-line-bytes" | "--discovery-port" | "--gateway-id" | "--broker-port" => json!(
+            "--port"
+            | "--response-length"
+            | "--max-connections"
+            | "--max-packet-size"
+            | "--max-line-bytes"
+            | "--discovery-port"
+            | "--gateway-id"
+            | "--broker-port"
+            | "--energy-hundredths"
+            | "--period-minutes" => json!(
                 value
                     .parse::<u32>()
                     .map_err(|_| Failure::usage(format!("{key} must be a nonnegative integer")))?
             ),
-            "--udp-enabled" | "--tcp-enabled" => Value::Bool(
+            "--udp-enabled" | "--tcp-enabled" | "--programming-key-enabled" => Value::Bool(
                 value
                     .parse::<bool>()
                     .map_err(|_| Failure::usage(format!("{key} must be true or false")))?,
             ),
-            "--records-json" | "--points-json" | "--predefined-topics-json" => {
+            "--records-json" | "--points-json" | "--predefined-topics-json" | "--security-json" => {
                 serde_json::from_str(&value)
                     .map_err(|e| Failure::usage(format!("invalid configuration JSON: {e}")))?
             }
             _ => Value::String(value),
         };
         patch.insert(
-            if key == "--records-json" {
+            if key == "--security-json" {
+                "security".into()
+            } else if key == "--records-json" {
                 "records".into()
             } else if key == "--predefined-topics-json" {
                 "predefined_topics".into()
@@ -1041,6 +1066,26 @@ mod tests {
         ] {
             assert!(full.patch(patch).is_err());
         }
+    }
+    #[test]
+    fn dlt645_cli_partial_flags_are_typed_and_core_defaults_use_meter_path() {
+        let o = parse(&args("tests run dlt645")).unwrap();
+        assert!(
+            matches!(o.command,Command::TestRun(ref p,ref m,ref path,true) if p=="dlt645" && m=="ALL" && path==crate::dlt645::PATH)
+        );
+        let p = config_patch(BTreeMap::from([
+            ("--period-minutes".into(), "31".into()),
+            ("--programming-key-enabled".into(), "true".into()),
+            ("--security-json".into(), r#"{"mode":"reject"}"#.into()),
+        ]))
+        .unwrap();
+        let c: ProtocolConfig = crate::dlt645::Dlt645Config::default().into();
+        let c = c.patch(p).unwrap();
+        let v = serde_json::to_value(c).unwrap();
+        assert_eq!(v["period_minutes"], 31);
+        assert_eq!(v["programming_key_enabled"], true);
+        assert_eq!(v["security"], serde_json::json!({"mode":"reject"}));
+        assert_eq!(v["energy_hundredths"], 12345678);
     }
     #[test]
     fn rtcp_cli_preserves_profile_and_uses_session_path() {

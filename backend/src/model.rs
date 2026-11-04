@@ -4,8 +4,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 pub const MAX_RESPONSE_LENGTH: u32 = 1024 * 1024;
-pub const PROTOCOLS: [&str; 8] = [
-    "http", "dns", "mqtt", "telnet", "iec104", "mqtt-sn", "rtp", "rtcp",
+pub const PROTOCOLS: [&str; 9] = [
+    "http", "dns", "mqtt", "telnet", "iec104", "mqtt-sn", "rtp", "rtcp", "dlt645",
 ];
 pub const HTTP_METHODS: [&str; 7] = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 pub const FIXED_PATTERN: &[u8] = b"0123456789abcdef";
@@ -228,6 +228,7 @@ pub enum ProtocolConfig {
     MqttSn(crate::mqtt_sn::MqttSnConfig),
     Rtp(crate::rtp::RtpConfig),
     Rtcp(crate::rtcp::RtcpConfig),
+    Dlt645(crate::dlt645::Dlt645Config),
 }
 impl From<HttpConfig> for ProtocolConfig {
     fn from(c: HttpConfig) -> Self {
@@ -269,6 +270,11 @@ impl From<crate::rtcp::RtcpConfig> for ProtocolConfig {
         Self::Rtcp(c)
     }
 }
+impl From<crate::dlt645::Dlt645Config> for ProtocolConfig {
+    fn from(c: crate::dlt645::Dlt645Config) -> Self {
+        Self::Dlt645(c)
+    }
+}
 impl ProtocolConfig {
     pub fn validate(&self) -> Result<()> {
         match self {
@@ -280,6 +286,7 @@ impl ProtocolConfig {
             Self::MqttSn(c) => c.validate(),
             Self::Rtp(c) => c.validate(),
             Self::Rtcp(c) => c.validate(),
+            Self::Dlt645(c) => c.validate(),
         }
     }
     pub fn as_http(&self) -> Option<&HttpConfig> {
@@ -299,6 +306,7 @@ impl ProtocolConfig {
             Self::MqttSn(_) => "mqtt-sn",
             Self::Rtp(_) => "rtp",
             Self::Rtcp(_) => "rtcp",
+            Self::Dlt645(_) => "dlt645",
         }
     }
     pub fn bind_ip(&self) -> &str {
@@ -311,6 +319,7 @@ impl ProtocolConfig {
             Self::MqttSn(c) => &c.bind_ip,
             Self::Rtp(c) => &c.bind_ip,
             Self::Rtcp(c) => &c.bind_ip,
+            Self::Dlt645(c) => &c.bind_ip,
         }
     }
     pub fn port(&self) -> u16 {
@@ -323,13 +332,16 @@ impl ProtocolConfig {
             Self::MqttSn(c) => c.port,
             Self::Rtp(c) => c.port,
             Self::Rtcp(c) => c.port,
+            Self::Dlt645(c) => c.port,
         }
     }
     pub fn transports(&self) -> Vec<&'static str> {
         match self {
             Self::Dns(c) => c.transports(),
             Self::MqttSn(_) | Self::Rtp(_) | Self::Rtcp(_) => vec!["UDP"],
-            Self::Http(_) | Self::Mqtt(_) | Self::Telnet(_) | Self::Iec104(_) => vec!["TCP"],
+            Self::Http(_) | Self::Mqtt(_) | Self::Telnet(_) | Self::Iec104(_) | Self::Dlt645(_) => {
+                vec!["TCP"]
+            }
         }
     }
     pub fn internal_port(&self) -> u16 {
@@ -341,6 +353,7 @@ impl ProtocolConfig {
             Self::MqttSn(c) => c.port,
             Self::Rtp(_) => 5004,
             Self::Rtcp(_) => 5005,
+            Self::Dlt645(_) => 20645,
             Self::Http(c) => c.port,
         }
     }
@@ -360,7 +373,8 @@ impl ProtocolConfig {
             | Self::Iec104(_)
             | Self::MqttSn(_)
             | Self::Rtp(_)
-            | Self::Rtcp(_) => {
+            | Self::Rtcp(_)
+            | Self::Dlt645(_) => {
                 format!(
                     "{:x}",
                     Sha256::digest(serde_json::to_vec(self).expect("serializable config"))
@@ -393,6 +407,26 @@ impl ProtocolConfig {
                 .into();
                 result.validate()?;
                 Ok(result)
+            }
+            Self::Dlt645(c) => {
+                let r: Self = typed_patch(
+                    c,
+                    value,
+                    &[
+                        "wire_profile",
+                        "bind_ip",
+                        "port",
+                        "meter_address",
+                        "energy_hundredths",
+                        "period_minutes",
+                        "programming_key_enabled",
+                        "max_connections",
+                        "security",
+                    ],
+                )?
+                .into();
+                r.validate()?;
+                Ok(r)
             }
             Self::Rtcp(c) => {
                 let r: Self = typed_patch(
@@ -583,6 +617,7 @@ impl Document {
                 ),
                 Instance::new("rtp-demo".into(), crate::rtp::RtpConfig::default()),
                 Instance::new("rtcp-demo".into(), crate::rtcp::RtcpConfig::default()),
+                Instance::new("dlt645-demo".into(), crate::dlt645::Dlt645Config::default()),
             ],
         }
     }

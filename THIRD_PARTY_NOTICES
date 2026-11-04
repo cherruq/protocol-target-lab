@@ -1,6 +1,6 @@
 Protocol Target Lab third-party source notes — protocol workers
 
-The project's original Rust manager, Web application, HTTP/DNS/MQTT/Telnet/IEC104/MQTT-SN/RTP/RTCP wrappers and test clients,
+The project's original Rust manager, Web application, HTTP/DNS/MQTT/Telnet/IEC104/MQTT-SN/RTP/RTCP/DL-T645 wrappers and test clients,
 and integration scripts are distributed under the accompanying MIT LICENSE.
 Third-party components retain their original licenses. Full license and copyright
 texts for the locked Linux Rust dependency closure and bundled Web components
@@ -111,5 +111,14 @@ RTCP runtime image:
   media/session stack is bundled. Original sources, tests and build/base
   provenance accompany the worker export; rebuilding requires the prepared base.
 
-This notice describes implemented HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP and RTCP components. Other protocol
+DL/T645 runtime image:
+  The finite software meter, stream framer and independent client use original
+  MIT-licensed standard-library code adapted from authorized laboratory behavior.
+  No third-party meter codec is a runtime dependency. The locked Python base
+  retains CPython/OS notices. Worker sources, tests and build/base provenance
+  accompany its export. The optional python-dlt645 codec used for a limited
+  independent acceptance oracle keeps its own MIT license; it is not bundled
+  into the manager or worker, nor represented as a complete native meter.
+
+This notice describes implemented HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP and DL/T645 components. Other protocol
 libraries and a complete offline distribution are not included or claimed here.

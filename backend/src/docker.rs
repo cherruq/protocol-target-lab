@@ -323,6 +323,7 @@ pub async fn probe_owned(
 }
 pub async fn probe(config: &ProtocolConfig) -> Result<()> {
     let config = match config {
+        ProtocolConfig::Dlt645(c) => return crate::dlt645::probe(c).await,
         ProtocolConfig::Rtcp(_) => bail!("RTCP readiness requires exact owned container observer"),
         ProtocolConfig::Rtp(_) => bail!("RTP readiness requires exact owned container observer"),
         ProtocolConfig::Dns(c) => return crate::dns::probe(c).await,

@@ -51,6 +51,14 @@ impl TestRequest {
     pub fn validate_for(&self, config: &ProtocolConfig) -> Result<()> {
         match config {
             ProtocolConfig::Http(_) => self.validate(),
+            ProtocolConfig::Dlt645(c) => {
+                if !c.cases().contains(&self.method.as_str()) || self.path != crate::dlt645::PATH {
+                    bail!(
+                        "config.test: choose an available DL/T645 case and meter path; optional cases require applied permissions/fixture"
+                    );
+                }
+                Ok(())
+            }
             ProtocolConfig::Rtcp(_) => {
                 if !crate::rtcp::CASES.contains(&self.method.as_str())
                     || self.path != crate::rtcp::PATH
@@ -405,7 +413,8 @@ async fn run_client(
         | ProtocolConfig::Iec104(_)
         | ProtocolConfig::MqttSn(_)
         | ProtocolConfig::Rtp(_)
-        | ProtocolConfig::Rtcp(_) => args.extend([
+        | ProtocolConfig::Rtcp(_)
+        | ProtocolConfig::Dlt645(_) => args.extend([
             "--config-json".into(),
             serde_json::to_string(&run.applied_config)?,
         ]),
