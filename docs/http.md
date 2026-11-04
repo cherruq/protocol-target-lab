@@ -103,3 +103,79 @@ the length/mode form, legacy notices, explicit draft application, empty response
 and fresh random responses. Raw environment evidence remains in ignored local
 verification directories. These results do not claim a whole-host reboot or a
 complete offline distribution.
+
+## One-shot client in the HTTP image
+
+The HTTP image also contains `/opt/protocol-target-lab/client.py`. The default
+image entrypoint continues to start the HTTP server. Override it with `python3`
+to run a separate one-shot client container against an already-running instance:
+
+```sh
+docker run --rm --network host --entrypoint python3 protocol-target-lab/http:0.3.0 -u /opt/protocol-target-lab/client.py --host 192.0.2.20 --port 18090 --method GET --path /ok --response-length 64 --response-mode fixed
+```
+
+`--method` selects GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS, or ALL. `--path`
+selects `/ok`, `/chunked`, or `/close`. A single method makes two requests to that
+path; ALL initially makes two requests per method, fourteen in total. In random
+mode, identical initial samples can trigger up to three additional requests for
+that method. Every extra request is included in the same bounded report. Use the target's
+actual response length and mode. In normal mode, POST/PUT/PATCH/DELETE/OPTIONS send
+a small binary test request but expect generated response bytes, rather than a
+request echo. HEAD is checked using a raw socket so unexpected bytes following
+its headers cannot be hidden by an HTTP client's HEAD handling.
+
+The client emits exactly one JSON report on stdout with a top-level `passed`,
+per-request checks containing request/response evidence, and
+`summary: {total, passed, failed}`. A successful report exits 0; connection,
+protocol, configuration, and deadline failures produce a JSON failure report and
+exit 1. Body evidence uses original captured length, SHA256, and at most 256 bytes
+of hexadecimal preview. Response header evidence is also bounded; oversized
+headers fail the check instead of expanding the report without limit.
+
+The client has a thirty-second overall deadline, three-second socket timeouts,
+and reads at most 1 MiB plus one detection byte per response body. For random
+responses of at least two bytes, identical initial samples trigger up to three
+additional requests before diagnosing a constant response. The client does not
+require every random value to be unique. Lengths 0 and 1 skip statistical
+variation checks entirely. Retries still share the same overall deadline.
+
+Use `--legacy-body=TEXT` for a target running legacy applied parameters. It is
+mutually exclusive with the generation parameters and checks POST echo plus
+configured GET/HEAD text. If ALL or a newer method is used against an original
+three-method worker, unsupported responses are reported as failures; the client
+does not silently skip them. The client never changes configuration or starts a
+server. A client-capable image has label
+`io.protocol-target-lab.http-client-schema=1` in addition to response schema 2.
+
+### Web test execution and cleanup
+
+The connection panel submits `POST /api/instances/{id}/tests` with a method and
+one of the three supported paths. HTTP 202 acknowledges a test ID. Poll
+`GET /api/instances/{id}/tests` for the latest structured result; acknowledgement
+alone is not success. The result records the exact source container and applied
+configuration. Draft settings are never used or written by testing.
+
+The manager runs the same immutable HTTP image with the client entrypoint in a
+separate `--rm` container. Test labels are distinct from managed service labels,
+so discovery cannot adopt the client as a server. Execution is serialized with
+resource changes; reports are bounded, nonzero client exit status preserves valid
+failure JSON, and the target identity is checked again before reporting success.
+If the target changes during execution, even successful individual requests do
+not produce an overall success.
+
+Normal completion and timeout paths explicitly verify cleanup. After manager
+restart, previous-session client containers are removed; failed cleanup is
+retried when Docker recovers. `stop-all` also cleans the deployment's clients.
+The UI shows cleanup failures and interrupted-session notices. Only the latest
+result per instance is kept in memory, up to 64 instances, with no persistent
+history. This is a same-host check; use an independent node to validate external
+reachability.
+
+Version 0.3.0 verification (2026-11-04) included 27 independent real Docker/API
+checks, real HTTP failures, 42 maximum-size method exchanges, malformed and
+oversized reports, a 45-second execution timeout, cleanup retry, process SIGKILL
+recovery, and target replacement during testing. A stop-all integration check
+used real Docker/locks/configuration with a process-local systemctl shim limited
+to the test manager PID; it was not a real systemd check. Ubuntu 24.04 installation
+and GET/POST/HEAD/ALL client execution were also tested on the deployed service,
+with its server ID/start time/PID and configuration unchanged.

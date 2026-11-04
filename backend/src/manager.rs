@@ -18,10 +18,12 @@ pub struct Data {
     pub docker_error: Option<String>,
     pub docker_version: Option<String>,
     pub events: VecDeque<String>,
+    pub tests: std::collections::HashMap<String, crate::testing::TestRun>,
 }
 pub struct Manager {
     pub settings: Settings,
     pub data: Mutex<Data>,
+    pub session_id: String,
 }
 pub type Shared = Arc<Manager>;
 fn now() -> u64 {
@@ -32,7 +34,7 @@ fn now() -> u64 {
 }
 
 impl Manager {
-    async fn control(&self) -> Result<std::fs::File> {
+    pub(crate) async fn control(&self) -> Result<std::fs::File> {
         // A read-only reconcile briefly owns the same resource lock. Allow it
         // to finish without surfacing random conflicts for ordinary UI saves.
         for _ in 0..20 {
@@ -63,7 +65,9 @@ impl Manager {
                 docker_error: Some("Connecting to Docker".into()),
                 docker_version: None,
                 events: VecDeque::new(),
+                tests: crate::testing::empty_results(),
             }),
+            session_id: uuid::Uuid::new_v4().to_string(),
         }
     }
     pub fn writable(d: &Data) -> Result<()> {
@@ -141,7 +145,9 @@ impl Manager {
         let mut d = self.data.lock().await;
         let mut next = d.doc.clone();
         next.instances.retain(|i| i.id != id);
-        self.persist(&mut d, next)
+        self.persist(&mut d, next)?;
+        d.tests.remove(id);
+        Ok(())
     }
     pub async fn begin(self: &Shared, id: &str, kind: &str) -> Result<String> {
         let control = self.control().await?;
@@ -339,6 +345,10 @@ impl Manager {
                         )
                     };
                     if !blocked {
+                        if let Err(e) = crate::testing::reap_stale(&self, &deployment).await {
+                            let mut d = self.data.lock().await;
+                            Self::event(&mut d, format!("interrupted client cleanup: {e:#}"));
+                        }
                         for id in ids {
                             if let Err(e) = self.reconcile(&deployment, &id).await {
                                 let mut d = self.data.lock().await;

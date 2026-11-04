@@ -73,6 +73,7 @@ pub fn router(manager: Shared) -> Router {
         .route("/api/instances/{id}/logs",get(logs))
         .route("/api/instances/{id}/connection-info",get(connection_info))
         .route("/api/instances/{id}/probe",post(probe))
+        .route("/api/instances/{id}/tests",get(tests).post(start_test))
         .route("/api/instances/{id}/{action}",post(action))
         .route("/api/environment",get(environment))
         .route("/api/assets",get(assets))
@@ -196,6 +197,39 @@ async fn probe(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
     Ok(Json(
         json!({"success":true,"path":"/ok","body_matches":config.expected_body().is_some(),"length_matches":true,"response_length":config.response_length,"response_mode":if config.legacy_body.is_some() { "legacy" } else { config.response_mode.as_str() }}),
     ))
+}
+async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
+    let d = m.data.lock().await;
+    if !d.doc.instances.iter().any(|i| i.id == id) {
+        return Err(ApiError(StatusCode::NOT_FOUND, "instance not found".into()));
+    }
+    let mut cases = crate::model::HTTP_METHODS.to_vec();
+    cases.push("ALL");
+    Ok(Json(
+        json!({"cases":cases,"paths":crate::testing::PATHS,"current":d.tests.get(&id),"session_id":m.session_id}),
+    ))
+}
+async fn start_test(
+    State(m): State<Shared>,
+    Path(id): Path<String>,
+    body: Result<Json<crate::testing::TestRequest>, JsonRejection>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let request = decode(body)?;
+    request
+        .validate()
+        .map_err(|e| ApiError(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()))?;
+    let test_id = crate::testing::begin(&m, &id, request).await.map_err(|e| {
+        let message = format!("{e:#}");
+        ApiError(
+            if message.contains("instance not found") {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::CONFLICT
+            },
+            message,
+        )
+    })?;
+    Ok((StatusCode::ACCEPTED, Json(json!({"test_id":test_id}))))
 }
 async fn environment(State(m): State<Shared>) -> Json<Value> {
     let available = docker::image_id(&m.settings.image).await.is_ok();

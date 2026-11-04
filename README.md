@@ -54,8 +54,8 @@ exist locally and fails if it is missing. `PLAB_BUILD_IMAGE` can select a prepar
 build image.
 
 The HTTP image is
-`protocol-target-lab/http:0.2.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.2.0_amd64.deb`.
+`protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
+The manager package is `dist/protocol-target-lab_0.3.0_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -88,7 +88,7 @@ Docker provider; a host with Docker CE can run development builds directly, whil
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.2.0_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.3.0_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
@@ -103,7 +103,7 @@ and reports the reason. Image import is separate from installation:
 
 ```sh
 # On a machine containing the built image:
-docker save -o http-image.tar protocol-target-lab/http:0.2.0
+docker save -o http-image.tar protocol-target-lab/http:0.3.0
 # On the target:
 sudo docker load -i http-image.tar
 ```
@@ -142,9 +142,28 @@ uses its saved legacy snapshot and the new worker's compatibility arguments.
 Explicit saves write schema version 2; both v1 and v2 files remain readable.
 
 Upgrade the HTTP image together with the manager. The default image is now
-`protocol-target-lab/http:0.2.0`; if a customized environment file still selects an
+`protocol-target-lab/http:0.3.0`; if a customized environment file still selects an
 older image, update `PLAB_HTTP_IMAGE` after importing the new version. The manager
 checks image capability before stopping a running instance to apply new options.
+
+The **Connection and verification** panel runs GET, POST and the other method
+checks directly. Select `/ok`, `/chunked` or `/close`, then a method or all methods.
+The HTTP image contains both server and client programs: a one-shot container
+runs the client against the instance's applied configuration, reports pass/fail
+and bounded request/response details, and is removed after completion. No client
+packages are installed on the management host. Existing server containers are
+not restarted for a test.
+
+The endpoint validates the unique owned running target first. It serializes test
+execution with lifecycle operations, limits the client to a 30-second deadline
+and the Docker attachment to 45 seconds, and limits the report to 128 KiB.
+Cleanup is ownership-scoped and retried after Docker recovery. Manager restart
+cleans previous-session test containers; stop-all/remove also clean test
+containers. Missing client images and cleanup failures remain visible in the UI.
+Only the latest result per instance is held in bounded memory (up to 64
+instances); results are not a persistent history and are lost on manager restart.
+This built-in test runs on the target host and does not prove external or
+cross-node reachability. The public standalone client remains available for that.
 
 The instance log panel shows worker stdout/stderr and management events through
 SSE, with pause, copy, and download controls. Body previews are bounded and include

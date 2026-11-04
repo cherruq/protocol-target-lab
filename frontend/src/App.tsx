@@ -16,6 +16,7 @@ import {
   type Config,
   type StoredConfig,
 } from "./config";
+import ClientTests from "./ClientTests";
 type Instance = {
   id: string;
   protocol_id: string;
@@ -1048,39 +1049,48 @@ export default function App() {
               <section className="panel connection-panel">
                 <div className="panel-heading">
                   <h2>连接与验证</h2>
-                  <span className="muted">使用独立客户端发起请求</span>
+                  <span className="muted">内置测试与手动接入</span>
                 </div>
-                <div className="connection-content">
-                  <div className="endpoint">
-                    <span>HTTP 入口</span>
-                    <code>
-                      {connection?.base_url ||
-                        `http://${(selected.applied_config || selected.config).bind_ip}:${(selected.applied_config || selected.config).port}`}
-                    </code>
-                    <p>绑定 0.0.0.0 时，请使用目标设备实际可达的 IP。</p>
+                <ClientTests
+                  key={selected.id}
+                  instance={selected}
+                  hasUnappliedConfig={dirty || appliedDiffers}
+                  operationsLocked={locked}
+                />
+                <details className="connection-help">
+                  <summary>手动接入与 curl 命令</summary>
+                  <div className="connection-content">
+                    <div className="endpoint">
+                      <span>HTTP 入口</span>
+                      <code>
+                        {connection?.base_url ||
+                          `http://${(selected.applied_config || selected.config).bind_ip}:${(selected.applied_config || selected.config).port}`}
+                      </code>
+                      <p>绑定 0.0.0.0 时，请使用目标设备实际可达的 IP。</p>
+                    </div>
+                    <div className="command-list">
+                      {(
+                        connection?.commands || [
+                          `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/ok`,
+                          `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/chunked`,
+                          `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/close`,
+                        ]
+                      ).map((command, index) => (
+                        <div className="command" key={index}>
+                          <code>{command}</code>
+                          <button
+                            className="icon-button"
+                            aria-label={`复制命令 ${index + 1}`}
+                            title="复制命令"
+                            onClick={() => void copy(command)}
+                          >
+                            <Icon name="copy" size={15} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="command-list">
-                    {(
-                      connection?.commands || [
-                        `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/ok`,
-                        `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/chunked`,
-                        `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/close`,
-                      ]
-                    ).map((command, index) => (
-                      <div className="command" key={index}>
-                        <code>{command}</code>
-                        <button
-                          className="icon-button"
-                          aria-label={`复制命令 ${index + 1}`}
-                          title="复制命令"
-                          onClick={() => void copy(command)}
-                        >
-                          <Icon name="copy" size={15} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                </details>
               </section>
             </div>
           ) : (

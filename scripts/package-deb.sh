@@ -2,7 +2,7 @@
 set -euo pipefail
 project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$project_root"
-version=${VERSION:-0.2.0}
+version=${VERSION:-0.3.0}
 architecture=${ARCH:-amd64}
 [[ $architecture == amd64 ]] || { printf '%s\n' 'Phase 1 supports amd64 only.' >&2; exit 2; }
 dpkg --validate-version "$version"

@@ -1409,3 +1409,376 @@ select:disabled {
   font-size: 9px;
   line-height: 1.8;
 }
+
+.client-tests {
+  padding: 20px;
+}
+.client-test-heading h3 {
+  color: #49694c;
+  font-size: 12px;
+  font-weight: 650;
+}
+.client-test-heading p {
+  margin-top: 8px;
+  color: #93a18a;
+  font-size: 10px;
+  line-height: 1.9;
+}
+.test-config-notice {
+  margin-top: 12px;
+  padding: 9px 11px;
+  border: 1px solid #e8dfbf;
+  border-radius: 4px;
+  background: #fcf9ef;
+  color: #8d7d4e;
+  font-size: 10px;
+  line-height: 1.8;
+}
+.test-controls {
+  display: grid;
+  grid-template-columns: 145px minmax(0, 1fr);
+  align-items: end;
+  gap: 16px;
+  margin-top: 18px;
+}
+.test-controls label {
+  margin-bottom: 0;
+}
+.test-method-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-height: 36px;
+}
+.test-method-buttons .button {
+  min-height: 32px;
+  padding: 7px 10px;
+  font-size: 10px;
+}
+.test-availability {
+  color: #99a68f;
+  font-size: 10px;
+  line-height: 1.9;
+  margin-top: 11px;
+}
+.test-error {
+  background: #fff2ed;
+  border: 1px solid #ecd5cb;
+  border-radius: 4px;
+  color: #a35a44;
+  padding: 10px 12px;
+  font-size: 11px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+  margin-top: 12px;
+}
+.test-awaiting {
+  margin-top: 15px;
+  color: #99834c;
+  font-size: 11px;
+}
+.test-empty {
+  margin-top: 15px;
+  color: #9ba890;
+  font-size: 10px;
+  line-height: 1.9;
+}
+.test-result {
+  margin-top: 20px;
+  padding-top: 17px;
+  border-top: 1px solid #e5ecdf;
+}
+.test-result-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.test-result-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.test-result-heading strong {
+  font-size: 11px;
+  color: #667f5b;
+  font-family: ui-monospace, monospace;
+}
+.test-result-heading > .button {
+  font-size: 9px;
+  min-height: 29px;
+  padding: 6px 9px;
+}
+.test-elapsed {
+  font-size: 9px;
+  color: #9ba88f;
+}
+.test-status {
+  display: inline-flex;
+  padding: 4px 7px;
+  border: 1px solid #dce7d4;
+  border-radius: 4px;
+  color: #638651;
+  background: #f1f7eb;
+  font-size: 10px;
+}
+.test-status-running {
+  background: #fcf8e9;
+  border-color: #eadeb8;
+  color: #a18b4e;
+}
+.test-status-failed,
+.test-status-error {
+  background: #fff2ed;
+  border-color: #ecd4c8;
+  color: #ab6046;
+}
+.test-status-interrupted {
+  background: #f4f4ef;
+  border-color: #e2e4d7;
+  color: #969982;
+}
+.test-snapshot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 18px;
+  margin-top: 13px;
+  color: #97a58c;
+  font-size: 9px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+.test-snapshot code {
+  font-size: 9px;
+}
+.test-cleanup {
+  margin-top: 10px;
+  color: #8fa282;
+  font-size: 9px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+.test-cleanup.pending {
+  color: #a18e54;
+}
+.test-cleanup.residue {
+  background: #fff4ee;
+  border: 1px solid #edd6c9;
+  padding: 8px 10px;
+  border-radius: 4px;
+  color: #ac674e;
+}
+.test-counts {
+  margin: 15px 0 10px;
+  color: #7d946e;
+  font-size: 10px;
+}
+.test-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 520px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.test-check {
+  border: 1px solid #e3eadb;
+  border-radius: 5px;
+  background: #fbfcf8;
+}
+.test-check.failed {
+  border-color: #ebd5c7;
+  background: #fff9f5;
+}
+.test-check > summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 11px;
+  cursor: pointer;
+  list-style: none;
+}
+.test-check > summary::-webkit-details-marker {
+  display: none;
+}
+.test-check > summary::after {
+  content: "›";
+  color: #9aab8d;
+  font-size: 15px;
+}
+.test-check[open] > summary::after {
+  transform: rotate(90deg);
+}
+.check-mark {
+  flex-shrink: 0;
+  color: #7c9c66;
+  font-size: 11px;
+}
+.test-check.failed .check-mark {
+  color: #b47151;
+}
+.test-check-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #6d855f;
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+}
+.test-check-summary {
+  color: #9aac8c;
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+.test-check-time {
+  color: #9cae8f;
+  font-size: 9px;
+  white-space: nowrap;
+  margin-left: auto;
+}
+.test-check-outcome {
+  margin-left: auto;
+  font-size: 9px;
+  color: #7f9c6d;
+  white-space: nowrap;
+}
+.test-check.failed .test-check-outcome {
+  color: #b47755;
+}
+.test-check-error {
+  color: #aa6b4b;
+  font-size: 10px;
+  line-height: 1.9;
+  margin: 0 13px 11px;
+  overflow-wrap: anywhere;
+}
+.test-wire-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid #e8ecdf;
+}
+.wire-summary {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid #e7eddd;
+  background: #fff;
+  border-radius: 4px;
+}
+.wire-summary h4 {
+  font-size: 10px;
+  color: #768d66;
+  margin: 0 0 12px;
+}
+.wire-summary dl {
+  margin: 0;
+  font-size: 9px;
+}
+.wire-summary dl > div {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+.wire-summary dt {
+  color: #9cae8e;
+  flex-shrink: 0;
+}
+.wire-summary dd {
+  margin: 0;
+  color: #7f966f;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, monospace;
+}
+.wire-summary > p {
+  font-size: 9px;
+  color: #a2af94;
+  line-height: 1.9;
+}
+.wire-headers {
+  margin-top: 12px;
+}
+.wire-headers > summary {
+  font-size: 9px;
+  color: #8fa17f;
+  cursor: pointer;
+}
+.wire-summary pre {
+  font-size: 9px;
+  color: #8a9e78;
+  line-height: 1.9;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 140px;
+  overflow: auto;
+  padding: 8px;
+  background: #f7f9f3;
+  border: 1px solid #e8eddf;
+  border-radius: 3px;
+}
+.wire-body {
+  margin-top: 12px;
+}
+.wire-body > span,
+.wire-hash > span {
+  font-size: 9px;
+  color: #9bad8b;
+}
+.wire-body > p {
+  font-size: 9px;
+  line-height: 1.8;
+  color: #a38d5b;
+}
+.wire-hash {
+  margin-top: 12px;
+}
+.wire-hash code {
+  display: block;
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+  color: #9cad8c;
+  font-size: 9px;
+  line-height: 1.8;
+}
+.connection-help {
+  border-top: 1px solid #e7ecdf;
+}
+.connection-help > summary {
+  padding: 15px 20px;
+  color: #859b75;
+  font-size: 10px;
+  cursor: pointer;
+  background: #fafbf7;
+}
+.connection-help[open] > summary {
+  border-bottom: 1px solid #e9eee1;
+}
+@media (max-width: 650px) {
+  .client-tests {
+    padding: 17px 16px;
+  }
+  .test-controls {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .test-controls > label {
+    max-width: 180px;
+  }
+  .test-wire-grid {
+    grid-template-columns: 1fr;
+  }
+  .test-check-summary {
+    display: none;
+  }
+  .test-check-name {
+    flex: 1;
+  }
+  .test-check-time {
+    margin-left: 0;
+  }
+  .connection-help > summary {
+    padding: 14px 16px;
+  }
+}

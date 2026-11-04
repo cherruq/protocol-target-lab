@@ -3,6 +3,7 @@ mod docker;
 mod manager;
 mod model;
 mod storage;
+mod testing;
 
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
@@ -48,6 +49,7 @@ async fn stop_all(settings: &Settings) -> Result<()> {
             id.trim().to_owned()
         }
     };
+    testing::cleanup_tests(&deployment, None).await?;
     for v in docker::owned(&deployment, None).await? {
         let id = v["Config"]["Labels"][docker::INSTANCE]
             .as_str()
