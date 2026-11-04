@@ -1,6 +1,6 @@
 use crate::{
     docker,
-    model::{Document, HttpConfig},
+    model::{Document, HttpConfig, HttpConfigPatch},
     storage::{self, Settings},
 };
 use anyhow::{Context, Result, bail};
@@ -105,6 +105,20 @@ impl Manager {
             .context("instance not found")?;
         i.config = config;
         let view = i.view();
+        self.persist(&mut d, next)?;
+        Ok(view)
+    }
+    pub async fn patch_config(&self, id: &str, patch: HttpConfigPatch) -> Result<Value> {
+        let _control = self.control().await?;
+        let mut d = self.data.lock().await;
+        let mut next = d.doc.clone();
+        let instance = next
+            .instances
+            .iter_mut()
+            .find(|i| i.id == id)
+            .context("instance not found")?;
+        instance.config = patch.apply(instance.config.clone())?;
+        let view = instance.view();
         self.persist(&mut d, next)?;
         Ok(view)
     }

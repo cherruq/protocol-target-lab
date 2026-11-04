@@ -1,5 +1,5 @@
 //! JSON API client for automated callers. Resource mutations stay in the manager.
-use crate::model::{HttpConfig, ResponseMode, valid_id};
+use crate::model::{HttpConfig, HttpConfigPatch, valid_id};
 use reqwest::{Client, Method, Url};
 use serde_json::{Value, json};
 use std::{
@@ -120,6 +120,45 @@ struct Options {
     command: Command,
 }
 
+const VALUE_OPTIONS: &[&str] = &[
+    "--url",
+    "--timeout",
+    "--file",
+    "--data",
+    "--bind-ip",
+    "--port",
+    "--response-length",
+    "--response-mode",
+    "--method",
+    "--path",
+    "--id",
+];
+fn wants_help(args: &[String]) -> bool {
+    if args.len() == 1 && args[0] == "help" {
+        return true;
+    }
+    let mut tokens = args.iter();
+    while let Some(token) = tokens.next() {
+        if VALUE_OPTIONS.contains(&token.as_str()) {
+            tokens.next();
+        } else if matches!(token.as_str(), "--help" | "-h") {
+            return true;
+        }
+    }
+    false
+}
+fn valid_local_command(args: &[String]) -> bool {
+    match args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        [] | ["serve" | "stop-all" | "doctor" | "--version" | "-V" | "start" | "status"] => true,
+        ["assets", "import", directory] => !directory.starts_with('-'),
+        _ => false,
+    }
+}
 fn is_api_command(args: &[String]) -> bool {
     if args
         .iter()
@@ -142,8 +181,7 @@ fn parse(args: &[String]) -> Result<Options> {
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
-            "--url" | "--timeout" | "--file" | "--data" | "--bind-ip" | "--port"
-            | "--response-length" | "--response-mode" | "--method" | "--path" | "--id" => {
+            option if VALUE_OPTIONS.contains(&option) => {
                 let value = iter
                     .next()
                     .ok_or_else(|| Failure::usage(format!("{arg} requires a value")))?;
@@ -538,6 +576,27 @@ impl Api {
         ))
     }
 }
+fn config_patch(fields: BTreeMap<String, String>) -> Result<HttpConfigPatch> {
+    let mut patch = serde_json::Map::new();
+    for (key, value) in fields {
+        let value = match key.as_str() {
+            "--port" | "--response-length" => json!(
+                value
+                    .parse::<u32>()
+                    .map_err(|_| Failure::usage(format!("{key} must be a nonnegative integer")))?
+            ),
+            _ => Value::String(value),
+        };
+        patch.insert(key.trim_start_matches("--").replace('-', "_"), value);
+    }
+    let patch: HttpConfigPatch = serde_json::from_value(Value::Object(patch))
+        .map_err(|e| Failure::usage(format!("invalid configuration fields: {e}")))?;
+    patch
+        .clone()
+        .apply(HttpConfig::default())
+        .map_err(|e| Failure::usage(e.to_string()))?;
+    Ok(patch)
+}
 async fn configuration(input: ConfigInput, current: Value) -> Result<HttpConfig> {
     let config = match input {
         ConfigInput::File(path) => {
@@ -570,33 +629,12 @@ async fn configuration(input: ConfigInput, current: Value) -> Result<HttpConfig>
             serde_json::from_str(&data)
                 .map_err(|e| Failure::usage(format!("invalid configuration JSON: {e}")))?
         }
-        ConfigInput::Fields(mut fields) => {
-            let mut config: HttpConfig = serde_json::from_value(current)
+        ConfigInput::Fields(fields) => {
+            let config: HttpConfig = serde_json::from_value(current)
                 .map_err(|_| Failure::reply("invalid saved HTTP configuration"))?;
-            if fields.contains_key("--response-length") || fields.contains_key("--response-mode") {
-                config.legacy_body = None;
-            }
-            if let Some(value) = fields.remove("--bind-ip") {
-                config.bind_ip = value;
-            }
-            if let Some(value) = fields.remove("--port") {
-                config.port = value
-                    .parse()
-                    .map_err(|_| Failure::usage("--port must be an integer in 1..65535"))?;
-            }
-            if let Some(value) = fields.remove("--response-length") {
-                config.response_length = value.parse().map_err(|_| {
-                    Failure::usage("--response-length must be an integer in 0..1048576")
-                })?;
-            }
-            if let Some(value) = fields.remove("--response-mode") {
-                config.response_mode = match value.as_str() {
-                    "fixed" => ResponseMode::Fixed,
-                    "random" => ResponseMode::Random,
-                    _ => return Err(Failure::usage("--response-mode must be fixed or random")),
-                };
-            }
-            config
+            config_patch(fields)?
+                .apply(config)
+                .map_err(|e| Failure::usage(e.to_string()))?
         }
     };
     config
@@ -625,6 +663,18 @@ async fn execute(api: &Api, command: Command) -> Result<Value> {
         }
         Command::ConfigSet(p, input) => {
             let (id, d) = api.target(&p).await?;
+            if let ConfigInput::Fields(fields) = input {
+                let patch = config_patch(fields)?;
+                // Never turn a field edit into a stale full-document PUT. Older
+                // managers reject PATCH rather than silently losing an update.
+                return api
+                    .request(
+                        Method::PATCH,
+                        &format!("/api/instances/{id}/config"),
+                        Some(serde_json::to_value(patch).map_err(Failure::transport)?),
+                    )
+                    .await;
+            }
             let c = configuration(input, d["workspace"]["config"].clone()).await?;
             api.request(
                 Method::PUT,
@@ -721,14 +771,18 @@ async fn execute(api: &Api, command: Command) -> Result<Value> {
 }
 
 pub async fn dispatch(args: &[String]) -> Option<i32> {
-    if args.first().is_some_and(|s| s == "help")
-        || args.iter().any(|s| matches!(s.as_str(), "--help" | "-h"))
-    {
+    if wants_help(args) {
         println!("{HELP}");
         return Some(0);
     }
     if !is_api_command(args) {
-        return None;
+        if valid_local_command(args) {
+            return None;
+        }
+        let _ = emit(
+            &json!({"schema_version":1,"ok":false,"error":{"code":"invalid_arguments","message":"unexpected arguments for local administration; use plabctl --help"}}),
+        );
+        return Some(2);
     }
     let options = match parse(args) {
         Ok(o) => o,
@@ -783,6 +837,7 @@ pub async fn dispatch(args: &[String]) -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::ResponseMode;
     fn args(s: &str) -> Vec<String> {
         s.split_whitespace().map(str::to_owned).collect()
     }
@@ -839,6 +894,38 @@ mod tests {
         assert!(c.legacy_body.is_none());
         assert_eq!(c.response_length, 9);
         assert_eq!(c.response_mode, ResponseMode::Random);
+    }
+    #[test]
+    fn help_flags_are_not_taken_from_values_and_local_commands_are_exact() {
+        for input in [
+            "config set http --data --help",
+            "tests run http --method --help",
+            "show http --url --help",
+        ] {
+            assert!(!wants_help(&args(input)), "{input}");
+        }
+        assert!(wants_help(&args("tests run http --help")));
+        assert!(wants_help(&args("help")));
+        for input in [
+            "stop-all --typo",
+            "stop-all --url=http://example.test",
+            "stop-all http",
+            "serve --no-wait",
+            "doctor http",
+            "--version extra",
+            "assets import dir extra",
+        ] {
+            assert!(!valid_local_command(&args(input)), "{input}");
+        }
+        for input in [
+            "stop-all",
+            "serve",
+            "doctor",
+            "--version",
+            "assets import dir",
+        ] {
+            assert!(valid_local_command(&args(input)));
+        }
     }
     struct Fixture {
         api: Api,

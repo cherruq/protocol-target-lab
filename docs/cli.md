@@ -24,7 +24,7 @@ machine running `plabctl`; they do not prove cross-node reachability.
 | `config set http --file config.json` | Validate and save a complete configuration |
 | `config set http --file -` | Read complete JSON from stdin |
 | `config set http --data '{...}'` | Save complete inline JSON |
-| `config set http --port 18091 --response-length 512 --response-mode fixed` | Edit specified HTTP fields in the saved configuration |
+| `config set http --port 18091 --response-length 512 --response-mode fixed` | Atomically edit specified HTTP fields in the latest saved configuration |
 | `start http`, `stop http`, `restart http` | Perform and wait for that exact lifecycle operation |
 | `connection-info http` | Connection URL/template and curl commands |
 | `logs http` | One bounded log snapshot |
@@ -39,7 +39,11 @@ machine running `plabctl`; they do not prove cross-node reachability.
 Field editing supports `--bind-ip`, `--port`, `--response-length`, and
 `--response-mode`. File/data input and field options are mutually exclusive.
 Configuration input is bounded to 512 KiB and uses the same validation as the
-manager. A port/address-only edit preserves a legacy body's behavior. Explicit
+manager. Field edits use PATCH and merge only specified fields under the server's
+configuration lock, preserving unrelated concurrent saves. They require manager
+0.5.1 or newer; older managers reject PATCH, with no fallback to a stale full PUT.
+File/data commands intentionally replace the complete saved configuration.
+A port/address-only edit preserves a legacy body's behavior. Explicit
 length/mode editing converts it to the generated response format. Saving never
 starts or restarts the service; apply using `start http` or `restart http`.
 
@@ -137,4 +141,7 @@ sudo plabctl assets import ./dist/http-assets
 local administrative request to start the management service. Workspace/API
 commands do not read privileged local configuration or use systemctl. Invoking
 `plabctl` without arguments prints help; the manager's own default invocation
-continues to serve the Web application.
+continues to serve the Web application. Local commands accept only their exact
+listed argument forms; extra or unknown arguments are rejected before any local
+service/Docker operation. A help-looking value after an option is treated as
+that option's value, not as a successful help request.

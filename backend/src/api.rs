@@ -1,4 +1,8 @@
-use crate::{docker, manager::Shared, model::HttpConfig};
+use crate::{
+    docker,
+    manager::Shared,
+    model::{HttpConfig, HttpConfigPatch},
+};
 use axum::{
     Json, Router,
     body::Body,
@@ -69,7 +73,7 @@ pub fn router(manager: Shared) -> Router {
         .route("/api/instances/{id}", get(instance))
         .route(
             "/api/instances/{id}/config",
-            axum::routing::put(save_config),
+            axum::routing::put(save_config).patch(patch_config),
         )
         .route("/api/instances/{id}/logs", get(logs))
         .route("/api/instances/{id}/connection-info", get(connection_info))
@@ -145,6 +149,13 @@ async fn save_config(
     let config = decode(body)?;
     config.validate()?;
     Ok(Json(m.save_config(&id, config).await?))
+}
+async fn patch_config(
+    State(m): State<Shared>,
+    Path(id): Path<String>,
+    body: Result<Json<HttpConfigPatch>, JsonRejection>,
+) -> Result<Json<Value>, ApiError> {
+    Ok(Json(m.patch_config(&id, decode(body)?).await?))
 }
 async fn action(
     State(m): State<Shared>,
