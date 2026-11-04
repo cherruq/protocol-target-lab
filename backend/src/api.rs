@@ -73,7 +73,6 @@ pub fn router(manager: Shared) -> Router {
         )
         .route("/api/instances/{id}/logs", get(logs))
         .route("/api/instances/{id}/connection-info", get(connection_info))
-        .route("/api/instances/{id}/probe", post(probe))
         .route("/api/instances/{id}/tests", get(tests).post(start_test))
         .route("/api/instances/{id}/{action}", post(action))
         .route("/api/environment", get(environment))
@@ -157,46 +156,6 @@ async fn action(
     Ok((
         StatusCode::ACCEPTED,
         Json(json!({"operation_id":m.begin(&id,&action).await?})),
-    ))
-}
-async fn probe(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
-    let (deployment, config) = {
-        let d = m.data.lock().await;
-        let i = d
-            .doc
-            .instances
-            .iter()
-            .find(|i| i.id == id)
-            .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "instance not found".into()))?;
-        if !i.enabled || i.current_operation.is_some() {
-            return Err(ApiError(
-                StatusCode::CONFLICT,
-                "instance is disabled or changing state".into(),
-            ));
-        }
-        (
-            d.doc.deployment_id.clone(),
-            i.applied_config.clone().ok_or_else(|| {
-                ApiError(
-                    StatusCode::CONFLICT,
-                    "instance has no applied configuration".into(),
-                )
-            })?,
-        )
-    };
-    let resources = docker::owned(&deployment, Some(&id)).await?;
-    if resources.len() != 1
-        || !docker::running(&resources[0])
-        || !docker::matches(&resources[0], &config)
-    {
-        return Err(ApiError(
-            StatusCode::CONFLICT,
-            "no unique running container matches the applied configuration".into(),
-        ));
-    }
-    docker::probe(&config).await?;
-    Ok(Json(
-        json!({"success":true,"path":"/ok","body_matches":config.expected_body().is_some(),"length_matches":true,"response_length":config.response_length,"response_mode":if config.legacy_body.is_some() { "legacy" } else { config.response_mode.as_str() }}),
     ))
 }
 async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {

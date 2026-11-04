@@ -318,7 +318,6 @@ export default function App() {
   const [logConnected, setLogConnected] = useState(false);
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
-  const [probe, setProbe] = useState<unknown>(null);
   const logRef = useRef<HTMLPreElement>(null);
   const selectedProtocol = protocols.find(
     (protocol) => protocol.id === selectedProtocolId,
@@ -420,7 +419,6 @@ export default function App() {
     setLogConnected(false);
     setPaused(false);
     pausedRef.current = false;
-    setProbe(null);
     if (!selectedId) return;
     let active = true;
     const source = new EventSource(
@@ -497,16 +495,15 @@ export default function App() {
       setNotice("配置已保存。运行中的 HTTP 服务会继续使用当前生效参数。");
     });
   }
-  async function operate(kind: string) {
+  async function operate(kind: "start" | "stop" | "restart") {
     if (!selected) return;
     await perform(kind, async () => {
-      const result = await api(
+      await api(
         `/api/instances/${encodeURIComponent(selected.id)}/${kind}`,
         "POST",
         {},
       );
-      if (kind === "probe") setProbe(result);
-      else setNotice("操作已受理，正在核对实际运行状态。");
+      setNotice("操作已受理，正在核对实际运行状态。");
     });
   }
   async function copy(value: string) {
@@ -770,13 +767,6 @@ export default function App() {
                     <Icon name="refresh" />
                     重启并应用配置
                   </button>
-                  <button
-                    className="button text-button"
-                    disabled={locked || selected.status !== "running"}
-                    onClick={() => void operate("probe")}
-                  >
-                    业务探测 ↗
-                  </button>
                 </div>
                 <div className="intent-line">
                   <span
@@ -799,21 +789,6 @@ export default function App() {
                 {selected.error && (
                   <div className="inline-error" role="alert">
                     {selected.error}
-                  </div>
-                )}
-                {probe !== null && (
-                  <div className="probe-result">
-                    <div>
-                      <strong>最近一次业务探测</strong>
-                      <button
-                        className="icon-button"
-                        aria-label="收起探测结果"
-                        onClick={() => setProbe(null)}
-                      >
-                        <Icon name="close" size={15} />
-                      </button>
-                    </div>
-                    <pre>{JSON.stringify(probe, null, 2)}</pre>
                   </div>
                 )}
               </section>

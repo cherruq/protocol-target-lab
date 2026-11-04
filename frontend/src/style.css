@@ -276,16 +276,7 @@ h1 {
   border-color: #174c38;
 }
 
-.text-button {
-  border-color: transparent;
-  background: transparent;
-  color: #527266;
-}
 
-.text-button:hover:not(:disabled) {
-  background: #edf4ef;
-  border-color: transparent;
-}
 
 .banner {
   display: flex;
@@ -979,35 +970,6 @@ textarea {
 .page-footer > span:first-child {
   font-weight: 600;
   letter-spacing: 0.5px;
-}
-
-.probe-result {
-  margin-top: 15px;
-  background: #f6f8f3;
-  border: 1px solid #e2eadb;
-  border-radius: 5px;
-  padding: 10px 12px;
-}
-
-.probe-result > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 10px;
-  color: #718765;
-}
-
-.probe-result pre {
-  font-size: 10px;
-  line-height: 1.8;
-  color: #6a825d;
-  overflow: auto;
-  max-height: 170px;
-}
-
-.probe-result .icon-button {
-  width: 22px;
-  height: 22px;
 }
 
 @keyframes pulse {

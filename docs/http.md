@@ -3,8 +3,12 @@
 The HTTP worker runs continuously in Docker until explicitly stopped. It uses
 Python 3.12's standard library and has no pip packages or external dependencies.
 The manager supplies bind address, port, generated response length, and generation
-mode as separate command arguments. Manager **0.4.0** uses the unchanged HTTP
+mode as separate command arguments. Manager **0.4.1** uses the unchanged HTTP
 server/client image **0.3.0**.
+
+Manual verification is unified in the built-in client tests. There is no
+separate business-probe UI or probe API. Startup readiness still checks HTTP
+status, response length and fixed content internally before accepting a start.
 
 ## Fixed HTTP workspace
 
