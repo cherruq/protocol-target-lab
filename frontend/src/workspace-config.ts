@@ -38,6 +38,11 @@ import {
   sameDlt645Config,
   type Dlt645Config,
 } from "./dlt645-config.ts";
+import {
+  isIec101Config,
+  sameIec101Config,
+  type Iec101Config,
+} from "./iec101-config.ts";
 export type WorkspaceConfig =
   | StoredConfig
   | DnsConfig
@@ -47,7 +52,8 @@ export type WorkspaceConfig =
   | MqttSnConfig
   | RtpConfig
   | RtcpConfig
-  | Dlt645Config;
+  | Dlt645Config
+  | Iec101Config;
 export type DraftConfig =
   | Config
   | DnsConfig
@@ -57,13 +63,16 @@ export type DraftConfig =
   | MqttSnConfig
   | RtpConfig
   | RtcpConfig
-  | Dlt645Config;
+  | Dlt645Config
+  | Iec101Config;
 export type WorkspaceDrafts = Record<string, DraftConfig>;
 
 export function sameWorkspaceConfig(
   a: WorkspaceConfig,
   b: WorkspaceConfig,
 ): boolean {
+  if (isIec101Config(a) || isIec101Config(b))
+    return isIec101Config(a) && isIec101Config(b) && sameIec101Config(a, b);
   if (isDlt645Config(a) || isDlt645Config(b))
     return isDlt645Config(a) && isDlt645Config(b) && sameDlt645Config(a, b);
   if (isRtcpConfig(a) || isRtcpConfig(b))
@@ -104,8 +113,10 @@ export function updateWorkspaceDrafts(
                 ? !isRtcpConfig(saved) || !sameRtcpConfig(edited, saved)
                 : isDlt645Config(edited)
                   ? !isDlt645Config(saved) || !sameDlt645Config(edited, saved)
-                  : !isHttpConfig(saved) ||
-                    !sameGeneratedConfig(edited, normalizeConfig(saved));
+                  : isIec101Config(edited)
+                    ? !isIec101Config(saved) || !sameIec101Config(edited, saved)
+                    : !isHttpConfig(saved) ||
+                      !sameGeneratedConfig(edited, normalizeConfig(saved));
   const next = { ...drafts };
   if (changed) next[id] = edited;
   else delete next[id];

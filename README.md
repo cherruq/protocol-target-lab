@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation is **HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP and DL/T645**, with manager version **0.13.0**,
-HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, and DL/T645 meter/client image **0.1.0**. Each protocol has one fixed workspace and
+The current implementation supports **ten protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645 and IEC101**, with manager version **0.14.0**,
+HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, and IEC101 dual-channel slave/client image **0.1.0**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -52,7 +52,11 @@ for stdin configuration, asynchronous calls, exit codes and automation examples.
 The supported package baseline is **Ubuntu 24.04 LTS, amd64, systemd, Ubuntu docker.io**.
 The manager runs directly on the host and invokes the installed Docker CLI using
 argument arrays. Its Web files are embedded at compilation time; production does
-not need Node, npm, Python, Cargo, or Nginx on the host. The protocol workers run inside their own containers.
+not need Node, npm, Cargo, or Nginx on the host. The Rust core and API client do
+not use host Python. The deb additionally depends on **Python 3** for the optional
+local `plabctl serial` PTY helper, installed at
+`/usr/libexec/protocol-target-lab/iec101_serial.py` and invoked with Python isolated
+mode. Protocol workers and their Python runtimes run inside their own containers.
 
 For development, install the Rust toolchain specified in `rust-toolchain.toml`,
 Node 22.12+ with npm (Node 24 was tested), Docker Engine with its CLI, GNU make, Python 3 (license inventory verification), and Debian packaging tools
@@ -94,7 +98,7 @@ build image.
 
 The HTTP image is
 `protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.13.0_amd64.deb`.
+The manager package is `dist/protocol-target-lab_0.14.0_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -121,13 +125,13 @@ offline installation bundle or complete source-dependency distribution.
 
 The release package selects Ubuntu 24.04's `docker.io` package as its Docker
 Engine and CLI provider. Install it first, or have the corresponding prepared
-packages available to APT. The manager deb declares `docker.io` and its detected
-native library dependencies. The project does not automatically replace another
+packages available to APT. The manager deb declares `docker.io`, Python 3 for the local serial helper,
+and its detected native library dependencies. The project does not automatically replace another
 Docker provider; a host with Docker CE can run development builds directly, while
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.13.0_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.14.0_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
@@ -162,10 +166,10 @@ Large image archives are not imported or downloaded by package-maintainer script
 
 There is one main configuration per protocol. Start, stop, restart, logs, and
 connection tests operate directly on that protocol's workspace. Internal runtime
-components do not create more workspaces: future IEC101 support must keep both
-independent address-width channels in the same workspace, while an MQTT-SN
-private broker is an internal dependency. Temporary test containers also remain
-internal resources. Only HTTP is currently implemented.
+components do not create more workspaces: IEC101 keeps both independent
+address-width channels simultaneously in one workspace, while an MQTT-SN private broker is an internal dependency. Temporary
+test containers also remain internal resources. The ten implemented protocols
+listed above each have one fixed workspace.
 
 Existing single-HTTP configurations retain their original ID, ownership hash,
 applied snapshot, and running container, including custom IDs other than
@@ -308,11 +312,14 @@ A complete first-stage acceptance also requires browser configuration and logs,
 real Docker start/stop and listener release, manager restart adoption, applied
 snapshot restoration, and installation/restart testing on Ubuntu 24.04. Reports
 must distinguish local checks, dual-node checks, manager restarts, and actual host
-reboots. The complete nine-protocol/offline release is not claimed by this phase.
+reboots. The complete planned protocol inventory and clean-machine offline release are
+not claimed by this phase.
 
 ## Source and licenses
 
-Project source is MIT licensed; see [LICENSE](LICENSE) and
+The original Rust/Web/Python project code is MIT licensed, except the
+GPL-3.0-or-later IEC101 native wrapper linked to lib60870. Third-party stacks
+retain their original terms; see [LICENSE](LICENSE) and
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Cargo/npm lockfiles identify the selected
 dependencies. Local reference material, plans, and environment-specific evidence
 are excluded from Git under `.local/` and are not part of package build contexts.
@@ -538,3 +545,48 @@ The original standard-library worker requires only the prepared locked Python
 base for offline rebuilds. It publishes TCP 20645 without device mounts or an
 observer port. It does not claim physical RS485/baud/relay/measurement or ESAM
 authentication; fixture transmission is explicitly non-cryptographic.
+
+## IEC101 dual software serial workspace
+
+IEC101 uses official **lib60870-C 2.4.1** in one supervised container. Both
+independent channels run together: single-byte link/COT/CA/IOA widths1/1/1/1,
+and double-profile widths2/2/2/3. Each has a private raw PTY, native slave child
+per TCP session and one active master slot. Normal disconnect cleans only its
+channel; an unexpected native/critical supervisor failure stops the whole group
+for manager recovery. Native Reset/Status, class1/class2 polls, shared FCB
+handling, configured single-point data and complete GI7/20/10 are exercised.
+
+```sh
+make fetch-iec101-deps
+make iec101-images OFFLINE=1
+make iec101-assets OFFLINE=1
+sudo plabctl assets import ./dist/iec101-assets
+plabctl config set iec101 --file dual-config.json
+plabctl start iec101
+plabctl tests run iec101 --method ALL --path dual
+```
+
+Use the full nested configuration described by `plabctl schema iec101`; the two
+host TCP ports must be distinct and unused. Both channels remain in one saved
+and applied configuration. ALL/dual performs16 real checks, not an ACK-only GI
+assertion. Same-host tests do not establish a separate-node serial byte path.
+
+For a test application that opens serial devices, run the optional root-owned
+helper on that application's host, using the target's two configured ports:
+
+```sh
+sudo plabctl serial start --host 192.0.2.20 --single-port 24751 --double-port 24752
+sudo plabctl serial status
+# Open /run/protocol-target-lab/serial/iec101-a and iec101-b in the test application.
+sudo plabctl serial stop
+```
+
+This local command uses Python3 and does not use the management API or SSH. Both
+PTY paths must be visible and permitted in the consuming process's namespace.
+Explicit `serial start` reconnects disconnected channels; there is no automatic
+replay of bytes after a TCP disconnect. Full GPL native source/wrapper/build
+materials accompany the separately imported runtime. The software serial profile
+is9600/8N1; it does not establish physical RS232/RS485 electrical behavior,
+line rate/parity, half-duplex direction or field hardware operation. See
+[IEC101 guide](docs/iec101.md), [acceptance scope](docs/iec101-acceptance.md),
+and [CLI reference](docs/cli.md).

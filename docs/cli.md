@@ -4,7 +4,8 @@
 point to the same native binary, using the management HTTP API for workspace
 commands. It does not edit the server's files or invoke local Docker for these
 commands. The Web UI is for interactive use; the CLI exposes the same implemented
-HTTP, DNS, MQTT, Telnet, IEC104 and MQTT-SN workspaces to automation. Both control the same saved settings and resources.
+HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645 and IEC101
+workspaces to automation. Both control the same saved settings and resources.
 
 API commands default to `http://127.0.0.1:18000`. Set `PLAB_URL` or pass `--url`
 (the explicit option wins). HTTP root URLs only: no credentials, path, query or
@@ -415,3 +416,101 @@ Read-only clients discover the current address and validate current values;
 startup configuration does not overwrite legitimate in-memory wire mutations.
 The TCP software profile supports the documented limited command set; serial
 hardware, actual energy/relay behavior, 1997 mode and ESAM are not implied.
+
+## IEC101 automation (manager 0.14.0)
+
+IEC101 is one fixed workspace containing both required channels. Full JSON has
+five required top-level fields: literal `wire_profile:"iec101-unbalanced-dual"`,
+`bind_ip`, fixed software `serial`, `single` and `double`. Obtain the current
+schema/config before editing. For example, a complete replacement file is:
+
+```json
+{
+  "wire_profile": "iec101-unbalanced-dual",
+  "bind_ip": "0.0.0.0",
+  "serial": {"baud_rate":9600,"data_bits":8,"parity":"N","stop_bits":1},
+  "single": {
+    "port":24751,"link_address":1,"originator_address":0,"common_address":1,
+    "single_char_ack":false,"point":{"ioa":1,"value":true}
+  },
+  "double": {
+    "port":24752,"link_address":4660,"originator_address":7,"common_address":513,
+    "single_char_ack":false,"point":{"ioa":1,"value":true}
+  }
+}
+```
+
+```sh
+plabctl schema iec101
+plabctl config set iec101 --file dual-config.json
+plabctl config set iec101 --single-port 24751 --double-port 24752
+plabctl config set iec101 --double-json '{"point":{"ioa":100,"value":false}}'
+plabctl start iec101
+plabctl tests run iec101 --method ALL --path dual
+plabctl tests run iec101 --method GI --path double
+plabctl connection-info iec101
+plabctl logs iec101
+plabctl stop iec101
+```
+
+IEC101-specific atomic field options are `--single-port`, `--double-port`,
+`--single-json`, `--double-json`, and `--serial-json`; `--bind-ip` and
+`--wire-profile` also apply. Nested JSON objects use recursive PATCH, so editing
+only `double.point.ioa` preserves its value, other fields and the single channel.
+Full `--file`/`--data` still intentionally replace the whole configuration.
+Do not combine `--single-port` with `--single-json`, or `--double-port` with
+`--double-json`; those ambiguous forms are rejected. Use the two channel port
+flags rather than the generic `--port`. Saving leaves the applied dual service
+running until an explicit start/restart.
+
+Both host ports are1..65535 and distinct; both channels remain enabled together.
+Widths are fixed single1/1/1/1 and double2/2/2/3 (link/COT/CA/IOA). Single
+link/common addresses are1..254, IOA1..255 and OA0; one-byte COT does not encode
+OA and report values are null. Double link/common addresses are1..65534,
+IOA1..16777215 and OA0..255. Point values and single-character-ACK choices are
+strict booleans. Serial9600/8/N/1 describes a software PTY termios request,
+not a measured physical serial link.
+
+Methods are `RESET_STATUS`, `CLASS2`, `GI`, `STREAM`, `ALL`; paths are `dual`
+(default), `single`, `double`. Two rounds per case and channel give16 checks for
+ALL/dual, with concurrent independent sessions. E5 is accepted only in its
+appropriate link-layer role; GI requires actual native confirmation, monitoring
+data and termination. Queued raw request/response frames and ASDU summaries are
+bounded. Each channel allows one active master; tests/health report unavailable
+when an external master holds the slot rather than disconnecting it.
+
+### Local serial-device helper
+
+This separate local administrative command runs the installed Python3 helper,
+not an API request. It always operates on the host where `plabctl` executes;
+`--url` does not select another machine. Run it on the test application's host:
+
+```sh
+sudo plabctl serial start --host 192.0.2.20 --single-port 24751 --double-port 24752
+sudo plabctl serial status
+sudo plabctl serial stop
+```
+
+All three commands require root. The helper is installed root-owned0644 at
+`/usr/libexec/protocol-target-lab/iec101_serial.py` and invoked by
+`/usr/bin/python3 -I`. It exposes both stable links
+`/run/protocol-target-lab/serial/iec101-a` and `iec101-b` under a root-owned0755
+directory, with PTYs root:dialout0660. The consuming process needs appropriate
+group/device permissions and visibility in its devpts namespace. It does not
+modify protected-symlink settings, physical serial devices or remote machines.
+
+After a TCP disconnect, it retains its own PTY and drops offline bytes; there is
+no automatic TCP reconnect or replay. Explicit `serial start` with the same
+configuration reconnects only disconnected channels. Changing target/ports
+requires `serial stop` then `serial start`. Stop verifies ownership before
+terminating its helper and removes only owned links/state/control socket; two
+root-owned coordination lock files remain to avoid lock-inode replacement races.
+
+Successful local helper commands emit JSON to stdout. Parsed runtime errors emit
+JSON to stderr and exit1; permission and argument-syntax errors return2 (syntax
+errors may include argparse usage). These local outputs differ from the API's
+single-stdout-JSON contract. The installed deb declares Python3 for this helper;
+the Rust manager/API client itself has no Python runtime dependency. Direct
+TCP/wire tests do not require a local serial helper. Software PTY/TCP acceptance
+does not establish physical RS232/RS485 electrical timing, parity or field-device
+operation.

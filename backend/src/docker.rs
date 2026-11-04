@@ -66,6 +66,13 @@ pub async fn prepare_image(image: &str, config: &ProtocolConfig) -> Result<Strin
         {
             bail!("Protocol image is incompatible; import matching assets");
         }
+        if matches!(config, ProtocolConfig::Iec101(_))
+            && metadata[0]["Config"]["Labels"]["io.protocol-target-lab.iec101-dual-schema"] != "1"
+        {
+            bail!(
+                "IEC101 image lacks simultaneous dual-channel capability; import matching assets"
+            );
+        }
         if matches!(config, ProtocolConfig::Rtp(_) | ProtocolConfig::Rtcp(_))
             && metadata[0]["Config"]["Labels"][format!(
                 "io.protocol-target-lab.{}-observer-schema",
@@ -155,6 +162,21 @@ pub fn running(v: &Value) -> bool {
     v["State"]["Running"].as_bool() == Some(true)
 }
 pub fn matches(v: &Value, config: &ProtocolConfig) -> bool {
+    if let ProtocolConfig::Iec101(c) = config
+        && (v["HostConfig"]["NetworkMode"] != "bridge"
+            || v["HostConfig"]["Privileged"] != false
+            || v["Mounts"].as_array().is_none_or(|m| !m.is_empty())
+            || v["HostConfig"]["Devices"]
+                .as_array()
+                .is_none_or(|m| !m.is_empty())
+            || v["Config"]["Labels"]["io.protocol-target-lab.iec101-dual-schema"] != "1"
+            || v["Config"]["Labels"]["io.protocol-target-lab.iec101-response-schema"] != "1"
+            || v["HostConfig"]["PortBindings"]
+                != serde_json::json!({"24741/tcp":[{"HostIp":c.bind_ip,"HostPort":c.single.port.to_string()}],"24742/tcp":[{"HostIp":c.bind_ip,"HostPort":c.double.port.to_string()}]}))
+    {
+        return false;
+    }
+
     if matches!(config, ProtocolConfig::Rtp(_) | ProtocolConfig::Rtcp(_)) {
         let p = &v["HostConfig"]["PortBindings"];
         if v["HostConfig"]["NetworkMode"] != "bridge"
@@ -253,6 +275,19 @@ pub async fn start(
             ]);
             args.extend(worker_args(c));
         }
+        ProtocolConfig::Iec101(c) => {
+            for (host, inner) in [(c.single.port, 24741), (c.double.port, 24742)] {
+                args.extend([
+                    "--publish".into(),
+                    format!("{}:{host}:{inner}/tcp", c.bind_ip),
+                ]);
+            }
+            args.extend([
+                immutable_image,
+                "--config-json".into(),
+                serde_json::to_string(config)?,
+            ]);
+        }
         ProtocolConfig::MqttSn(_) => {
             args.extend([
                 "--ipc".into(),
@@ -296,6 +331,28 @@ pub async fn probe_owned(
     source_id: &str,
     config: &ProtocolConfig,
 ) -> Result<()> {
+    if let ProtocolConfig::Iec101(c) = config {
+        let before = owned(deployment, Some(instance)).await?;
+        if before.len() != 1
+            || container_id(&before[0])? != source_id
+            || !running(&before[0])
+            || !matches(&before[0], config)
+        {
+            bail!("IEC101 readiness target changed");
+        }
+        crate::iec101::probe(c).await?;
+        let after = owned(deployment, Some(instance)).await?;
+        if after.len() != 1
+            || container_id(&after[0])? != source_id
+            || !running(&after[0])
+            || !matches(&after[0], config)
+            || before[0]["State"]["Pid"] != after[0]["State"]["Pid"]
+            || before[0]["State"]["StartedAt"] != after[0]["State"]["StartedAt"]
+        {
+            bail!("IEC101 readiness target changed during observation");
+        }
+        return Ok(());
+    }
     if matches!(config, ProtocolConfig::Rtp(_) | ProtocolConfig::Rtcp(_)) {
         let before = owned(deployment, Some(instance)).await?;
         if before.len() != 1 || container_id(&before[0])? != source_id {
@@ -324,6 +381,7 @@ pub async fn probe_owned(
 pub async fn probe(config: &ProtocolConfig) -> Result<()> {
     let config = match config {
         ProtocolConfig::Dlt645(c) => return crate::dlt645::probe(c).await,
+        ProtocolConfig::Iec101(c) => return crate::iec101::probe(c).await,
         ProtocolConfig::Rtcp(_) => bail!("RTCP readiness requires exact owned container observer"),
         ProtocolConfig::Rtp(_) => bail!("RTP readiness requires exact owned container observer"),
         ProtocolConfig::Dns(c) => return crate::dns::probe(c).await,
@@ -431,6 +489,16 @@ pub async fn preflight_port(
     own: Option<&ProtocolConfig>,
     own_id: Option<&str>,
 ) -> Result<()> {
+    if let ProtocolConfig::Iec101(c) = config {
+        let old = own.and_then(|o| {
+            if let ProtocolConfig::Iec101(o) = o {
+                Some(o)
+            } else {
+                None
+            }
+        });
+        return crate::iec101::preflight(c, old, own_id).await;
+    }
     let endpoints = if let ProtocolConfig::MqttSn(c) = config {
         c.endpoints()
             .iter()

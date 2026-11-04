@@ -51,6 +51,14 @@ impl TestRequest {
     pub fn validate_for(&self, config: &ProtocolConfig) -> Result<()> {
         match config {
             ProtocolConfig::Http(_) => self.validate(),
+            ProtocolConfig::Iec101(_) => {
+                if !crate::iec101::CASES.contains(&self.method.as_str())
+                    || !crate::iec101::PATHS.contains(&self.path.as_str())
+                {
+                    bail!("config.test: choose an IEC101 case and dual/single/double path");
+                }
+                Ok(())
+            }
             ProtocolConfig::Dlt645(c) => {
                 if !c.cases().contains(&self.method.as_str()) || self.path != crate::dlt645::PATH {
                     bail!(
@@ -414,7 +422,8 @@ async fn run_client(
         | ProtocolConfig::MqttSn(_)
         | ProtocolConfig::Rtp(_)
         | ProtocolConfig::Rtcp(_)
-        | ProtocolConfig::Dlt645(_) => args.extend([
+        | ProtocolConfig::Dlt645(_)
+        | ProtocolConfig::Iec101(_) => args.extend([
             "--config-json".into(),
             serde_json::to_string(&run.applied_config)?,
         ]),
@@ -430,6 +439,22 @@ async fn run_client(
                 ]);
             }
         }
+    }
+    let mut iec101_identity = None;
+    if let ProtocolConfig::Iec101(c) = &run.applied_config {
+        let target = docker::owned(deployment, Some(&run.instance_id)).await?;
+        if target.len() != 1
+            || docker::container_id(&target[0])? != run.source_container_id
+            || !docker::matches(&target[0], &run.applied_config)
+            || !docker::running(&target[0])
+        {
+            bail!("IEC101 dual target changed before testing");
+        }
+        iec101_identity = Some((
+            target[0]["State"]["Pid"].clone(),
+            target[0]["State"]["StartedAt"].clone(),
+        ));
+        args.extend(["--secondary-port".into(), c.double.port.to_string()]);
     }
     let mut observer_identity = None;
     if matches!(
@@ -533,6 +558,9 @@ async fn run_client(
         || !docker::running(&target[0])
         || docker::container_id(&target[0])? != run.source_container_id
         || !docker::matches(&target[0], &run.applied_config)
+        || iec101_identity.is_some_and(|(pid, start)| {
+            target[0]["State"]["Pid"] != pid || target[0]["State"]["StartedAt"] != start
+        })
         || observer_identity.is_some_and(|(pid, start)| {
             target[0]["State"]["Pid"] != pid || target[0]["State"]["StartedAt"] != start
         })

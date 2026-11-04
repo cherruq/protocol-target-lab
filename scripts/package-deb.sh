@@ -2,7 +2,7 @@
 set -euo pipefail
 project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$project_root"
-version=${VERSION:-0.13.0}
+version=${VERSION:-0.14.0}
 architecture=${ARCH:-amd64}
 [[ $architecture == amd64 ]] || { printf '%s\n' 'Phase 1 supports amd64 only.' >&2; exit 2; }
 dpkg --validate-version "$version"
@@ -36,9 +36,11 @@ Architecture: amd64
 Description: Local protocol target management service
 CONTROL
 mkdir -p "$stage/root/DEBIAN" "$stage/root/usr/bin" "$stage/root/usr/lib/systemd/system" \
-    "$stage/root/etc/default" "$stage/root/usr/share/doc/protocol-target-lab/docs"
+    "$stage/root/etc/default" "$stage/root/usr/share/doc/protocol-target-lab/docs" \
+    "$stage/root/usr/libexec/protocol-target-lab"
 install -m 0755 "$binary" "$stage/root/usr/bin/protocol-target-lab"
 ln -s protocol-target-lab "$stage/root/usr/bin/plabctl"
+install -m 0644 client-tools/iec101_serial.py "$stage/root/usr/libexec/protocol-target-lab/iec101_serial.py"
 install -m 0644 packaging/debian/protocol-target-lab.service "$stage/root/usr/lib/systemd/system/"
 install -m 0644 packaging/debian/default "$stage/root/etc/default/protocol-target-lab"
 install -m 0644 README.md LICENSE THIRD_PARTY_NOTICES THIRD_PARTY_LICENSES.txt "$stage/root/usr/share/doc/protocol-target-lab/"
@@ -46,7 +48,7 @@ install -m 0644 third-party/licenses.json "$stage/root/usr/share/doc/protocol-ta
 # Keep notices alongside the optional standalone binary distribution as well.
 install -m 0644 LICENSE THIRD_PARTY_NOTICES THIRD_PARTY_LICENSES.txt "$project_root/dist/"
 install -m 0644 third-party/licenses.json "$project_root/dist/third-party-licenses.json"
-install -m 0644 docs/http.md docs/dns.md docs/dns-acceptance.md docs/mqtt.md docs/mqtt-acceptance.md docs/telnet.md docs/telnet-acceptance.md docs/iec104.md docs/iec104-acceptance.md docs/mqtt-sn.md docs/mqtt-sn-acceptance.md docs/rtp.md docs/rtp-acceptance.md docs/rtcp.md docs/rtcp-acceptance.md docs/dlt645.md docs/dlt645-acceptance.md docs/cli.md docs/phase1-acceptance.md "$stage/root/usr/share/doc/protocol-target-lab/docs/"
+install -m 0644 docs/http.md docs/dns.md docs/dns-acceptance.md docs/mqtt.md docs/mqtt-acceptance.md docs/telnet.md docs/telnet-acceptance.md docs/iec104.md docs/iec104-acceptance.md docs/mqtt-sn.md docs/mqtt-sn-acceptance.md docs/rtp.md docs/rtp-acceptance.md docs/rtcp.md docs/rtcp-acceptance.md docs/dlt645.md docs/dlt645-acceptance.md docs/iec101.md docs/iec101-acceptance.md docs/cli.md docs/phase1-acceptance.md "$stage/root/usr/share/doc/protocol-target-lab/docs/"
 for script in postinst prerm postrm; do install -m 0755 "packaging/debian/$script" "$stage/root/DEBIAN/$script"; done
 shlibs=$(cd "$stage" && dpkg-shlibdeps -O -e"$stage/root/usr/bin/protocol-target-lab")
 shlibs=${shlibs#shlibs:Depends=}
@@ -60,10 +62,11 @@ Section: net
 Priority: optional
 Architecture: $architecture
 Maintainer: Protocol Target Lab contributors <maintainers@example.invalid>
-Depends: $shlibs, docker.io, systemd, init-system-helpers
+Depends: $shlibs, docker.io, systemd, init-system-helpers, python3
 Description: Native protocol test target management service
- Rust management service with an embedded Web UI and Docker HTTP, DNS, MQTT, Telnet, IEC104 and MQTT-SN targets.
- Provides HTTP/DNS/MQTT/Telnet/IEC104/MQTT-SN configuration, lifecycle, live logs and disposable client tests.
+ Rust management service with an embedded Web UI and ten Docker protocol targets.
+ Provides configuration, lifecycle, live logs, disposable client tests and a local
+ Python 3 helper exposing both IEC101 software serial channels through stable PTYs.
 CONTROL
 printf '%s\n' '/etc/default/protocol-target-lab' > "$stage/root/DEBIAN/conffiles"
 (cd "$stage/root" && find usr etc -type f -print0 | sort -z | xargs -0 md5sum) > "$stage/root/DEBIAN/md5sums"

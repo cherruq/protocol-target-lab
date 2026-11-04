@@ -2,6 +2,11 @@
 set -e
 case "$1" in
     remove)
+        # The helper is a separate local root daemon, not a managed container.
+        # Stop it while its ownership-aware executable is still installed.
+        if [ -f /usr/libexec/protocol-target-lab/iec101_serial.py ]; then
+            /usr/bin/plabctl serial stop
+        fi
         # stop-all stops the manager first, preventing automatic recreation.
         /usr/bin/plabctl stop-all
         if [ -d /run/systemd/system ]; then

@@ -3,6 +3,7 @@ mod cli;
 mod dlt645;
 mod dns;
 mod docker;
+mod iec101;
 mod iec104;
 mod manager;
 mod model;
@@ -139,6 +140,30 @@ async fn main() -> Result<()> {
         println!("{}", cli::HELP);
         return Ok(());
     }
+    // Local helper already emits JSON; accept the documented global --json flag.
+    let serial_args = if args.first().is_some_and(|s| s == "--json") {
+        &args[1..]
+    } else {
+        &args[..]
+    };
+    if serial_args.first().is_some_and(|s| s == "serial") {
+        let script = "/usr/libexec/protocol-target-lab/iec101_serial.py";
+        match tokio::process::Command::new("/usr/bin/python3")
+            .args(["-I", script])
+            .args(&serial_args[1..])
+            .status()
+            .await
+        {
+            Ok(status) => std::process::exit(status.code().unwrap_or(1)),
+            Err(e) => {
+                println!(
+                    "{}",
+                    json!({"schema_version":1,"ok":false,"command":"serial","error":{"code":"helper_unavailable","message":format!("Cannot execute installed serial helper: {e}")}})
+                );
+                std::process::exit(3);
+            }
+        }
+    }
     if let Some(code) = cli::dispatch(&args).await {
         std::process::exit(code);
     }
@@ -169,7 +194,7 @@ async fn main() -> Result<()> {
             println!(
                 "{}",
                 serde_json::to_string_pretty(
-                    &json!({"config_path":settings.config,"config_error":doc.as_ref().err().map(|e|format!("{e:#}")),"config":doc.ok(),"docker_version":docker_version.as_ref().ok(),"docker_error":docker_version.as_ref().err().map(|e|format!("{e:#}")),"resources":resources,"image":settings.image,"image_available":docker::image_id(&settings.image).await.is_ok(),"dns_image":settings.dns_image,"dns_image_available":docker::image_id(&settings.dns_image).await.is_ok(),"mqtt_image":settings.mqtt_image,"mqtt_image_available":docker::image_id(&settings.mqtt_image).await.is_ok(),"telnet_image":settings.telnet_image,"telnet_image_available":docker::image_id(&settings.telnet_image).await.is_ok(),"iec104_image":settings.iec104_image,"iec104_image_available":docker::image_id(&settings.iec104_image).await.is_ok(),"dlt645_image":settings.dlt645_image,"dlt645_image_available":docker::image_id(&settings.dlt645_image).await.is_ok(),"rtcp_image":settings.rtcp_image,"rtcp_image_available":docker::image_id(&settings.rtcp_image).await.is_ok(),"rtp_image":settings.rtp_image,"rtp_image_available":docker::image_id(&settings.rtp_image).await.is_ok(),"mqtt_sn_image":settings.mqtt_sn_image,"mqtt_sn_image_available":docker::image_id(&settings.mqtt_sn_image).await.is_ok()})
+                    &json!({"config_path":settings.config,"config_error":doc.as_ref().err().map(|e|format!("{e:#}")),"config":doc.ok(),"docker_version":docker_version.as_ref().ok(),"docker_error":docker_version.as_ref().err().map(|e|format!("{e:#}")),"resources":resources,"image":settings.image,"image_available":docker::image_id(&settings.image).await.is_ok(),"dns_image":settings.dns_image,"dns_image_available":docker::image_id(&settings.dns_image).await.is_ok(),"mqtt_image":settings.mqtt_image,"mqtt_image_available":docker::image_id(&settings.mqtt_image).await.is_ok(),"telnet_image":settings.telnet_image,"telnet_image_available":docker::image_id(&settings.telnet_image).await.is_ok(),"iec104_image":settings.iec104_image,"iec104_image_available":docker::image_id(&settings.iec104_image).await.is_ok(),"iec101_image":settings.iec101_image,"iec101_image_available":docker::image_id(&settings.iec101_image).await.is_ok(),"dlt645_image":settings.dlt645_image,"dlt645_image_available":docker::image_id(&settings.dlt645_image).await.is_ok(),"rtcp_image":settings.rtcp_image,"rtcp_image_available":docker::image_id(&settings.rtcp_image).await.is_ok(),"rtp_image":settings.rtp_image,"rtp_image_available":docker::image_id(&settings.rtp_image).await.is_ok(),"mqtt_sn_image":settings.mqtt_sn_image,"mqtt_sn_image_available":docker::image_id(&settings.mqtt_sn_image).await.is_ok()})
                 )?
             );
             return Ok(());
@@ -231,6 +256,7 @@ mod cleanup_tests {
             rtp_image: "unused".into(),
             rtcp_image: "unused".into(),
             dlt645_image: "unused".into(),
+            iec101_image: "unused".into(),
         };
         struct Cleanup(std::path::PathBuf);
         impl Drop for Cleanup {

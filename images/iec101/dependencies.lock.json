@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "base_image": "python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337",
+  "build_image": "protocol-target-lab/iec101-build:2.4.1",
+  "image": "protocol-target-lab/iec101:0.1.0",
+  "lib60870": {
+    "commit": "7a388e3e133999e1ca77ba7521d55d074b7cd2bc",
+    "version": "2.4.1",
+    "file": "third-party/lib60870/lib60870-7a388e3e133999e1ca77ba7521d55d074b7cd2bc.tar.gz",
+    "url": "https://codeload.github.com/mz-automation/lib60870/tar.gz/7a388e3e133999e1ca77ba7521d55d074b7cd2bc",
+    "sha256": "8bde18d06ae131cda2e49f8aa902ba1daaf1b32283afb39d741563e4291e21ff",
+    "license": "GPL-3.0-or-later",
+    "patches": []
+  }
+}

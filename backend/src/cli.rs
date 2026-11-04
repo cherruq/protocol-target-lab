@@ -20,6 +20,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
   config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
   config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
+  config set iec101 [--bind-ip IP] [--single-port N] [--double-port N] [--single-json JSON] [--double-json JSON] [--serial-json JSON]
   config set dlt645 [--port N] [--meter-address DIGITS] [--energy-hundredths N] [--period-minutes N] [--programming-key-enabled true|false] [--security-json JSON]
   config set rtcp [--bind-ip IP] [--port N] [--max-packet-size N] [--packet-profile sr-sdes]
   config set rtp [--bind-ip IP] [--port N] [--max-packet-size N]
@@ -45,6 +46,8 @@ Local administrative commands (retain existing behavior; may require root):
   plabctl start                 start the management service
   plabctl stop-all              stop manager and owned resources
   plabctl status | doctor       local persisted state and Docker diagnostics
+  plabctl serial start --host IPv4 --single-port N --double-port N
+  plabctl serial status | stop   local root-owned dual PTY helper
   plabctl assets import DIR     local image import from a checked manifest
 Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_IEC104_IMAGE, PLAB_MQTTSN_IMAGE, PLAB_DOCKER_SOCKET
 "#;
@@ -160,6 +163,11 @@ const VALUE_OPTIONS: &[&str] = &[
     "--period-minutes",
     "--programming-key-enabled",
     "--security-json",
+    "--single-port",
+    "--double-port",
+    "--single-json",
+    "--double-json",
+    "--serial-json",
     "--banner",
     "--max-line-bytes",
 ];
@@ -309,6 +317,11 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--period-minutes",
                 "--programming-key-enabled",
                 "--security-json",
+                "--single-port",
+                "--double-port",
+                "--single-json",
+                "--double-json",
+                "--serial-json",
                 "--banner",
                 "--max-line-bytes",
             ] {
@@ -356,7 +369,9 @@ fn parse(args: &[String]) -> Result<Options> {
                     return Err(Failure::usage("--name applies to DNS tests"));
                 }
                 path.or(name).unwrap_or_else(|| {
-                    if *p == "dns" {
+                    if *p == "iec101" {
+                        "dual".into()
+                    } else if *p == "dns" {
                         "ALL".into()
                     } else if *p == "mqtt" {
                         crate::mqtt::TEST_TOPIC.into()
@@ -659,7 +674,31 @@ impl Api {
 }
 fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
     let mut patch = serde_json::Map::new();
+    for channel in ["single", "double"] {
+        if fields.contains_key(&format!("--{channel}-port"))
+            && fields.contains_key(&format!("--{channel}-json"))
+        {
+            return Err(Failure::usage(format!(
+                "--{channel}-port and --{channel}-json overlap"
+            )));
+        }
+    }
     for (key, value) in fields {
+        if matches!(key.as_str(), "--single-port" | "--double-port") {
+            let port = value
+                .parse::<u16>()
+                .map_err(|_| Failure::usage(format!("{key} must be1..65535")))?;
+            if port == 0 {
+                return Err(Failure::usage(format!("{key} must be1..65535")));
+            }
+            patch.insert(
+                key.trim_start_matches("--")
+                    .trim_end_matches("-port")
+                    .into(),
+                json!({"port":port}),
+            );
+            continue;
+        }
         let value = match key.as_str() {
             "--port"
             | "--response-length"
@@ -680,14 +719,25 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
                     .parse::<bool>()
                     .map_err(|_| Failure::usage(format!("{key} must be true or false")))?,
             ),
-            "--records-json" | "--points-json" | "--predefined-topics-json" | "--security-json" => {
-                serde_json::from_str(&value)
-                    .map_err(|e| Failure::usage(format!("invalid configuration JSON: {e}")))?
-            }
+            "--records-json"
+            | "--points-json"
+            | "--predefined-topics-json"
+            | "--security-json"
+            | "--single-json"
+            | "--double-json"
+            | "--serial-json" => serde_json::from_str(&value)
+                .map_err(|e| Failure::usage(format!("invalid configuration JSON: {e}")))?,
             _ => Value::String(value),
         };
         patch.insert(
-            if key == "--security-json" {
+            if matches!(
+                key.as_str(),
+                "--single-json" | "--double-json" | "--serial-json"
+            ) {
+                key.trim_start_matches("--")
+                    .trim_end_matches("-json")
+                    .into()
+            } else if key == "--security-json" {
                 "security".into()
             } else if key == "--records-json" {
                 "records".into()
@@ -956,6 +1006,37 @@ mod tests {
     use crate::model::ResponseMode;
     fn args(s: &str) -> Vec<String> {
         s.split_whitespace().map(str::to_owned).collect()
+    }
+    #[test]
+    fn iec101_nested_ports_preserve_other_channel_and_reject_overlap() {
+        let c: ProtocolConfig = crate::iec101::Iec101Config::default().into();
+        let patch = config_patch(BTreeMap::from([
+            ("--single-port".into(), "24751".into()),
+            (
+                "--double-json".into(),
+                r#"{"point":{"value":false}}"#.into(),
+            ),
+        ]))
+        .unwrap();
+        let changed = c.patch(patch).unwrap();
+        if let ProtocolConfig::Iec101(v) = changed {
+            assert_eq!(v.single.port, 24751);
+            assert_eq!(
+                v.single.point,
+                crate::iec101::Iec101Config::default().single.point
+            );
+            assert!(!v.double.point.value);
+            assert_eq!(v.double.port, 24742);
+        } else {
+            panic!("wrong variant");
+        }
+        assert!(
+            config_patch(BTreeMap::from([
+                ("--single-port".into(), "24751".into()),
+                ("--single-json".into(), "{}".into())
+            ]))
+            .is_err()
+        );
     }
     #[test]
     fn parser_rejects_conflicts_unknown_or_irrelevant_options() {

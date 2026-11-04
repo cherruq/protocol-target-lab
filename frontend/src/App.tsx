@@ -25,6 +25,15 @@ import MqttSnConfigForm from "./MqttSnConfigForm";
 import RtpConfigForm from "./RtpConfigForm";
 import RtcpConfigForm from "./RtcpConfigForm";
 import Dlt645ConfigForm from "./Dlt645ConfigForm";
+import Iec101ConfigForm from "./Iec101ConfigForm";
+import {
+  iec101Defaults,
+  iec101CaseLabels,
+  isIec101Config,
+  validateIec101Config,
+  iec101Description,
+  type Iec101Config,
+} from "./iec101-config";
 import {
   dlt645Defaults,
   dlt645CaseLabels,
@@ -142,6 +151,10 @@ type Dlt645Instance = Omit<Instance, "config" | "applied_config"> & {
   config: Dlt645Config;
   applied_config: Dlt645Config | null;
 };
+type Iec101Instance = Omit<Instance, "config" | "applied_config"> & {
+  config: Iec101Config;
+  applied_config: Iec101Config | null;
+};
 type Environment = {
   docker_available: boolean;
   docker_version?: string;
@@ -153,7 +166,12 @@ type Environment = {
 };
 type ImageAsset = { image: string; available: boolean; image_id?: string };
 type Assets = ImageAsset & { protocols?: Record<string, ImageAsset> };
-type Connection = { base_url?: string; endpoint?: string; commands: string[] };
+type Connection = {
+  base_url?: string;
+  endpoint?: string;
+  endpoints?: { single: string; double: string };
+  commands: string[];
+};
 type Protocol = {
   id: string;
   name: string;
@@ -447,6 +465,7 @@ export default function App() {
   const isRtp = selectedProtocol?.id === "rtp";
   const isRtcp = selectedProtocol?.id === "rtcp";
   const isDlt645 = selectedProtocol?.id === "dlt645";
+  const isIec101 = selectedProtocol?.id === "iec101";
   const protocolName = selectedProtocol?.name || "协议";
   const httpSelected =
     selectedProtocol?.id === "http" &&
@@ -511,6 +530,13 @@ export default function App() {
     (!selected.applied_config || isDlt645Config(selected.applied_config))
       ? (selected as Dlt645Instance)
       : null;
+  const iec101Selected =
+    isIec101 &&
+    selected?.protocol_id === "iec101" &&
+    isIec101Config(selected.config) &&
+    (!selected.applied_config || isIec101Config(selected.applied_config))
+      ? (selected as Iec101Instance)
+      : null;
   const knownWorkspace = Boolean(
     httpSelected ||
       dnsSelected ||
@@ -520,7 +546,8 @@ export default function App() {
       mqttSnSelected ||
       rtpSelected ||
       rtcpSelected ||
-      dlt645Selected,
+      dlt645Selected ||
+      iec101Selected,
   );
   const cachedDraft = selectedId ? drafts[selectedId] : undefined;
   const draft: Config =
@@ -532,7 +559,8 @@ export default function App() {
     !isMqttSnConfig(cachedDraft) &&
     !isRtpConfig(cachedDraft) &&
     !isRtcpConfig(cachedDraft) &&
-    !isDlt645Config(cachedDraft)
+    !isDlt645Config(cachedDraft) &&
+    !isIec101Config(cachedDraft)
       ? cachedDraft
       : httpSelected
         ? normalizeConfig(httpSelected.config)
@@ -561,6 +589,18 @@ export default function App() {
   const dlt645Draft: Dlt645Config = isDlt645Config(cachedDraft)
     ? cachedDraft
     : dlt645Selected?.config || dlt645Defaults;
+  const iec101Draft: Iec101Config = isIec101Config(cachedDraft)
+    ? cachedDraft
+    : iec101Selected?.config || iec101Defaults;
+  const effectiveConfig = selected?.applied_config || selected?.config;
+  const effectivePort =
+    effectiveConfig && isIec101Config(effectiveConfig)
+      ? effectiveConfig.single.port
+      : effectiveConfig?.port;
+  const effectiveSecondPort =
+    effectiveConfig && isIec101Config(effectiveConfig)
+      ? effectiveConfig.double.port
+      : undefined;
   const dirty = Boolean(cachedDraft);
   const selectedAsset =
     assets?.protocols?.[selectedProtocolId] ||
@@ -726,8 +766,11 @@ export default function App() {
                     ? rtcpDraft
                     : isDlt645
                       ? dlt645Draft
-                      : draft;
-      if (isDlt645) validateDlt645Config(dlt645Draft);
+                      : isIec101
+                        ? iec101Draft
+                        : draft;
+      if (isIec101) validateIec101Config(iec101Draft);
+      else if (isDlt645) validateDlt645Config(dlt645Draft);
       else if (isRtcp) validateRtcpConfig(rtcpDraft);
       else if (isRtp) validateRtpConfig(rtpDraft);
       else if (isMqttSn) validateMqttSnConfig(mqttSnDraft);
@@ -986,119 +1029,132 @@ export default function App() {
                 <p className="instance-description">
                   受控 {protocolName} 测试服务 <span>·</span> Docker{" "}
                   <span>·</span>{" "}
-                  {isDlt645
-                    ? `${selectedProtocol?.implementation || "DL/T645-2007 software meter"} · TCP 软件电表`
-                    : isRtcp
-                      ? `${selectedProtocol?.implementation || "RTCPv2 SR+SDES receiver"} · UDP 接收`
-                      : isRtp
-                        ? `${selectedProtocol?.implementation || "RTPv2 receiver"} · UDP 接收`
-                        : isMqttSn
-                          ? `${selectedProtocol?.implementation || "Paho 1.5.1"}（含注册容量保护修正） · UDP 网关`
-                          : isIec104
-                            ? `${selectedProtocol?.implementation || "c104 2.2.1"}（含 TCP 分帧修正） · TCP`
-                            : isTelnet
-                              ? `${selectedProtocol?.implementation || "TELNET"} · TCP`
-                              : isDns
-                                ? "UDP / TCP"
-                                : isMqtt
-                                  ? `${selectedProtocol?.implementation || "MQTT"} · 匿名 TCP`
-                                  : "HTTP/1.1"}
+                  {isIec101
+                    ? `${selectedProtocol?.implementation || "lib60870-C 2.4.1"} · 原生双通道 PTY / TCP`
+                    : isDlt645
+                      ? `${selectedProtocol?.implementation || "DL/T645-2007 software meter"} · TCP 软件电表`
+                      : isRtcp
+                        ? `${selectedProtocol?.implementation || "RTCPv2 SR+SDES receiver"} · UDP 接收`
+                        : isRtp
+                          ? `${selectedProtocol?.implementation || "RTPv2 receiver"} · UDP 接收`
+                          : isMqttSn
+                            ? `${selectedProtocol?.implementation || "Paho 1.5.1"}（含注册容量保护修正） · UDP 网关`
+                            : isIec104
+                              ? `${selectedProtocol?.implementation || "c104 2.2.1"}（含 TCP 分帧修正） · TCP`
+                              : isTelnet
+                                ? `${selectedProtocol?.implementation || "TELNET"} · TCP`
+                                : isDns
+                                  ? "UDP / TCP"
+                                  : isMqtt
+                                    ? `${selectedProtocol?.implementation || "MQTT"} · 匿名 TCP`
+                                    : "HTTP/1.1"}
                 </p>
                 <div className="method-support">
                   <span>
-                    {isDlt645
-                      ? "有限软件电表与实验边界"
-                      : isRtcp
-                        ? "固定 profile 与接收范围"
-                        : isRtp
-                          ? "接收与观察范围"
-                          : isMqttSn
-                            ? "本轮验收与原生部署"
-                            : isIec104
-                              ? "固定类型与命令模式"
-                              : isTelnet
-                                ? "协议协商能力"
-                                : isMqtt
-                                  ? "支持的版本与 QoS"
-                                  : isDns
-                                    ? "支持的传输"
-                                    : legacyApplied
-                                      ? "新生成模式支持的方法"
-                                      : "支持的方法"}
+                    {isIec101
+                      ? "固定双通道与原生协议"
+                      : isDlt645
+                        ? "有限软件电表与实验边界"
+                        : isRtcp
+                          ? "固定 profile 与接收范围"
+                          : isRtp
+                            ? "接收与观察范围"
+                            : isMqttSn
+                              ? "本轮验收与原生部署"
+                              : isIec104
+                                ? "固定类型与命令模式"
+                                : isTelnet
+                                  ? "协议协商能力"
+                                  : isMqtt
+                                    ? "支持的版本与 QoS"
+                                    : isDns
+                                      ? "支持的传输"
+                                      : legacyApplied
+                                        ? "新生成模式支持的方法"
+                                        : "支持的方法"}
                   </span>
                   <div>
-                    {(isDlt645
+                    {(isIec101
                       ? [
-                          "DL/T645-2007",
-                          "TCP 字节流",
-                          "默认 ALL 只读",
-                          "软件状态",
+                          "IEC101 非平衡",
+                          "single 1/1/1/1",
+                          "double 2/2/2/3",
+                          "9600/8N1（PTY请求）",
                         ]
-                      : isRtcp
-                        ? ["RTCPv2", "UDP", "SR + SDES", "独立接收证据"]
-                        : isRtp
-                          ? [
-                              "RTPv2",
-                              "UDP",
-                              "CSRC / 扩展 / 填充",
-                              "有界接收证据",
-                            ]
-                          : isMqttSn
+                      : isDlt645
+                        ? [
+                            "DL/T645-2007",
+                            "TCP 字节流",
+                            "默认 ALL 只读",
+                            "软件状态",
+                          ]
+                        : isRtcp
+                          ? ["RTCPv2", "UDP", "SR + SDES", "独立接收证据"]
+                          : isRtp
                             ? [
+                                "RTPv2",
                                 "UDP",
-                                "QoS 1（本轮验收）",
-                                "组播 GWINFO",
-                                "同容器私有 Broker",
+                                "CSRC / 扩展 / 填充",
+                                "有界接收证据",
                               ]
-                            : isIec104
+                            : isMqttSn
                               ? [
-                                  "M_SP_NA_1",
-                                  "M_ME_NC_1",
-                                  "C_SC_NA_1",
-                                  "DIRECT",
+                                  "UDP",
+                                  "QoS 1（本轮验收）",
+                                  "组播 GWINFO",
+                                  "同容器私有 Broker",
                                 ]
-                              : isTelnet
-                                ? selectedProtocol?.supported_features || []
-                                : isMqtt
-                                  ? [
-                                      ...(
-                                        selectedProtocol?.supported_versions ||
-                                        []
-                                      ).map((v) => `MQTT ${v}`),
-                                      ...(
-                                        selectedProtocol?.supported_qos || []
-                                      ).map((q) => `QoS ${q}`),
-                                    ]
-                                  : isDns
-                                    ? selectedProtocol?.supported_transports || [
-                                        "UDP",
-                                        "TCP",
+                              : isIec104
+                                ? [
+                                    "M_SP_NA_1",
+                                    "M_ME_NC_1",
+                                    "C_SC_NA_1",
+                                    "DIRECT",
+                                  ]
+                                : isTelnet
+                                  ? selectedProtocol?.supported_features || []
+                                  : isMqtt
+                                    ? [
+                                        ...(
+                                          selectedProtocol?.supported_versions ||
+                                          []
+                                        ).map((v) => `MQTT ${v}`),
+                                        ...(
+                                          selectedProtocol?.supported_qos || []
+                                        ).map((q) => `QoS ${q}`),
                                       ]
-                                    : methods
+                                    : isDns
+                                      ? selectedProtocol?.supported_transports || [
+                                          "UDP",
+                                          "TCP",
+                                        ]
+                                      : methods
                     ).map((method) => (
                       <code key={method}>{method}</code>
                     ))}
                   </div>
                   <p>
-                    {isDlt645
-                      ? "TCP 软件电表保留有限软件读写、冻结与控制行为。默认 ALL 仅核心只读 8 项；可选写周期会恢复原当前值，扩展 03 仅拒绝或固定传输 fixture（crypto_verified=false）。不代表物理 RS-485、继电器、ESAM 或密码学认证。"
-                      : isRtcp
-                        ? "固定 SR+SDES compound 接收 profile，全包验证与匹配 CNAME；不发送 RR / ACK，不依赖 RTP 工作台。私有观察器只提供实际接收证据，不是 RTCP 协议回复。"
-                        : isRtp
-                          ? "单向接收并记录实际 RTP 字段与原始载荷，不发送 RTP ACK、不解码或播放媒体。内置测试通过私有只读观察器核对目标真实接收，发送成功本身不代表已接收。"
-                          : isMqttSn
-                            ? "本轮验证 QoS 1 端到端收发及真实组播发现，其他原生 QoS 能力未在本轮验收。网关及私有 Broker 使用同一容器，不依赖 MQTT 工作台是否运行。"
-                            : isIec104
-                              ? "三个固定角色用于实验模拟。单点和测量显示启动初值；实时点值以 GI / READ 的实际返回为准。DIRECT 命令仅修改模拟内存，不连接或驱动物理设备。"
-                              : isTelnet
-                                ? "使用真实 Telnet 协议栈进行 IAC 协商；实验应用提供 ECHO、INFO、CLOSE，不提供系统登录或 shell。"
-                                : isMqtt
-                                  ? "支持发布 / 订阅与 QoS 0、1、2。当前使用匿名 TCP，不提供 TLS、密码认证、WebSocket 或 SCRAM。"
-                                  : isDns
-                                    ? "按配置记录回答 A / AAAA 查询。UDP 和 TCP 可分别启用，使用同一组记录与端口。"
-                                    : legacyApplied
-                                      ? "旧生效配置保留旧版能力；保存新配置并重启后，切换到上述方法和响应生成规则。"
-                                      : "HEAD 无正文；GET、POST、PUT、PATCH、DELETE、OPTIONS 均按配置生成响应正文。"}
+                    {isIec101
+                      ? "两个独立通道同时启用，各一个活动 TCP 主站连接。原生 FT1.2 / ASDU 经软件 PTY 透明传输；不是 IEC104，也不代表物理 RS-232/485 线速、电压或现场设备验收。"
+                      : isDlt645
+                        ? "TCP 软件电表保留有限软件读写、冻结与控制行为。默认 ALL 仅核心只读 8 项；可选写周期会恢复原当前值，扩展 03 仅拒绝或固定传输 fixture（crypto_verified=false）。不代表物理 RS-485、继电器、ESAM 或密码学认证。"
+                        : isRtcp
+                          ? "固定 SR+SDES compound 接收 profile，全包验证与匹配 CNAME；不发送 RR / ACK，不依赖 RTP 工作台。私有观察器只提供实际接收证据，不是 RTCP 协议回复。"
+                          : isRtp
+                            ? "单向接收并记录实际 RTP 字段与原始载荷，不发送 RTP ACK、不解码或播放媒体。内置测试通过私有只读观察器核对目标真实接收，发送成功本身不代表已接收。"
+                            : isMqttSn
+                              ? "本轮验证 QoS 1 端到端收发及真实组播发现，其他原生 QoS 能力未在本轮验收。网关及私有 Broker 使用同一容器，不依赖 MQTT 工作台是否运行。"
+                              : isIec104
+                                ? "三个固定角色用于实验模拟。单点和测量显示启动初值；实时点值以 GI / READ 的实际返回为准。DIRECT 命令仅修改模拟内存，不连接或驱动物理设备。"
+                                : isTelnet
+                                  ? "使用真实 Telnet 协议栈进行 IAC 协商；实验应用提供 ECHO、INFO、CLOSE，不提供系统登录或 shell。"
+                                  : isMqtt
+                                    ? "支持发布 / 订阅与 QoS 0、1、2。当前使用匿名 TCP，不提供 TLS、密码认证、WebSocket 或 SCRAM。"
+                                    : isDns
+                                      ? "按配置记录回答 A / AAAA 查询。UDP 和 TCP 可分别启用，使用同一组记录与端口。"
+                                      : legacyApplied
+                                        ? "旧生效配置保留旧版能力；保存新配置并重启后，切换到上述方法和响应生成规则。"
+                                        : "HEAD 无正文；GET、POST、PUT、PATCH、DELETE、OPTIONS 均按配置生成响应正文。"}
                   </p>
                 </div>
                 <div className="instance-actions">
@@ -1172,7 +1228,15 @@ export default function App() {
                           : "新配置已保存，旧生效配置仍保留固定正文和 POST 回显行为。显式重启后才切换到新的内容生成模式和方法支持。"}
                       </div>
                     )}
-                    {isDlt645 ? (
+                    {isIec101 ? (
+                      <Iec101ConfigForm
+                        config={iec101Draft}
+                        onChange={edit}
+                        disabled={
+                          Boolean(environment?.config_error) || busy === "save"
+                        }
+                      />
+                    ) : isDlt645 ? (
                       <Dlt645ConfigForm
                         config={dlt645Draft}
                         onChange={edit}
@@ -1281,11 +1345,13 @@ export default function App() {
                   )}
                   <div className="applied-config">
                     <h3>
-                      {isDlt645
-                        ? "当前生效启动参数（非实时表状态）"
-                        : isIec104
-                          ? "当前生效启动参数（非实时点值）"
-                          : "当前生效参数"}
+                      {isIec101
+                        ? "当前生效双通道参数（软件模拟）"
+                        : isDlt645
+                          ? "当前生效启动参数（非实时表状态）"
+                          : isIec104
+                            ? "当前生效启动参数（非实时点值）"
+                            : "当前生效参数"}
                     </h3>
                     {selected.applied_config ? (
                       <dl>
@@ -1295,65 +1361,83 @@ export default function App() {
                         </div>
                         <div>
                           <dt>
-                            {isRtp || isRtcp
-                              ? "UDP 端口"
-                              : isMqttSn
-                                ? "主 UDP 端口"
-                                : isDns
-                                  ? "DNS 端口"
-                                  : "TCP 端口"}
+                            {isIec101
+                              ? "双通道 TCP 端口"
+                              : isRtp || isRtcp
+                                ? "UDP 端口"
+                                : isMqttSn
+                                  ? "主 UDP 端口"
+                                  : isDns
+                                    ? "DNS 端口"
+                                    : "TCP 端口"}
                           </dt>
-                          <dd>{selected.applied_config.port}</dd>
+                          <dd>
+                            {isIec101Config(selected.applied_config)
+                              ? `single ${selected.applied_config.single.port} / double ${selected.applied_config.double.port}`
+                              : selected.applied_config.port}
+                          </dd>
                         </div>
                         <div>
                           <dt>
-                            {isDlt645
-                              ? "软件电表启动配置与限制"
-                              : isRtp || isRtcp
-                                ? "数据报容量与接收范围"
-                                : isMqttSn
-                                  ? "网关发现与私有 Broker"
-                                  : isIec104
-                                    ? "启动点配置与映射"
-                                    : isTelnet
-                                      ? "实验应用与限制"
-                                      : isDns
-                                        ? "启用传输"
-                                        : isMqtt
-                                          ? "连接与报文限制"
-                                          : "响应配置"}
+                            {isIec101
+                              ? "固定格式与遥信配置"
+                              : isDlt645
+                                ? "软件电表启动配置与限制"
+                                : isRtp || isRtcp
+                                  ? "数据报容量与接收范围"
+                                  : isMqttSn
+                                    ? "网关发现与私有 Broker"
+                                    : isIec104
+                                      ? "启动点配置与映射"
+                                      : isTelnet
+                                        ? "实验应用与限制"
+                                        : isDns
+                                          ? "启用传输"
+                                          : isMqtt
+                                            ? "连接与报文限制"
+                                            : "响应配置"}
                           </dt>
                           <dd className="applied-body">
-                            {isDlt645Config(selected.applied_config)
-                              ? dlt645Description(selected.applied_config)
-                              : isRtcpConfig(selected.applied_config)
-                                ? rtcpDescription(selected.applied_config)
-                                : isRtpConfig(selected.applied_config)
-                                  ? rtpDescription(selected.applied_config)
-                                  : isMqttSnConfig(selected.applied_config)
-                                    ? mqttSnDescription(selected.applied_config)
-                                    : isIec104Config(selected.applied_config)
-                                      ? iec104StartupDescription(
+                            {isIec101Config(selected.applied_config)
+                              ? iec101Description(selected.applied_config)
+                              : isDlt645Config(selected.applied_config)
+                                ? dlt645Description(selected.applied_config)
+                                : isRtcpConfig(selected.applied_config)
+                                  ? rtcpDescription(selected.applied_config)
+                                  : isRtpConfig(selected.applied_config)
+                                    ? rtpDescription(selected.applied_config)
+                                    : isMqttSnConfig(selected.applied_config)
+                                      ? mqttSnDescription(
                                           selected.applied_config,
                                         )
-                                      : isTelnetConfig(selected.applied_config)
-                                        ? `最多 ${selected.applied_config.max_connections} 个连接 · 输入行最大 ${selected.applied_config.max_line_bytes.toLocaleString()} 字节（去掉 CRLF） · 欢迎语 ${JSON.stringify(selected.applied_config.banner)}`
-                                        : isMqttConfig(selected.applied_config)
-                                          ? `最多 ${selected.applied_config.max_connections} 个连接 · 完整报文最大 ${selected.applied_config.max_packet_size.toLocaleString()} 字节`
-                                          : isDnsConfig(selected.applied_config)
-                                            ? [
-                                                selected.applied_config
-                                                  .udp_enabled && "UDP",
-                                                selected.applied_config
-                                                  .tcp_enabled && "TCP",
-                                              ]
-                                                .filter(Boolean)
-                                                .join(" / ")
-                                            : isLegacyConfig(
+                                      : isIec104Config(selected.applied_config)
+                                        ? iec104StartupDescription(
+                                            selected.applied_config,
+                                          )
+                                        : isTelnetConfig(
+                                              selected.applied_config,
+                                            )
+                                          ? `最多 ${selected.applied_config.max_connections} 个连接 · 输入行最大 ${selected.applied_config.max_line_bytes.toLocaleString()} 字节（去掉 CRLF） · 欢迎语 ${JSON.stringify(selected.applied_config.banner)}`
+                                          : isMqttConfig(
+                                                selected.applied_config,
+                                              )
+                                            ? `最多 ${selected.applied_config.max_connections} 个连接 · 完整报文最大 ${selected.applied_config.max_packet_size.toLocaleString()} 字节`
+                                            : isDnsConfig(
                                                   selected.applied_config,
                                                 )
-                                              ? `旧版固定正文 ${new TextEncoder().encode(selected.applied_config.response_body).length.toLocaleString()} 字节（POST 回显）`
-                                              : `${selected.applied_config.response_length.toLocaleString()} 字节 · ${selected.applied_config.response_mode === "fixed" ? "固定内容" : "每次随机"}`}
+                                              ? [
+                                                  selected.applied_config
+                                                    .udp_enabled && "UDP",
+                                                  selected.applied_config
+                                                    .tcp_enabled && "TCP",
+                                                ]
+                                                  .filter(Boolean)
+                                                  .join(" / ")
+                                              : isLegacyConfig(
+                                                    selected.applied_config,
+                                                  )
+                                                ? `旧版固定正文 ${new TextEncoder().encode(selected.applied_config.response_body).length.toLocaleString()} 字节（POST 回显）`
+                                                : `${selected.applied_config.response_length.toLocaleString()} 字节 · ${selected.applied_config.response_mode === "fixed" ? "固定内容" : "每次随机"}`}
                           </dd>
                         </div>
                         {isMqttSnConfig(selected.applied_config) && (
@@ -1487,7 +1571,18 @@ export default function App() {
                   <h2>连接与验证</h2>
                   <span className="muted">内置测试与手动接入</span>
                 </div>
-                {dlt645Selected ? (
+                {iec101Selected ? (
+                  <ProtocolClientTests
+                    key={iec101Selected.id}
+                    instance={iec101Selected}
+                    protocolName="IEC101"
+                    hasUnappliedConfig={dirty || appliedDiffers}
+                    operationsLocked={locked}
+                    caseLabels={iec101CaseLabels}
+                    pathLabel="通道范围（dual 默认16项）"
+                    describeConfig={iec101Description}
+                  />
+                ) : dlt645Selected ? (
                   <ProtocolClientTests
                     key={dlt645Selected.id}
                     instance={dlt645Selected}
@@ -1590,62 +1685,86 @@ export default function App() {
                 <details className="connection-help">
                   <summary>
                     手动接入与{" "}
-                    {isDlt645
-                      ? "DL/T645 软件表客户端"
-                      : isRtcp
-                        ? "RTCP 发送与接收观察"
-                        : isRtp
-                          ? "RTP 发送与接收观察"
-                          : isMqttSn
-                            ? "MQTT-SN 客户端"
-                            : isIec104
-                              ? "IEC104 客户端"
-                              : isTelnet
-                                ? "Telnet 客户端"
-                                : isDns
-                                  ? "dig"
-                                  : isMqtt
-                                    ? "MQTT 客户端"
-                                    : "curl"}{" "}
+                    {isIec101
+                      ? "IEC101 双通道与本地串口桥"
+                      : isDlt645
+                        ? "DL/T645 软件表客户端"
+                        : isRtcp
+                          ? "RTCP 发送与接收观察"
+                          : isRtp
+                            ? "RTP 发送与接收观察"
+                            : isMqttSn
+                              ? "MQTT-SN 客户端"
+                              : isIec104
+                                ? "IEC104 客户端"
+                                : isTelnet
+                                  ? "Telnet 客户端"
+                                  : isDns
+                                    ? "dig"
+                                    : isMqtt
+                                      ? "MQTT 客户端"
+                                      : "curl"}{" "}
                     命令
                   </summary>
                   <div className="connection-content">
                     <div className="endpoint">
-                      <span>{protocolName} 入口</span>
+                      <span>
+                        {isIec101
+                          ? "single 入口 · 1/1/1/1"
+                          : `${protocolName} 入口`}
+                      </span>
                       <code>
-                        {connection?.base_url ||
+                        {(isIec101 ? connection?.endpoints?.single : null) ||
+                          connection?.base_url ||
                           connection?.endpoint ||
-                          `${isDlt645 ? "tcp://" : isRtp || isRtcp || isMqttSn ? "udp://" : isIec104 ? "iec104://" : isTelnet ? "telnet://" : isDns ? "" : isMqtt ? "mqtt://" : "http://"}${(selected.applied_config || selected.config).bind_ip}:${(selected.applied_config || selected.config).port}`}
+                          `${isIec101 || isDlt645 ? "tcp://" : isRtp || isRtcp || isMqttSn ? "udp://" : isIec104 ? "iec104://" : isTelnet ? "telnet://" : isDns ? "" : isMqtt ? "mqtt://" : "http://"}${(selected.applied_config || selected.config).bind_ip}:${effectivePort}`}
                       </code>
                       <p>绑定 0.0.0.0 时，请使用目标设备实际可达的 IP。</p>
                     </div>
+                    {isIec101 && (
+                      <div className="endpoint">
+                        <span>double 入口 · 2/2/2/3</span>
+                        <code>
+                          {connection?.endpoints?.double ||
+                            `tcp://${effectiveConfig?.bind_ip}:${effectiveSecondPort}`}
+                        </code>
+                        <p>
+                          在实际测试主机本地执行串口桥命令；Web 不会自动 SSH
+                          或启动其他主机上的 helper。稳定路径为
+                          /run/protocol-target-lab/serial/iec101-a 与
+                          iec101-b。桥接占用通道期间请先停止桥接，再运行内置客户端测试。
+                        </p>
+                      </div>
+                    )}
                     <div className="command-list">
                       {(
                         connection?.commands ||
-                        (isDlt645
-                          ? ["等待管理服务提供 DL/T645 接入命令。"]
-                          : isRtcp
-                            ? ["等待管理服务提供 RTCP 接入命令。"]
-                            : isRtp
-                              ? ["等待管理服务提供 RTP 接入命令。"]
-                              : isMqttSn
-                                ? ["等待管理服务提供 MQTT-SN 接入命令。"]
-                                : isIec104
-                                  ? ["等待管理服务提供 IEC104 接入命令。"]
-                                  : isTelnet
-                                    ? ["等待管理服务提供 TELNET 接入命令。"]
-                                    : isMqtt
-                                      ? ["等待管理服务提供 MQTT 接入命令。"]
-                                      : isDns
-                                        ? [
-                                            `dig @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
-                                            `dig +tcp @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
-                                          ]
-                                        : [
-                                            `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/ok`,
-                                            `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/chunked`,
-                                            `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/close`,
-                                          ])
+                        (isIec101
+                          ? ["等待管理服务提供 IEC101 双通道接入命令。"]
+                          : isDlt645
+                            ? ["等待管理服务提供 DL/T645 接入命令。"]
+                            : isRtcp
+                              ? ["等待管理服务提供 RTCP 接入命令。"]
+                              : isRtp
+                                ? ["等待管理服务提供 RTP 接入命令。"]
+                                : isMqttSn
+                                  ? ["等待管理服务提供 MQTT-SN 接入命令。"]
+                                  : isIec104
+                                    ? ["等待管理服务提供 IEC104 接入命令。"]
+                                    : isTelnet
+                                      ? ["等待管理服务提供 TELNET 接入命令。"]
+                                      : isMqtt
+                                        ? ["等待管理服务提供 MQTT 接入命令。"]
+                                        : isDns
+                                          ? [
+                                              `dig @<目标IP> -p ${effectivePort} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
+                                              `dig +tcp @<目标IP> -p ${effectivePort} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
+                                            ]
+                                          : [
+                                              `curl -i http://<目标IP>:${effectivePort}/ok`,
+                                              `curl -i http://<目标IP>:${effectivePort}/chunked`,
+                                              `curl -i http://<目标IP>:${effectivePort}/close`,
+                                            ])
                       ).map((command, index) => (
                         <div className="command" key={index}>
                           <code>{command}</code>
@@ -1684,7 +1803,12 @@ export default function App() {
                       : "无法取得协议工作台配置，请查看管理服务诊断。")}
               </p>
               <div className="supported-paths">
-                {isDlt645 ? (
+                {isIec101 ? (
+                  <>
+                    <code>IEC101 · 原生双通道</code>
+                    <span>single 1/1/1/1 · double 2/2/2/3</span>
+                  </>
+                ) : isDlt645 ? (
                   <>
                     <code>DL/T645-2007 · TCP 软件表</code>
                     <span>固定 profile · 核心 ALL 只读</span>

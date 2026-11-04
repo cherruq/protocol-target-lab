@@ -337,3 +337,45 @@ test("DLT645 tagged fixture joins nine drafts while retaining all prior configs"
   assert.equal(dlt645Defaults.security.mode, "reject");
   assert.equal(sameWorkspaceConfig(dlt645Defaults, meter), false);
 });
+
+test("IEC101 dual-channel nested drafts join ten workspaces without overwriting prior schemas", async () => {
+  const { iec101Defaults, updateIec101Channel } = await import(
+    "../src/iec101-config.ts"
+  );
+  const { dlt645Defaults } = await import("../src/dlt645-config.ts");
+  const { rtpDefaults } = await import("../src/rtp-config.ts");
+  const { rtcpDefaults } = await import("../src/rtcp-config.ts");
+  const configs = [
+    defaults,
+    dnsDefaults,
+    mqttDefaults,
+    telnetDefaults,
+    iec104Defaults,
+    mqttSnDefaults,
+    rtpDefaults,
+    rtcpDefaults,
+    dlt645Defaults,
+  ];
+  let drafts = {};
+  for (const [index, config] of configs.entries())
+    drafts = updateWorkspaceDrafts(
+      drafts,
+      `prior-${index}`,
+      { ...config, port: config.port + 1 },
+      config,
+    );
+  const dual = updateIec101Channel(iec101Defaults, "double", {
+    port: 18662,
+    point: { value: false },
+  });
+  drafts = updateWorkspaceDrafts(drafts, "iec101", dual, iec101Defaults);
+  assert.equal(Object.keys(drafts).length, 10);
+  assert.equal(
+    Object.keys(updateWorkspaceDrafts(drafts, "iec101", dual, dual)).length,
+    9,
+  );
+  for (const config of configs)
+    assert.equal(sameWorkspaceConfig(iec101Defaults, config), false);
+  assert.equal(sameWorkspaceConfig(iec101Defaults, dual), false);
+  assert.equal(iec101Defaults.double.point.value, true);
+});

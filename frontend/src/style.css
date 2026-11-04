@@ -99,6 +99,14 @@ input[type="number"] {
   padding: 30px 18px 24px;
 }
 
+.brand,
+.workspace-label,
+.nav-current,
+.sidebar-section,
+.sidebar-footer {
+  flex-shrink: 0;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -1817,9 +1825,14 @@ select:disabled {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .protocol-workspace-button {
   display: flex;
+  flex-shrink: 0;
   align-items: flex-start;
   gap: 10px;
   width: 100%;
@@ -1950,6 +1963,8 @@ select:disabled {
   }
   .protocol-navigation {
     margin-top: 15px;
+    flex: none;
+    overflow: visible;
   }
   .protocol-workspace-button {
     align-items: center;

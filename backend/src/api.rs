@@ -87,8 +87,8 @@ async fn protocols(State(m): State<Shared>) -> Json<Value> {
         let workspace=d.doc.instances.iter().find(|i|i.protocol_id==protocol);
         let status=if d.config_error.is_some() {"unavailable"} else if d.docker_error.is_some() {"environment-unavailable"} else {workspace.map(|i|i.status.as_str()).unwrap_or("unavailable")};
         let error=d.config_error.as_deref().or(d.docker_error.as_deref()).or_else(||workspace.and_then(|i|i.runtime_error.as_deref().or(i.error.as_deref())));
-        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":match protocol {"dlt645"=>"software DL/T645-2007 meter over TCP byte stream","rtcp"=>"stdlib RFC3550 RTCPv2 SR+SDES compound receiver","rtp"=>"stdlib RFC3550v2 structural receiver; opaque payload","dns"=>"dnsmasq 2.90","mqtt"=>"Mosquitto 2.0.18 + packet-size backports","telnet"=>"telnetlib3 4.0.3","iec104"=>"c104 2.2.1 + incremental TCP framing fix","mqtt-sn"=>"Eclipse Paho MQTT-SN Gateway 1.5.1 + project capacity guard; private Mosquitto 2.0.18",_=>"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
-        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP"]);} else if protocol=="mqtt" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);} else if protocol=="dlt645" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["wire_profiles"]=json!(["dlt645-2007-tcp"]);descriptor["software_function_classes"]=json!(["11","13","14","15","16","08","17","18","19","1A","1C","1D","03 reject/fixture"]);descriptor["crypto_verified"]=json!(false);} else if protocol=="rtcp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["packet_profiles"]=json!(["sr-sdes"]);descriptor["rtcp_reply_expected"]=json!(false);} else if protocol=="rtp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["RTPv2 header/CSRC/extension/padding","fresh receive observation"]);descriptor["rtp_reply_expected"]=json!(false);} else if protocol=="mqtt-sn" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["validated_qos"]=json!([1]);descriptor["validated_features"]=json!(["CONNECT/reconnect","REGISTER/PUBLISH","predefined topics","multicast GWINFO","independent MQTT broker delivery"]);} else if protocol=="iec104" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["STARTDT","STOPDT","TESTFR","GI","READ","C_SC_NA_1 DIRECT"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"]);}
+        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":match protocol {"iec101"=>"lib60870-C 2.4.1 native unbalanced dual-channel slave via PTY/TCP","dlt645"=>"software DL/T645-2007 meter over TCP byte stream","rtcp"=>"stdlib RFC3550 RTCPv2 SR+SDES compound receiver","rtp"=>"stdlib RFC3550v2 structural receiver; opaque payload","dns"=>"dnsmasq 2.90","mqtt"=>"Mosquitto 2.0.18 + packet-size backports","telnet"=>"telnetlib3 4.0.3","iec104"=>"c104 2.2.1 + incremental TCP framing fix","mqtt-sn"=>"Eclipse Paho MQTT-SN Gateway 1.5.1 + project capacity guard; private Mosquitto 2.0.18",_=>"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
+        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP"]);} else if protocol=="mqtt" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);} else if protocol=="iec101" {descriptor["supported_transports"]=json!(["TCP byte stream via software PTY"]);descriptor["supported_features"]=json!(["simultaneous single/double address channels","RESET/STATUS","CLASS2","GI ACT_CON/data/ACT_TERM","FCB duplicate handling"]);} else if protocol=="dlt645" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["wire_profiles"]=json!(["dlt645-2007-tcp"]);descriptor["software_function_classes"]=json!(["11","13","14","15","16","08","17","18","19","1A","1C","1D","03 reject/fixture"]);descriptor["crypto_verified"]=json!(false);} else if protocol=="rtcp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["packet_profiles"]=json!(["sr-sdes"]);descriptor["rtcp_reply_expected"]=json!(false);} else if protocol=="rtp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["RTPv2 header/CSRC/extension/padding","fresh receive observation"]);descriptor["rtp_reply_expected"]=json!(false);} else if protocol=="mqtt-sn" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["validated_qos"]=json!([1]);descriptor["validated_features"]=json!(["CONNECT/reconnect","REGISTER/PUBLISH","predefined topics","multicast GWINFO","independent MQTT broker delivery"]);} else if protocol=="iec104" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["STARTDT","STOPDT","TESTFR","GI","READ","C_SC_NA_1 DIRECT"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"]);}
         descriptor
     })))
 }
@@ -98,6 +98,7 @@ async fn schema(Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
         "rtp" => Ok(Json(crate::rtp::schema())),
         "rtcp" => Ok(Json(crate::rtcp::schema())),
         "dlt645" => Ok(Json(crate::dlt645::schema())),
+        "iec101" => Ok(Json(crate::iec101::schema())),
         "iec104" => Ok(Json(crate::iec104::schema())),
         "http" => Ok(Json(
             json!({"protocol_id":"http","type":"object","supported_methods":crate::model::HTTP_METHODS,"properties":{"bind_ip":{"type":"string","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18090},"response_length":{"type":"integer","minimum":0,"maximum":crate::model::MAX_RESPONSE_LENGTH,"default":64},"response_mode":{"type":"string","enum":["fixed","random"],"default":"fixed"}},"required":["bind_ip","port","response_length","response_mode"]}),
@@ -189,6 +190,10 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
                     .collect::<Vec<_>>(),
             )
         }
+        ProtocolConfig::Iec101(_) => (
+            crate::iec101::CASES.iter().map(|s| s.to_string()).collect(),
+            crate::iec101::PATHS.iter().map(|s| s.to_string()).collect(),
+        ),
         ProtocolConfig::Dlt645(c) => (
             c.cases().iter().map(|s| s.to_string()).collect(),
             vec![crate::dlt645::PATH.into()],
@@ -259,6 +264,10 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
             .collect::<serde_json::Map<String, Value>>();
         result["case_labels"] = Value::Object(labels);
         result["path_label"] = "主题前缀".into();
+    }
+    if matches!(config, ProtocolConfig::Iec101(_)) {
+        result["case_labels"] = json!({"RESET_STATUS":"复位与链路状态","CLASS2":"实际遥信与地址","GI":"总召确认、遥信与结束","STREAM":"增量分帧与重复 FCB","ALL":"全部双通道测试"});
+        result["path_label"] = "通道".into();
     }
     if matches!(config, ProtocolConfig::Dlt645(_)) {
         result["case_labels"] = json!({"READ_ADDRESS":"当前表地址","READ_DATA":"当前数据与 BCD","STREAM":"增量分帧与唤醒","ERROR_RESPONSE":"异常应答与恢复","WRITE_PERIOD":"写周期并恢复当前值","SECURITY_FIXTURE":"固定 fixture 传输（非认证）","ALL":"全部只读核心测试"});
@@ -357,6 +366,11 @@ async fn connection_info(
     } else {
         c.bind_ip()
     };
+    if let ProtocolConfig::Iec101(config) = c {
+        return Ok(Json(
+            json!({"host":host,"endpoints":{"single":format!("tcp://{host}:{}",config.single.port),"double":format!("tcp://{host}:{}",config.double.port)},"ports":{"single":config.single.port,"double":config.double.port},"serial":config.serial,"channel_widths":{"single":{"link":1,"cot":1,"ca":1,"ioa":1,"originator_encoded":false},"double":{"link":2,"cot":2,"ca":2,"ioa":3,"originator_encoded":true}},"test_host_serial_paths":["/run/protocol-target-lab/serial/iec101-a","/run/protocol-target-lab/serial/iec101-b"],"commands":["plabctl tests run iec101 --method ALL --path dual".to_string(),format!("sudo plabctl serial start --host {host} --single-port {} --double-port {}",config.single.port,config.double.port),"sudo plabctl serial status".to_string(),"sudo plabctl serial stop".to_string()],"notes":["Both channels are simultaneously available; each accepts one active master","Serial helper runs on the test host and exposes stable software PTYs to dialout users; no physical serial timing claim","Stop serial helper before built-in tests; after target restart run serial start again to reconnect disconnected channels","Single-channel originator address is not encoded with one-byte COT; fixed serial settings describe software termios"]}),
+        ));
+    }
     if let ProtocolConfig::Dlt645(config) = c {
         return Ok(Json(
             json!({"base_url":format!("tcp://{host}:{}",config.port),"host":host,"port":config.port,"wire_profile":config.wire_profile,"startup_meter_address":config.meter_address,"commands":["plabctl tests run dlt645 --method ALL"],"notes":["DL/T645-2007 finite software meter carried as a TCP byte stream; no physical serial or ESAM claim","Startup address/energy/period can differ from current runtime after legitimate wire commands","ALL covers readonly core; optional WRITE_PERIOD restores its observed current value; irreversible state operations are outside ALL","Programming key is a simulated per-command condition; fixed public software passwords initialize to three zero bytes; security fixture is transport only"]}),
