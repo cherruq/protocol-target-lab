@@ -1,0 +1,7 @@
+**
+!workers/
+!workers/http/
+!workers/http/server.py
+!images/
+!images/http/
+!images/http/Dockerfile

@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+case "$1" in
+    remove)
+        # stop-all stops the manager first, preventing automatic recreation.
+        /usr/bin/plabctl stop-all
+        if [ -d /run/systemd/system ]; then
+            systemctl disable protocol-target-lab.service
+        fi
+        ;;
+    upgrade|deconfigure)
+        # Updating the manager must not interrupt its protocol containers.
+        ;;
+esac
+exit 0
