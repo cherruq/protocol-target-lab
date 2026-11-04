@@ -31,12 +31,13 @@ Architecture: amd64
 Description: Local protocol target management service
 CONTROL
 mkdir -p "$stage/root/DEBIAN" "$stage/root/usr/bin" "$stage/root/usr/lib/systemd/system" \
-    "$stage/root/etc/default" "$stage/root/usr/share/doc/protocol-target-lab"
+    "$stage/root/etc/default" "$stage/root/usr/share/doc/protocol-target-lab/docs"
 install -m 0755 "$binary" "$stage/root/usr/bin/protocol-target-lab"
 ln -s protocol-target-lab "$stage/root/usr/bin/plabctl"
 install -m 0644 packaging/debian/protocol-target-lab.service "$stage/root/usr/lib/systemd/system/"
 install -m 0644 packaging/debian/default "$stage/root/etc/default/protocol-target-lab"
 install -m 0644 README.md LICENSE THIRD_PARTY_NOTICES "$stage/root/usr/share/doc/protocol-target-lab/"
+install -m 0644 docs/http.md docs/phase1-acceptance.md "$stage/root/usr/share/doc/protocol-target-lab/docs/"
 for script in postinst prerm postrm; do install -m 0755 "packaging/debian/$script" "$stage/root/DEBIAN/$script"; done
 shlibs=$(cd "$stage" && dpkg-shlibdeps -O -e"$stage/root/usr/bin/protocol-target-lab")
 shlibs=${shlibs#shlibs:Depends=}
@@ -59,5 +60,5 @@ printf '%s\n' '/etc/default/protocol-target-lab' > "$stage/root/DEBIAN/conffiles
 (cd "$stage/root" && find usr etc -type f -print0 | sort -z | xargs -0 md5sum) > "$stage/root/DEBIAN/md5sums"
 output="$project_root/dist/protocol-target-lab_${version}_${architecture}.deb"
 dpkg-deb --build --root-owner-group "$stage/root" "$output"
-sha256sum "$output" > "$output.sha256"
+(cd "$project_root/dist" && sha256sum "$(basename -- "$output")") > "$output.sha256"
 printf '%s\n' "Built $output" "Native dependencies: $shlibs"
