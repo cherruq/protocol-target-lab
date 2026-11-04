@@ -55,12 +55,24 @@ pub async fn image_id(image: &str) -> Result<String> {
 }
 pub async fn prepare_image(image: &str, config: &ProtocolConfig) -> Result<String> {
     let id = image_id(image).await?;
-    if let ProtocolConfig::Dns(_) = config {
+    if !matches!(config, ProtocolConfig::Http(_)) {
         let metadata: Vec<Value> = serde_json::from_str(&cmd(&["image", "inspect", &id]).await?)?;
-        if metadata[0]["Config"]["Labels"]["io.protocol-target-lab.dns-response-schema"].as_str()
+        if metadata[0]["Config"]["Labels"][format!(
+            "io.protocol-target-lab.{}-response-schema",
+            config.protocol_id()
+        )]
+        .as_str()
             != Some("1")
         {
-            bail!("DNS image is incompatible; import matching DNS assets");
+            bail!("Protocol image is incompatible; import matching assets");
+        }
+        if matches!(config, ProtocolConfig::Mqtt(_))
+            && metadata[0]["Config"]["Labels"]["io.protocol-target-lab.mqtt-packet-size"].as_str()
+                != Some("full-v1")
+        {
+            bail!(
+                "MQTT image lacks full-packet size enforcement; import version 0.1.1 or newer with full-v1 capability"
+            );
         }
     } else if config.as_http().is_some_and(|c| c.legacy_body.is_none()) {
         let metadata: Vec<Value> = serde_json::from_str(&cmd(&["image", "inspect", &id]).await?)?;
@@ -116,6 +128,9 @@ pub fn running(v: &Value) -> bool {
 }
 pub fn matches(v: &Value, config: &ProtocolConfig) -> bool {
     v["Config"]["Labels"][HASH].as_str() == Some(config.fingerprint().as_str())
+        && (!matches!(config, ProtocolConfig::Mqtt(_))
+            || v["Config"]["Labels"]["io.protocol-target-lab.mqtt-packet-size"].as_str()
+                == Some("full-v1"))
 }
 pub async fn remove(v: &Value, deployment: &str, instance: &str) -> Result<()> {
     let id = container_id(v)?;
@@ -147,10 +162,10 @@ pub async fn start(
         "--name".into(),
         name,
         "--network".into(),
-        if matches!(config, ProtocolConfig::Dns(_)) {
-            "bridge".into()
-        } else {
+        if matches!(config, ProtocolConfig::Http(_)) {
             "host".into()
+        } else {
+            "bridge".into()
         },
         "--restart".into(),
         "no".into(),
@@ -182,14 +197,15 @@ pub async fn start(
             ]);
             args.extend(worker_args(c));
         }
-        ProtocolConfig::Dns(c) => {
-            for transport in c.transports() {
+        _ => {
+            for transport in config.transports() {
                 args.extend([
                     "--publish".into(),
                     format!(
-                        "{}:{}:15353/{}",
-                        c.bind_ip,
-                        c.port,
+                        "{}:{}:{}/{}",
+                        config.bind_ip(),
+                        config.port(),
+                        config.internal_port(),
                         transport.to_ascii_lowercase()
                     ),
                 ]);
@@ -197,10 +213,11 @@ pub async fn start(
             args.extend([
                 immutable_image,
                 "--config-json".into(),
-                serde_json::to_string(c)?,
+                serde_json::to_string(config)?,
             ]);
         }
     }
+
     let container = command(&args).await?.trim().to_owned();
     if let Err(e) = cmd(&["start", &container]).await {
         let _ = cmd(&["rm", &container]).await;
@@ -211,6 +228,7 @@ pub async fn start(
 pub async fn probe(config: &ProtocolConfig) -> Result<()> {
     let config = match config {
         ProtocolConfig::Dns(c) => return crate::dns::probe(c).await,
+        ProtocolConfig::Mqtt(c) => return crate::mqtt::probe(c).await,
         ProtocolConfig::Http(c) => c,
     };
     let client = reqwest::Client::builder()
@@ -311,10 +329,7 @@ pub async fn preflight_port(
     own: Option<&ProtocolConfig>,
     own_id: Option<&str>,
 ) -> Result<()> {
-    let transports = match config {
-        ProtocolConfig::Http(_) => vec!["TCP"],
-        ProtocolConfig::Dns(c) => c.transports(),
-    };
+    let transports = config.transports();
     let overlap = |a: &str, b: &str| a == b || a == "0.0.0.0" || b == "0.0.0.0";
     // Docker may publish through NAT without a userland listening socket.
     let ids = cmd(&["ps", "-q"]).await?;
@@ -351,38 +366,39 @@ pub async fn preflight_port(
             }
         }
     }
-    let ProtocolConfig::Dns(c) = config else {
-        return preflight_http(
-            config.as_http().unwrap(),
-            own.and_then(ProtocolConfig::as_http),
-        )
-        .await;
-    };
-    let address_check = std::net::TcpListener::bind((c.bind_ip.as_str(), 0))
+    if let ProtocolConfig::Http(c) = config {
+        return preflight_http(c, own.and_then(ProtocolConfig::as_http)).await;
+    }
+    let c = config;
+    let address_check = std::net::TcpListener::bind((c.bind_ip(), 0))
         .context("config.bind_ip: address is not available on this host")?;
     drop(address_check);
     for transport in c.transports() {
-        let own_endpoint = own.and_then(|value| {
-            if let ProtocolConfig::Dns(old) = value {
-                (old.port == c.port
-                    && old.transports().contains(&transport)
-                    && overlap(&old.bind_ip, &c.bind_ip))
-                .then_some(old)
-            } else {
-                None
-            }
+        let own_endpoint = own.filter(|old| {
+            old.protocol_id() == c.protocol_id()
+                && old.port() == c.port()
+                && old.transports().contains(&transport)
+                && overlap(old.bind_ip(), c.bind_ip())
         });
         if own_endpoint.is_none() {
             if transport == "TCP" {
                 drop(
-                    std::net::TcpListener::bind((c.bind_ip.as_str(), c.port)).with_context(
-                        || format!("config.port: TCP {}:{} is unavailable", c.bind_ip, c.port),
-                    )?,
+                    std::net::TcpListener::bind((c.bind_ip(), c.port())).with_context(|| {
+                        format!(
+                            "config.port: TCP {}:{} is unavailable",
+                            c.bind_ip(),
+                            c.port()
+                        )
+                    })?,
                 );
             } else {
                 drop(
-                    std::net::UdpSocket::bind((c.bind_ip.as_str(), c.port)).with_context(|| {
-                        format!("config.port: UDP {}:{} is unavailable", c.bind_ip, c.port)
+                    std::net::UdpSocket::bind((c.bind_ip(), c.port())).with_context(|| {
+                        format!(
+                            "config.port: UDP {}:{} is unavailable",
+                            c.bind_ip(),
+                            c.port()
+                        )
                     })?,
                 );
             }
@@ -404,7 +420,7 @@ pub async fn preflight_port(
                 let Some((address, port)) = fields[1].split_once(':') else {
                     continue;
                 };
-                if u16::from_str_radix(port, 16)? != c.port {
+                if u16::from_str_radix(port, 16)? != c.port() {
                     continue;
                 }
                 if suffix == "6" {
@@ -415,10 +431,10 @@ pub async fn preflight_port(
                 }
                 let ip = std::net::Ipv4Addr::from(u32::from_str_radix(address, 16)?.to_le_bytes())
                     .to_string();
-                if ip == old.bind_ip {
+                if ip == old.bind_ip() {
                     continue;
                 }
-                if overlap(&ip, &c.bind_ip) {
+                if overlap(&ip, c.bind_ip()) {
                     bail!(
                         "config.port: another {transport} listener conflicts with requested endpoint"
                     );
@@ -427,4 +443,27 @@ pub async fn preflight_port(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn mqtt_adoption_requires_full_packet_capability_without_changing_legacy_hashes() {
+        let mqtt: ProtocolConfig = crate::mqtt::MqttConfig::default().into();
+        let mut container = json!({"Config":{"Labels":{}}});
+        container["Config"]["Labels"][HASH] = mqtt.fingerprint().into();
+        assert!(!matches(&container, &mqtt));
+        container["Config"]["Labels"]["io.protocol-target-lab.mqtt-packet-size"] = "full-v1".into();
+        assert!(matches(&container, &mqtt));
+        for config in [
+            ProtocolConfig::Http(HttpConfig::default()),
+            ProtocolConfig::Dns(crate::dns::DnsConfig::default()),
+        ] {
+            container["Config"]["Labels"] = json!({});
+            container["Config"]["Labels"][HASH] = config.fingerprint().into();
+            assert!(matches(&container, &config));
+        }
+    }
 }

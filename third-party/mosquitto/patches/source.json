@@ -1,0 +1,18 @@
+{
+  "id": "full-packet-size-v1",
+  "upstream_commits": [
+    "7a1905006a629f264d3657abf335d09cb5555980",
+    "3a0f46aa209c4b2d15b36f866b23e9a0df696810"
+  ],
+  "upstream_urls": [
+    "https://github.com/eclipse-mosquitto/mosquitto/commit/7a1905006a629f264d3657abf335d09cb5555980",
+    "https://github.com/eclipse-mosquitto/mosquitto/commit/3a0f46aa209c4b2d15b36f866b23e9a0df696810"
+  ],
+  "license": "EPL-2.0 OR BSD-3-Clause",
+  "source_file": "lib/packet_mosq.c",
+  "original_sha256": "ee8024add062c7e26c6f72b8c8181a710c3a8373d2226be12d1277e8cfa89376",
+  "patched_sha256": "2106810c882161c1fa548d6165bf80af7d18c7e271dbb0db5708b159b6b303ff",
+  "patch_file": "0001-full-packet-size.patch",
+  "patch_sha256": "31ac573871b2d4e01b5e757ed6c3dfbf9fd973d536c6efbb4c9470e30111ce3f",
+  "adaptation": "Two-expression backport. Incoming count uses the already parsed positive remaining_count to include actual wire encoding bytes; outgoing uses the existing packet__varint_bytes helper. Other 2.1 refactoring/packet-class limits are not imported."
+}

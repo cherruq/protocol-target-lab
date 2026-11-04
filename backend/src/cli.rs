@@ -19,6 +19,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set PROTOCOL --file FILE|- | --data JSON
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
   config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
+  config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
   start PROTOCOL | stop PROTOCOL | restart PROTOCOL [--wait | --no-wait]
   connection-info PROTOCOL
   logs PROTOCOL [--follow]
@@ -39,7 +40,7 @@ Local administrative commands (retain existing behavior; may require root):
   plabctl stop-all              stop manager and owned resources
   plabctl status | doctor       local persisted state and Docker diagnostics
   plabctl assets import DIR     local image import from a checked manifest
-Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_DOCKER_SOCKET
+Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_DOCKER_SOCKET
 "#;
 const LIMIT: usize = 8 * 1024 * 1024;
 type Result<T> = std::result::Result<T, Failure>;
@@ -137,6 +138,8 @@ const VALUE_OPTIONS: &[&str] = &[
     "--udp-enabled",
     "--tcp-enabled",
     "--records-json",
+    "--max-connections",
+    "--max-packet-size",
 ];
 fn wants_help(args: &[String]) -> bool {
     if args.len() == 1 && args[0] == "help" {
@@ -268,6 +271,8 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--udp-enabled",
                 "--tcp-enabled",
                 "--records-json",
+                "--max-connections",
+                "--max-packet-size",
             ] {
                 if let Some(value) = values.remove(name) {
                     fields.insert(name.into(), value);
@@ -315,6 +320,8 @@ fn parse(args: &[String]) -> Result<Options> {
                 path.or(name).unwrap_or_else(|| {
                     if *p == "dns" {
                         "ALL".into()
+                    } else if *p == "mqtt" {
+                        crate::mqtt::TEST_TOPIC.into()
                     } else {
                         "/ok".into()
                     }
@@ -604,7 +611,7 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
     let mut patch = serde_json::Map::new();
     for (key, value) in fields {
         let value = match key.as_str() {
-            "--port" | "--response-length" => json!(
+            "--port" | "--response-length" | "--max-connections" | "--max-packet-size" => json!(
                 value
                     .parse::<u32>()
                     .map_err(|_| Failure::usage(format!("{key} must be a nonnegative integer")))?
@@ -961,6 +968,37 @@ mod tests {
         assert!(c.tcp_enabled);
         assert_eq!(c.port, 15453);
         assert!(config_patch(BTreeMap::from([("--tcp-enabled".into(), "yes".into())])).is_err());
+    }
+    #[tokio::test]
+    async fn mqtt_defaults_and_limit_patches_match_the_api() {
+        let options = parse(&args("tests run mqtt")).unwrap();
+        assert!(
+            matches!(options.command,Command::TestRun(ref p,ref method,ref path,true) if p=="mqtt" && method=="ALL" && path==crate::mqtt::TEST_TOPIC)
+        );
+        let config = configuration(
+            ConfigInput::Fields(BTreeMap::from([
+                ("--max-connections".into(), "2".into()),
+                ("--max-packet-size".into(), "128".into()),
+            ])),
+            serde_json::to_value(crate::mqtt::MqttConfig::default()).unwrap(),
+        )
+        .await
+        .unwrap();
+        let ProtocolConfig::Mqtt(config) = config else {
+            panic!("MQTT variant lost")
+        };
+        assert_eq!(config.port, 18883);
+        assert_eq!(config.max_connections, 2);
+        assert_eq!(config.max_packet_size, 128);
+        let full: ProtocolConfig = config.into();
+        for patch in [
+            json!({}),
+            json!({"max_connections":null}),
+            json!({"records":[]}),
+            json!({"max_packet_size":127}),
+        ] {
+            assert!(full.patch(patch).is_err());
+        }
     }
     #[test]
     fn help_flags_are_not_taken_from_values_and_local_commands_are_exact() {

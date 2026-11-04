@@ -5,3 +5,5 @@ PLAB_DATA_DIR=/var/lib/protocol-target-lab
 PLAB_HTTP_IMAGE=protocol-target-lab/http:0.3.0
 
 PLAB_DNS_IMAGE=protocol-target-lab/dns:0.1.1
+
+PLAB_MQTT_IMAGE=protocol-target-lab/mqtt:0.1.1

@@ -8,6 +8,7 @@ import {
 import {
   defaults,
   isLegacyConfig,
+  isHttpConfig,
   normalizeConfig,
   supportedMethods,
   validateConfig,
@@ -17,6 +18,15 @@ import {
 import ClientTests from "./ClientTests";
 import DnsConfigForm from "./DnsConfigForm";
 import DnsClientTests from "./DnsClientTests";
+import MqttConfigForm from "./MqttConfigForm";
+import ProtocolClientTests from "./ProtocolClientTests";
+import {
+  mqttDefaults,
+  mqttCaseLabels,
+  isMqttConfig,
+  validateMqttConfig,
+  type MqttConfig,
+} from "./mqtt-config";
 import {
   dnsDefaults,
   isDnsConfig,
@@ -51,6 +61,10 @@ type DnsInstance = Omit<Instance, "config" | "applied_config"> & {
   config: DnsConfig;
   applied_config: DnsConfig | null;
 };
+type MqttInstance = Omit<Instance, "config" | "applied_config"> & {
+  config: MqttConfig;
+  applied_config: MqttConfig | null;
+};
 type Environment = {
   docker_available: boolean;
   docker_version?: string;
@@ -71,6 +85,8 @@ type Protocol = {
   available: boolean;
   supported_methods?: string[];
   supported_transports?: string[];
+  supported_versions?: string[];
+  supported_qos?: number[];
   image?: string;
   workspace: Instance | null;
   status: string;
@@ -346,12 +362,33 @@ export default function App() {
   const selected = selectedProtocol?.workspace || null;
   const selectedId = selected?.id || null;
   const isDns = selectedProtocol?.id === "dns";
+  const isMqtt = selectedProtocol?.id === "mqtt";
   const protocolName = selectedProtocol?.name || "协议";
-  const httpSelected = !isDns && selected ? (selected as HttpInstance) : null;
-  const dnsSelected = isDns && selected ? (selected as DnsInstance) : null;
+  const httpSelected =
+    selectedProtocol?.id === "http" &&
+    selected?.protocol_id === "http" &&
+    isHttpConfig(selected.config) &&
+    (!selected.applied_config || isHttpConfig(selected.applied_config))
+      ? (selected as HttpInstance)
+      : null;
+  const dnsSelected =
+    isDns &&
+    selected?.protocol_id === "dns" &&
+    isDnsConfig(selected.config) &&
+    (!selected.applied_config || isDnsConfig(selected.applied_config))
+      ? (selected as DnsInstance)
+      : null;
+  const mqttSelected =
+    isMqtt &&
+    selected?.protocol_id === "mqtt" &&
+    isMqttConfig(selected.config) &&
+    (!selected.applied_config || isMqttConfig(selected.applied_config))
+      ? (selected as MqttInstance)
+      : null;
+  const knownWorkspace = Boolean(httpSelected || dnsSelected || mqttSelected);
   const cachedDraft = selectedId ? drafts[selectedId] : undefined;
   const draft: Config =
-    cachedDraft && !isDnsConfig(cachedDraft)
+    cachedDraft && !isDnsConfig(cachedDraft) && !isMqttConfig(cachedDraft)
       ? cachedDraft
       : httpSelected
         ? normalizeConfig(httpSelected.config)
@@ -359,6 +396,9 @@ export default function App() {
   const dnsDraft: DnsConfig = isDnsConfig(cachedDraft)
     ? cachedDraft
     : dnsSelected?.config || dnsDefaults;
+  const mqttDraft: MqttConfig = isMqttConfig(cachedDraft)
+    ? cachedDraft
+    : mqttSelected?.config || mqttDefaults;
   const dirty = Boolean(cachedDraft);
   const selectedAsset =
     assets?.protocols?.[selectedProtocolId] ||
@@ -499,17 +539,22 @@ export default function App() {
   }
 
   function edit(config: DraftConfig) {
-    if (!selected) return;
+    if (!selected || !knownWorkspace) return;
     setDrafts((current) =>
       updateWorkspaceDrafts(current, selected.id, config, selected.config),
     );
   }
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (!selected) return;
+    if (!selected || !knownWorkspace) return;
     await perform("save", async () => {
-      const payload = isDns ? normalizeDnsConfig(dnsDraft) : draft;
-      if (!isDns) validateConfig(draft);
+      const payload = isDns
+        ? normalizeDnsConfig(dnsDraft)
+        : isMqtt
+          ? mqttDraft
+          : draft;
+      if (isMqtt) validateMqttConfig(mqttDraft);
+      else if (!isDns) validateConfig(draft);
       await api(
         `/api/instances/${encodeURIComponent(selected.id)}/config`,
         "PUT",
@@ -522,7 +567,7 @@ export default function App() {
     });
   }
   async function operate(kind: "start" | "stop" | "restart") {
-    if (!selected) return;
+    if (!selected || !knownWorkspace) return;
     await perform(kind, async () => {
       await api(
         `/api/instances/${encodeURIComponent(selected.id)}/${kind}`,
@@ -748,7 +793,7 @@ export default function App() {
         </section>
 
         <div className="workspace">
-          {selected ? (
+          {selected && knownWorkspace ? (
             <div className="instance-detail">
               <section className="panel detail-top">
                 <div className="detail-heading">
@@ -760,30 +805,51 @@ export default function App() {
                 </div>
                 <p className="instance-description">
                   受控 {protocolName} 测试服务 <span>·</span> Docker{" "}
-                  <span>·</span> {isDns ? "UDP / TCP" : "HTTP/1.1"}
+                  <span>·</span>{" "}
+                  {isDns
+                    ? "UDP / TCP"
+                    : isMqtt
+                      ? `${selectedProtocol?.implementation || "MQTT"} · 匿名 TCP`
+                      : "HTTP/1.1"}
                 </p>
                 <div className="method-support">
                   <span>
-                    {isDns
-                      ? "支持的传输"
-                      : legacyApplied
-                        ? "新生成模式支持的方法"
-                        : "支持的方法"}
+                    {isMqtt
+                      ? "支持的版本与 QoS"
+                      : isDns
+                        ? "支持的传输"
+                        : legacyApplied
+                          ? "新生成模式支持的方法"
+                          : "支持的方法"}
                   </span>
                   <div>
-                    {(isDns
-                      ? selectedProtocol?.supported_transports || ["UDP", "TCP"]
-                      : methods
+                    {(isMqtt
+                      ? [
+                          ...(selectedProtocol?.supported_versions || []).map(
+                            (v) => `MQTT ${v}`,
+                          ),
+                          ...(selectedProtocol?.supported_qos || []).map(
+                            (q) => `QoS ${q}`,
+                          ),
+                        ]
+                      : isDns
+                        ? selectedProtocol?.supported_transports || [
+                            "UDP",
+                            "TCP",
+                          ]
+                        : methods
                     ).map((method) => (
                       <code key={method}>{method}</code>
                     ))}
                   </div>
                   <p>
-                    {isDns
-                      ? "按配置记录回答 A / AAAA 查询。UDP 和 TCP 可分别启用，使用同一组记录与端口。"
-                      : legacyApplied
-                        ? "旧生效配置保留旧版能力；保存新配置并重启后，切换到上述方法和响应生成规则。"
-                        : "HEAD 无正文；GET、POST、PUT、PATCH、DELETE、OPTIONS 均按配置生成响应正文。"}
+                    {isMqtt
+                      ? "支持发布 / 订阅与 QoS 0、1、2。当前使用匿名 TCP，不提供 TLS、密码认证、WebSocket 或 SCRAM。"
+                      : isDns
+                        ? "按配置记录回答 A / AAAA 查询。UDP 和 TCP 可分别启用，使用同一组记录与端口。"
+                        : legacyApplied
+                          ? "旧生效配置保留旧版能力；保存新配置并重启后，切换到上述方法和响应生成规则。"
+                          : "HEAD 无正文；GET、POST、PUT、PATCH、DELETE、OPTIONS 均按配置生成响应正文。"}
                   </p>
                 </div>
                 <div className="instance-actions">
@@ -850,7 +916,7 @@ export default function App() {
                     </span>
                   </div>
                   <form onSubmit={(event) => void save(event)}>
-                    {!isDns && (legacySaved || legacyApplied) && (
+                    {httpSelected && (legacySaved || legacyApplied) && (
                       <div className="migration-note" role="note">
                         {legacySaved
                           ? "此工作台含旧版固定正文配置。旧运行配置仍保留；编辑草稿初始长度取旧正文的 UTF-8 字节数。保存并重启后使用新的内容生成模式，正文不再保留原文本，POST 不再回显请求正文。"
@@ -860,6 +926,14 @@ export default function App() {
                     {isDns ? (
                       <DnsConfigForm
                         config={dnsDraft}
+                        onChange={edit}
+                        disabled={
+                          Boolean(environment?.config_error) || busy === "save"
+                        }
+                      />
+                    ) : isMqtt ? (
+                      <MqttConfigForm
+                        config={mqttDraft}
                         onChange={edit}
                         disabled={
                           Boolean(environment?.config_error) || busy === "save"
@@ -921,18 +995,28 @@ export default function App() {
                           <dd>{selected.applied_config.port}</dd>
                         </div>
                         <div>
-                          <dt>{isDns ? "启用传输" : "响应配置"}</dt>
+                          <dt>
+                            {isDns
+                              ? "启用传输"
+                              : isMqtt
+                                ? "连接与报文限制"
+                                : "响应配置"}
+                          </dt>
                           <dd className="applied-body">
-                            {isDnsConfig(selected.applied_config)
-                              ? [
-                                  selected.applied_config.udp_enabled && "UDP",
-                                  selected.applied_config.tcp_enabled && "TCP",
-                                ]
-                                  .filter(Boolean)
-                                  .join(" / ")
-                              : isLegacyConfig(selected.applied_config)
-                                ? `旧版固定正文 ${new TextEncoder().encode(selected.applied_config.response_body).length.toLocaleString()} 字节（POST 回显）`
-                                : `${selected.applied_config.response_length.toLocaleString()} 字节 · ${selected.applied_config.response_mode === "fixed" ? "固定内容" : "每次随机"}`}
+                            {isMqttConfig(selected.applied_config)
+                              ? `最多 ${selected.applied_config.max_connections} 个连接 · 完整报文最大 ${selected.applied_config.max_packet_size.toLocaleString()} 字节`
+                              : isDnsConfig(selected.applied_config)
+                                ? [
+                                    selected.applied_config.udp_enabled &&
+                                      "UDP",
+                                    selected.applied_config.tcp_enabled &&
+                                      "TCP",
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" / ")
+                                : isLegacyConfig(selected.applied_config)
+                                  ? `旧版固定正文 ${new TextEncoder().encode(selected.applied_config.response_body).length.toLocaleString()} 字节（POST 回显）`
+                                  : `${selected.applied_config.response_length.toLocaleString()} 字节 · ${selected.applied_config.response_mode === "fixed" ? "固定内容" : "每次随机"}`}
                           </dd>
                         </div>
                         {isDnsConfig(selected.applied_config) && (
@@ -1048,7 +1132,20 @@ export default function App() {
                   <h2>连接与验证</h2>
                   <span className="muted">内置测试与手动接入</span>
                 </div>
-                {dnsSelected ? (
+                {mqttSelected ? (
+                  <ProtocolClientTests
+                    key={mqttSelected.id}
+                    instance={mqttSelected}
+                    protocolName="MQTT"
+                    hasUnappliedConfig={dirty || appliedDiffers}
+                    operationsLocked={locked}
+                    caseLabels={mqttCaseLabels}
+                    pathLabel="主题前缀"
+                    describeConfig={(config) =>
+                      `${config.bind_ip}:${config.port} · 最多 ${config.max_connections} 个连接 · 完整报文最大 ${config.max_packet_size.toLocaleString()} 字节`
+                    }
+                  />
+                ) : dnsSelected ? (
                   <DnsClientTests
                     key={dnsSelected.id}
                     instance={dnsSelected}
@@ -1064,30 +1161,35 @@ export default function App() {
                   />
                 ) : null}
                 <details className="connection-help">
-                  <summary>手动接入与 {isDns ? "dig" : "curl"} 命令</summary>
+                  <summary>
+                    手动接入与 {isDns ? "dig" : isMqtt ? "MQTT 客户端" : "curl"}{" "}
+                    命令
+                  </summary>
                   <div className="connection-content">
                     <div className="endpoint">
                       <span>{protocolName} 入口</span>
                       <code>
                         {connection?.base_url ||
                           connection?.endpoint ||
-                          `${isDns ? "" : "http://"}${(selected.applied_config || selected.config).bind_ip}:${(selected.applied_config || selected.config).port}`}
+                          `${isDns ? "" : isMqtt ? "mqtt://" : "http://"}${(selected.applied_config || selected.config).bind_ip}:${(selected.applied_config || selected.config).port}`}
                       </code>
                       <p>绑定 0.0.0.0 时，请使用目标设备实际可达的 IP。</p>
                     </div>
                     <div className="command-list">
                       {(
                         connection?.commands ||
-                        (isDns
-                          ? [
-                              `dig @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
-                              `dig +tcp @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
-                            ]
-                          : [
-                              `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/ok`,
-                              `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/chunked`,
-                              `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/close`,
-                            ])
+                        (isMqtt
+                          ? ["等待管理服务提供 MQTT 接入命令。"]
+                          : isDns
+                            ? [
+                                `dig @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
+                                `dig +tcp @<目标IP> -p ${(selected.applied_config || selected.config).port} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
+                              ]
+                            : [
+                                `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/ok`,
+                                `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/chunked`,
+                                `curl -i http://<目标IP>:${(selected.applied_config || selected.config).port}/close`,
+                              ])
                       ).map((command, index) => (
                         <div className="command" key={index}>
                           <code>{command}</code>
@@ -1121,23 +1223,31 @@ export default function App() {
                   environment?.config_error ||
                   (loading
                     ? "正在核对配置与运行资源。"
-                    : "无法取得协议工作台配置，请查看管理服务诊断。")}
+                    : selected && !knownWorkspace
+                      ? "当前配置类型与协议不匹配，或此界面尚未支持该协议的配置；请检查管理服务与前端版本。"
+                      : "无法取得协议工作台配置，请查看管理服务诊断。")}
               </p>
               <div className="supported-paths">
-                {isDns ? (
+                {isMqtt ? (
+                  <>
+                    <code>MQTT 3.1.1</code>
+                    <code>MQTT 5.0</code>
+                    <span>QoS 0 · 1 · 2</span>
+                  </>
+                ) : isDns ? (
                   <>
                     <code>A</code>
                     <code>AAAA</code>
                     <span>UDP · TCP</span>
                   </>
-                ) : (
+                ) : selectedProtocol?.id === "http" ? (
                   <>
                     <code>/ok</code>
                     <code>/chunked</code>
                     <code>/close</code>
                     <span>{methods.join(" · ")}</span>
                   </>
-                )}
+                ) : null}
               </div>
             </section>
           )}

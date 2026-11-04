@@ -2076,3 +2076,9 @@ select:disabled {
 .dns-answers li span {
   color: #667085;
 }
+.protocol-wire {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 440px;
+  overflow: auto;
+}

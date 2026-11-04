@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "base_image": "python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337",
+  "build_image": "protocol-target-lab/mqtt-build:2.0.18",
+  "image": "protocol-target-lab/mqtt:0.1.1",
+  "mosquitto": {
+    "version": "2.0.18",
+    "url": "https://mosquitto.org/files/source/mosquitto-2.0.18.tar.gz",
+    "file": "third-party/mosquitto/mosquitto-2.0.18.tar.gz",
+    "sha256": "d665fe7d0032881b1371a47f34169ee4edab67903b2cd2b4c083822823f4448a",
+    "license": "EPL-2.0 OR BSD-3-Clause",
+    "make_flags": "WITH_TLS=no WITH_TLS_PSK=no WITH_CJSON=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_BRIDGE=no WITH_PERSISTENCE=no WITH_CONTROL=no WITH_DOCS=no",
+    "patches": [
+      {
+        "file": "third-party/mosquitto/patches/0001-full-packet-size.patch",
+        "sha256": "31ac573871b2d4e01b5e757ed6c3dfbf9fd973d536c6efbb4c9470e30111ce3f",
+        "id": "full-packet-size-v1",
+        "upstream_commits": [
+          "7a1905006a629f264d3657abf335d09cb5555980",
+          "3a0f46aa209c4b2d15b36f866b23e9a0df696810"
+        ]
+      }
+    ]
+  }
+}
