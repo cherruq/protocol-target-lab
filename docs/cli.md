@@ -4,7 +4,7 @@
 point to the same native binary, using the management HTTP API for workspace
 commands. It does not edit the server's files or invoke local Docker for these
 commands. The Web UI is for interactive use; the CLI exposes the same implemented
-HTTP and DNS workspaces to automation. Both control the same saved settings and resources.
+HTTP, DNS and MQTT workspaces to automation. Both control the same saved settings and resources.
 
 API commands default to `http://127.0.0.1:18000`. Set `PLAB_URL` or pass `--url`
 (the explicit option wins). HTTP root URLs only: no credentials, path, query or
@@ -181,3 +181,30 @@ case-insensitively and may have one trailing dot. Each RRset needs a consistent
 TTL (0..86400); duplicate canonical name/type/address entries are rejected.
 At least one transport must remain enabled. The DNS report limit is 512 KiB;
 client and manager deadlines remain 30 and 45 seconds.
+
+## MQTT automation (manager 0.7.0)
+
+Use `mqtt` with the shared schema/show/config/lifecycle/logs/connection-info/tests
+commands. Complete file/stdin/data JSON uses bind_ip, port, max_connections and
+max_packet_size. Atomic field options are `--bind-ip`, `--port`,
+`--max-connections`, and `--max-packet-size`; fields from other protocols are
+rejected. Saving does not restart the broker.
+
+```sh
+plabctl schema mqtt
+plabctl config set mqtt --port 18884 --max-connections 2 --max-packet-size 128
+plabctl start mqtt
+plabctl tests run mqtt --method ALL
+plabctl tests run mqtt --method MQTT311_QOS2
+plabctl tests run mqtt --method MQTT5_QOS2
+plabctl logs mqtt
+plabctl stop mqtt
+```
+
+The six cases are MQTT311_QOS0/1/2 and MQTT5_QOS0/1/2 (expand each suffix to one
+case), plus ALL. The path defaults to `plab/test`, a fixed prefix expanded to
+unique per-test topics. Both versions and all three QoS values verify real
+subscriber delivery; results retain a bounded packet trace. The client report
+limit is 512 KiB and the existing JSON/exit-code/session/timeout contract applies.
+A saved max_connections=1 is legal, but independent publisher/subscriber testing
+requires at least2 applied connections and otherwise returns a clear diagnostic.

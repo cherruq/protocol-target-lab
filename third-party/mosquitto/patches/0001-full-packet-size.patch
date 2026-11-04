@@ -1,0 +1,20 @@
+--- a/lib/packet_mosq.c
++++ b/lib/packet_mosq.c
+@@ -214,7 +214,7 @@
+ 
+ 	if(mosq->maximum_packet_size == 0) return MOSQ_ERR_SUCCESS;
+ 
+-	len = remaining_length + packet__varint_bytes(remaining_length);
++	len = 1U + remaining_length + packet__varint_bytes(remaining_length);
+ 	if(len > mosq->maximum_packet_size){
+ 		return MOSQ_ERR_OVERSIZE_PACKET;
+ 	}else{
+@@ -499,7 +499,7 @@
+ 				break;
+ 		}
+ 
+-		if(db.config->max_packet_size > 0 && mosq->in_packet.remaining_length+1 > db.config->max_packet_size){
++		if(db.config->max_packet_size > 0 && mosq->in_packet.remaining_length + (uint32_t)mosq->in_packet.remaining_count + 1U > db.config->max_packet_size){
+ 			if(mosq->protocol == mosq_p_mqtt5){
+ 				send__disconnect(mosq, MQTT_RC_PACKET_TOO_LARGE, NULL);
+ 			}

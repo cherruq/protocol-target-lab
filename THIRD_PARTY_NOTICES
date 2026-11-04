@@ -1,6 +1,6 @@
-Protocol Target Lab third-party source notes — HTTP and DNS
+Protocol Target Lab third-party source notes — HTTP, DNS and MQTT
 
-The project's original Rust manager, Web application, HTTP/DNS wrappers and test clients,
+The project's original Rust manager, Web application, HTTP/DNS/MQTT wrappers and test clients,
 and integration scripts are distributed under the accompanying MIT LICENSE.
 Third-party components retain their original licenses. Full license and copyright
 texts for the locked Linux Rust dependency closure and bundled Web components
@@ -53,5 +53,15 @@ DNS runtime image:
   Python/Debian base components retain their own licenses as described above.
   dnsmasq is in the separately imported image, not the native manager deb.
 
-This notice describes implemented HTTP and DNS components. Other protocol
+MQTT runtime image:
+  Eclipse Mosquitto 2.0.18 is distributed under the upstream choice of Eclipse
+  Public License 2.0 or Eclipse Distribution License 1.0. Complete original
+  source, documented upstream packet-size patches, both licenses and bundled
+  uthash/utlist notices are preserved in
+  third-party/mosquitto and in the runtime image. images/mqtt contains the exact
+  build recipes and dependency/source lock. scripts/mqtt-assets.sh exports these
+  materials beside the saved image. Mosquitto is not copied into the manager deb;
+  original Python wrappers/clients use MIT and base components keep their licenses.
+
+This notice describes implemented HTTP, DNS and MQTT components. Other protocol
 libraries and a complete offline distribution are not included or claimed here.

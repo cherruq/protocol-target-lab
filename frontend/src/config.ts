@@ -13,6 +13,20 @@ export type LegacyConfig = {
 
 export type StoredConfig = Config | LegacyConfig;
 
+export function isHttpConfig(value: unknown): value is StoredConfig {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("bind_ip" in value) ||
+    !("port" in value)
+  )
+    return false;
+  return (
+    isLegacyConfig(value) ||
+    ("response_length" in value && "response_mode" in value)
+  );
+}
+
 export const defaults: Config = {
   bind_ip: "0.0.0.0",
   port: 18090,

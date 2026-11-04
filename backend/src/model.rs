@@ -219,6 +219,7 @@ impl HttpConfigPatch {
 pub enum ProtocolConfig {
     Http(HttpConfig),
     Dns(crate::dns::DnsConfig),
+    Mqtt(crate::mqtt::MqttConfig),
 }
 impl From<HttpConfig> for ProtocolConfig {
     fn from(c: HttpConfig) -> Self {
@@ -230,11 +231,17 @@ impl From<crate::dns::DnsConfig> for ProtocolConfig {
         Self::Dns(c)
     }
 }
+impl From<crate::mqtt::MqttConfig> for ProtocolConfig {
+    fn from(c: crate::mqtt::MqttConfig) -> Self {
+        Self::Mqtt(c)
+    }
+}
 impl ProtocolConfig {
     pub fn validate(&self) -> Result<()> {
         match self {
             Self::Http(c) => c.validate(),
             Self::Dns(c) => c.validate(),
+            Self::Mqtt(c) => c.validate(),
         }
     }
     pub fn as_http(&self) -> Option<&HttpConfig> {
@@ -248,18 +255,34 @@ impl ProtocolConfig {
         match self {
             Self::Http(_) => "http",
             Self::Dns(_) => "dns",
+            Self::Mqtt(_) => "mqtt",
         }
     }
     pub fn bind_ip(&self) -> &str {
         match self {
             Self::Http(c) => &c.bind_ip,
             Self::Dns(c) => &c.bind_ip,
+            Self::Mqtt(c) => &c.bind_ip,
         }
     }
     pub fn port(&self) -> u16 {
         match self {
             Self::Http(c) => c.port,
             Self::Dns(c) => c.port,
+            Self::Mqtt(c) => c.port,
+        }
+    }
+    pub fn transports(&self) -> Vec<&'static str> {
+        match self {
+            Self::Dns(c) => c.transports(),
+            Self::Http(_) | Self::Mqtt(_) => vec!["TCP"],
+        }
+    }
+    pub fn internal_port(&self) -> u16 {
+        match self {
+            Self::Dns(_) => 15353,
+            Self::Mqtt(_) => 18883,
+            Self::Http(c) => c.port,
         }
     }
     pub fn probe_ip(&self) -> &str {
@@ -272,7 +295,7 @@ impl ProtocolConfig {
     pub fn fingerprint(&self) -> String {
         match self {
             Self::Http(c) => c.fingerprint(),
-            Self::Dns(_) => format!(
+            Self::Dns(_) | Self::Mqtt(_) => format!(
                 "{:x}",
                 Sha256::digest(serde_json::to_vec(self).expect("serializable config"))
             ),
@@ -284,6 +307,30 @@ impl ProtocolConfig {
                 .map_err(|e| anyhow::anyhow!("config.patch: {e}"))?
                 .apply(c.clone())?
                 .into()),
+            Self::Mqtt(_) => {
+                let patch = value
+                    .as_object()
+                    .ok_or_else(|| anyhow::anyhow!("config.patch: expected object"))?;
+                if patch.is_empty()
+                    || patch.iter().any(|(key, value)| {
+                        !["bind_ip", "port", "max_connections", "max_packet_size"]
+                            .contains(&key.as_str())
+                            || value.is_null()
+                    })
+                {
+                    bail!(
+                        "config.patch: provide MQTT fields; unknown fields and null are not allowed"
+                    );
+                }
+                let mut full = serde_json::to_value(self)?;
+                for (key, value) in patch {
+                    full[key] = value.clone();
+                }
+                let config: crate::mqtt::MqttConfig = serde_json::from_value(full)
+                    .map_err(|e| anyhow::anyhow!("config.patch: {e}"))?;
+                config.validate()?;
+                Ok(config.into())
+            }
             Self::Dns(_) => {
                 let patch = value
                     .as_object()
@@ -404,6 +451,7 @@ impl Document {
             instances: vec![
                 Instance::new("http-demo".into(), HttpConfig::default()),
                 Instance::new("dns-demo".into(), crate::dns::DnsConfig::default()),
+                Instance::new("mqtt-demo".into(), crate::mqtt::MqttConfig::default()),
             ],
         }
     }
@@ -418,7 +466,7 @@ impl Document {
             if !valid_id(&i.id) || !ids.insert(&i.id) {
                 bail!("invalid or duplicate instance id");
             }
-            if !["http", "dns"].contains(&i.protocol_id.as_str())
+            if !["http", "dns", "mqtt"].contains(&i.protocol_id.as_str())
                 || i.runtime != "docker"
                 || i.config.protocol_id() != i.protocol_id
                 || i.applied_config

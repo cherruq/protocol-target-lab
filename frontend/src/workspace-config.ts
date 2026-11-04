@@ -1,13 +1,19 @@
 import {
   normalizeConfig,
+  isHttpConfig,
   sameGeneratedConfig,
   sameStoredConfig,
   type Config,
   type StoredConfig,
 } from "./config.ts";
 import { isDnsConfig, sameDnsConfig, type DnsConfig } from "./dns-config.ts";
-export type WorkspaceConfig = StoredConfig | DnsConfig;
-export type DraftConfig = Config | DnsConfig;
+import {
+  isMqttConfig,
+  sameMqttConfig,
+  type MqttConfig,
+} from "./mqtt-config.ts";
+export type WorkspaceConfig = StoredConfig | DnsConfig | MqttConfig;
+export type DraftConfig = Config | DnsConfig | MqttConfig;
 export type WorkspaceDrafts = Record<string, DraftConfig>;
 
 export function sameWorkspaceConfig(
@@ -16,7 +22,9 @@ export function sameWorkspaceConfig(
 ): boolean {
   if (isDnsConfig(a) || isDnsConfig(b))
     return isDnsConfig(a) && isDnsConfig(b) && sameDnsConfig(a, b);
-  return sameStoredConfig(a, b);
+  if (isMqttConfig(a) || isMqttConfig(b))
+    return isMqttConfig(a) && isMqttConfig(b) && sameMqttConfig(a, b);
+  return isHttpConfig(a) && isHttpConfig(b) && sameStoredConfig(a, b);
 }
 export function updateWorkspaceDrafts(
   drafts: WorkspaceDrafts,
@@ -26,8 +34,10 @@ export function updateWorkspaceDrafts(
 ): WorkspaceDrafts {
   const changed = isDnsConfig(edited)
     ? !isDnsConfig(saved) || !sameDnsConfig(edited, saved)
-    : isDnsConfig(saved) ||
-      !sameGeneratedConfig(edited, normalizeConfig(saved));
+    : isMqttConfig(edited)
+      ? !isMqttConfig(saved) || !sameMqttConfig(edited, saved)
+      : !isHttpConfig(saved) ||
+        !sameGeneratedConfig(edited, normalizeConfig(saved));
   const next = { ...drafts };
   if (changed) next[id] = edited;
   else delete next[id];

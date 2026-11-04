@@ -51,6 +51,21 @@ impl TestRequest {
     pub fn validate_for(&self, config: &ProtocolConfig) -> Result<()> {
         match config {
             ProtocolConfig::Http(_) => self.validate(),
+            ProtocolConfig::Mqtt(c) => {
+                if !crate::mqtt::CASES.contains(&self.method.as_str())
+                    || self.path != crate::mqtt::TEST_TOPIC
+                {
+                    bail!(
+                        "config.test: choose an available MQTT version/QoS case and plab/test topic prefix"
+                    );
+                }
+                if c.max_connections < 2 {
+                    bail!(
+                        "config.max_connections: independent publisher/subscriber testing requires at least 2 connections"
+                    );
+                }
+                Ok(())
+            }
             ProtocolConfig::Dns(c) => {
                 if self.method != "ALL" && !c.transports().contains(&self.method.as_str()) {
                     bail!("config.test.method: choose an enabled DNS transport or ALL");
@@ -344,7 +359,10 @@ async fn run_client(
         run.path.clone(),
     ];
     match &run.applied_config {
-        ProtocolConfig::Dns(c) => args.extend(["--config-json".into(), serde_json::to_string(c)?]),
+        ProtocolConfig::Dns(_) | ProtocolConfig::Mqtt(_) => args.extend([
+            "--config-json".into(),
+            serde_json::to_string(&run.applied_config)?,
+        ]),
         ProtocolConfig::Http(c) => {
             if let Some(body) = &c.legacy_body {
                 args.push(format!("--legacy-body={body}"));
@@ -358,7 +376,7 @@ async fn run_client(
             }
         }
     }
-    let report_limit = if matches!(run.applied_config, ProtocolConfig::Dns(_)) {
+    let report_limit = if !matches!(run.applied_config, ProtocolConfig::Http(_)) {
         512 * 1024
     } else {
         REPORT_LIMIT

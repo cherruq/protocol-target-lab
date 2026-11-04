@@ -14,6 +14,7 @@ pub struct Settings {
     pub listen: String,
     pub image: String,
     pub dns_image: String,
+    pub mqtt_image: String,
 }
 impl Settings {
     pub fn env() -> Result<Self> {
@@ -36,6 +37,7 @@ impl Settings {
                         "PLAB_LISTEN",
                         "PLAB_HTTP_IMAGE",
                         "PLAB_DNS_IMAGE",
+                        "PLAB_MQTT_IMAGE",
                     ]
                     .contains(&key)
                     {
@@ -72,10 +74,13 @@ impl Settings {
             listen: value("PLAB_LISTEN", "0.0.0.0:18000"),
             image: value("PLAB_HTTP_IMAGE", "protocol-target-lab/http:0.3.0"),
             dns_image: value("PLAB_DNS_IMAGE", "protocol-target-lab/dns:0.1.1"),
+            mqtt_image: value("PLAB_MQTT_IMAGE", "protocol-target-lab/mqtt:0.1.1"),
         })
     }
     pub fn image_for(&self, protocol: &str) -> &str {
-        if protocol == "dns" {
+        if protocol == "mqtt" {
+            &self.mqtt_image
+        } else if protocol == "dns" {
             &self.dns_image
         } else {
             &self.image
@@ -198,6 +203,7 @@ mod tests {
                 listen: "127.0.0.1:0".into(),
                 image: "unused".into(),
                 dns_image: "unused".into(),
+                mqtt_image: "unused".into(),
             }
         }
     }
@@ -271,7 +277,7 @@ mod tests {
         save(&s.config, &d).unwrap();
         let bytes = std::fs::read(&s.config).unwrap();
         let loaded = load(&s).unwrap();
-        assert_eq!(loaded.instances.len(), 2);
+        assert_eq!(loaded.instances.len(), 3);
         assert_eq!(loaded.instances[0].id, "custom-http");
         assert!(loaded.instances[0].enabled);
         assert_eq!(loaded.instances[0].status, "checking");
@@ -313,12 +319,12 @@ mod tests {
         save(&s.config, &d).unwrap();
         let loaded = load(&s).unwrap();
         assert_eq!(loaded.deployment_id, d.deployment_id);
-        assert_eq!(loaded.instances.len(), 2);
+        assert_eq!(loaded.instances.len(), 3);
         let i = &loaded.instances[0];
         assert_eq!(i.id, "http-demo");
         assert!(!i.enabled);
         assert!(i.applied_config.is_none());
-        assert_eq!(load(&s).unwrap().instances.len(), 2);
+        assert_eq!(load(&s).unwrap().instances.len(), 3);
         d.deployment_id = uuid::Uuid::new_v4().to_string();
         save(&s.config, &d).unwrap();
         let bytes = std::fs::read(&s.config).unwrap();
@@ -353,6 +359,46 @@ mod tests {
         let stable = std::fs::read(&settings.config).unwrap();
         load(&settings).unwrap();
         assert_eq!(std::fs::read(&settings.config).unwrap(), stable);
+    }
+    #[test]
+    fn http_dns_upgrade_adds_disabled_mqtt_and_preserves_both_snapshots() {
+        let fixture = Fixture::new();
+        let settings = fixture.settings();
+        let mut doc = load(&settings).unwrap();
+        doc.instances.retain(|i| i.protocol_id != "mqtt");
+        doc.instances[0].id = "mqtt-demo".into();
+        for instance in &mut doc.instances {
+            instance.enabled = true;
+            instance.applied_config = Some(instance.config.clone());
+        }
+        let original = serde_json::to_value(&doc.instances).unwrap();
+        let hashes = doc
+            .instances
+            .iter()
+            .map(|i| i.config.fingerprint())
+            .collect::<Vec<_>>();
+        save(&settings.config, &doc).unwrap();
+        let loaded = load(&settings).unwrap();
+        assert_eq!(
+            serde_json::to_value(&loaded.instances[..2]).unwrap(),
+            original
+        );
+        assert_eq!(
+            loaded.instances[..2]
+                .iter()
+                .map(|i| i.config.fingerprint())
+                .collect::<Vec<_>>(),
+            hashes
+        );
+        assert_eq!(loaded.deployment_id, doc.deployment_id);
+        let mqtt = &loaded.instances[2];
+        assert_eq!(mqtt.id, "mqtt-demo-2");
+        assert_eq!(mqtt.protocol_id, "mqtt");
+        assert!(!mqtt.enabled);
+        assert!(mqtt.applied_config.is_none());
+        let bytes = std::fs::read(&settings.config).unwrap();
+        load(&settings).unwrap();
+        assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);
     }
     #[test]
     fn mismatched_protocol_variant_is_rejected_without_migration() {

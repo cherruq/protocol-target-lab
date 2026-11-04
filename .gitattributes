@@ -1,2 +1,6 @@
 # Preserve upstream license text verbatim, including Markdown spacing.
 THIRD_PARTY_LICENSES.txt -whitespace
+
+# Preserve original license bytes and significant unified-diff context.
+third-party/mosquitto/edl-v10 -whitespace
+third-party/mosquitto/patches/*.patch -whitespace

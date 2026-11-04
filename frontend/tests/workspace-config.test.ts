@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { defaults } from "../src/config.ts";
 import { dnsDefaults } from "../src/dns-config.ts";
+import { mqttDefaults } from "../src/mqtt-config.ts";
 import {
   discardWorkspaceDraft,
   sameWorkspaceConfig,
@@ -45,4 +46,38 @@ test("returning an editor to its saved configuration clears only that draft", ()
     ),
     false,
   );
+});
+
+test("three protocol drafts survive switching and a MQTT save clears only MQTT", () => {
+  let drafts = updateWorkspaceDrafts(
+    {},
+    "retained-http",
+    { ...defaults, response_length: 256 },
+    defaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "dns-demo",
+    { ...dnsDefaults, port: 18253 },
+    dnsDefaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "mqtt-demo",
+    { ...mqttDefaults, max_connections: 16 },
+    mqttDefaults,
+  );
+  assert.deepEqual(Object.keys(drafts), [
+    "retained-http",
+    "dns-demo",
+    "mqtt-demo",
+  ]);
+  const next = discardWorkspaceDraft(drafts, "mqtt-demo");
+  assert.deepEqual(Object.keys(next), ["retained-http", "dns-demo"]);
+  assert.equal(
+    sameWorkspaceConfig(mqttDefaults, { ...mqttDefaults, max_connections: 16 }),
+    false,
+  );
+  assert.equal(sameWorkspaceConfig(mqttDefaults, defaults), false);
+  assert.equal(sameWorkspaceConfig(mqttDefaults, dnsDefaults), false);
 });

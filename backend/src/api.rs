@@ -83,12 +83,12 @@ pub fn router(manager: Shared) -> Router {
 }
 async fn protocols(State(m): State<Shared>) -> Json<Value> {
     let d = m.data.lock().await;
-    Json(json!(["http","dns"].map(|protocol| {
+    Json(json!(["http","dns","mqtt"].map(|protocol| {
         let workspace=d.doc.instances.iter().find(|i|i.protocol_id==protocol);
         let status=if d.config_error.is_some() {"unavailable"} else if d.docker_error.is_some() {"environment-unavailable"} else {workspace.map(|i|i.status.as_str()).unwrap_or("unavailable")};
         let error=d.config_error.as_deref().or(d.docker_error.as_deref()).or_else(||workspace.and_then(|i|i.runtime_error.as_deref().or(i.error.as_deref())));
-        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":if protocol=="dns" {"dnsmasq 2.90"} else {"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
-        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else {descriptor["supported_transports"]=json!(["UDP","TCP"]);}
+        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":match protocol {"dns"=>"dnsmasq 2.90","mqtt"=>"Mosquitto 2.0.18 + packet-size backports",_=>"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
+        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);}
         descriptor
     })))
 }
@@ -96,6 +96,9 @@ async fn schema(Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
     match id.as_str() {
         "http" => Ok(Json(
             json!({"protocol_id":"http","type":"object","supported_methods":crate::model::HTTP_METHODS,"properties":{"bind_ip":{"type":"string","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18090},"response_length":{"type":"integer","minimum":0,"maximum":crate::model::MAX_RESPONSE_LENGTH,"default":64},"response_mode":{"type":"string","enum":["fixed","random"],"default":"fixed"}},"required":["bind_ip","port","response_length","response_mode"]}),
+        )),
+        "mqtt" => Ok(Json(
+            json!({"protocol_id":"mqtt","type":"object","additionalProperties":false,"implementation":"Mosquitto 2.0.18 + packet-size backports","supported_versions":["3.1.1","5.0"],"supported_qos":[0,1,2],"default":crate::mqtt::MqttConfig::default(),"properties":{"bind_ip":{"type":"string","format":"ipv4","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18883},"max_connections":{"type":"integer","minimum":1,"maximum":128,"default":32},"max_packet_size":{"type":"integer","minimum":128,"maximum":1048576,"default":1048576}},"required":["bind_ip","port","max_connections","max_packet_size"]}),
         )),
         "dns" => Ok(Json(
             json!({"protocol_id":"dns","type":"object","additionalProperties":false,"implementation":"dnsmasq 2.90","supported_transports":["UDP","TCP"],"default":crate::dns::DnsConfig::default(),"properties":{"bind_ip":{"type":"string","format":"ipv4","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":15353},"udp_enabled":{"type":"boolean","default":true},"tcp_enabled":{"type":"boolean","default":true},"records":{"type":"array","minItems":1,"maxItems":32,"items":{"type":"object","additionalProperties":false,"properties":{"name":{"type":"string","maxLength":254},"record_type":{"enum":["A","AAAA"]},"value":{"type":"string"},"ttl":{"type":"integer","minimum":0,"maximum":86400}},"required":["name","record_type","value","ttl"]}}},"required":["bind_ip","port","udp_enabled","tcp_enabled","records"],"constraints":["Enable at least one transport","ASCII DNS hostname labels <=63; canonical name <=253","Each name/type RRset has <=16 addresses and consistent TTL","No duplicate name/type/address","Unknown names are negative; no public recursion"]}),
@@ -178,6 +181,10 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
                     .collect::<Vec<_>>(),
             )
         }
+        ProtocolConfig::Mqtt(_) => (
+            crate::mqtt::CASES.iter().map(|s| s.to_string()).collect(),
+            vec![crate::mqtt::TEST_TOPIC.into()],
+        ),
         ProtocolConfig::Dns(c) => {
             let mut cases = c
                 .transports()
@@ -190,9 +197,35 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
             (cases, paths)
         }
     };
-    Ok(Json(
-        json!({"cases":cases,"paths":paths,"current":d.tests.get(&id),"session_id":m.session_id}),
-    ))
+    let mut result =
+        json!({"cases":cases,"paths":paths,"current":d.tests.get(&id),"session_id":m.session_id});
+    if matches!(config, ProtocolConfig::Mqtt(_)) {
+        let labels = crate::mqtt::CASES
+            .iter()
+            .map(|case| {
+                (
+                    (*case).to_string(),
+                    if *case == "ALL" {
+                        "全部版本与 QoS".to_string()
+                    } else {
+                        format!(
+                            "MQTT {} · QoS {}",
+                            if case.starts_with("MQTT311") {
+                                "3.1.1"
+                            } else {
+                                "5.0"
+                            },
+                            case.chars().last().unwrap()
+                        )
+                    }
+                    .into(),
+                )
+            })
+            .collect::<serde_json::Map<String, Value>>();
+        result["case_labels"] = Value::Object(labels);
+        result["path_label"] = "主题前缀".into();
+    }
+    Ok(Json(result))
 }
 async fn start_test(
     State(m): State<Shared>,
@@ -225,7 +258,7 @@ async fn start_test(
 }
 async fn image_inventory(m: &Shared) -> Value {
     let mut images = serde_json::Map::new();
-    for protocol in ["http", "dns"] {
+    for protocol in ["http", "dns", "mqtt"] {
         let image = m.settings.image_for(protocol);
         let id = docker::image_id(image).await.ok();
         images.insert(
@@ -265,6 +298,12 @@ async fn connection_info(
     } else {
         c.bind_ip()
     };
+    if let ProtocolConfig::Mqtt(config) = c {
+        let endpoint = format!("mqtt://{host}:{}", config.port);
+        return Ok(Json(
+            json!({"base_url":endpoint,"host":host,"port":config.port,"versions":["3.1.1","5.0"],"qos":[0,1,2],"commands":[format!("mosquitto_sub -h {host} -p {} -V mqttv311 -t 'plab/test/#' -q 2 -v",config.port),format!("mosquitto_pub -h {host} -p {} -V mqttv5 -t 'plab/test/manual' -q 2 -m 'sample'",config.port)],"notes":["Anonymous experimental TCP listener; no TLS or authentication","Use distinct client IDs; publisher/subscriber verification needs at least 2 allowed connections"]}),
+        ));
+    }
     if let ProtocolConfig::Dns(config) = c {
         let record = &config.records[0];
         let commands = config
