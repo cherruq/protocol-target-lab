@@ -18,6 +18,7 @@ pub struct Settings {
     pub telnet_image: String,
     pub iec104_image: String,
     pub mqtt_sn_image: String,
+    pub rtp_image: String,
 }
 impl Settings {
     pub fn env() -> Result<Self> {
@@ -44,6 +45,7 @@ impl Settings {
                         "PLAB_TELNET_IMAGE",
                         "PLAB_IEC104_IMAGE",
                         "PLAB_MQTTSN_IMAGE",
+                        "PLAB_RTP_IMAGE",
                     ]
                     .contains(&key)
                     {
@@ -84,10 +86,13 @@ impl Settings {
             telnet_image: value("PLAB_TELNET_IMAGE", "protocol-target-lab/telnet:0.1.0"),
             iec104_image: value("PLAB_IEC104_IMAGE", "protocol-target-lab/iec104:0.1.1"),
             mqtt_sn_image: value("PLAB_MQTTSN_IMAGE", "protocol-target-lab/mqtt-sn:0.1.1"),
+            rtp_image: value("PLAB_RTP_IMAGE", "protocol-target-lab/rtp:0.1.0"),
         })
     }
     pub fn image_for(&self, protocol: &str) -> &str {
-        if protocol == "mqtt-sn" {
+        if protocol == "rtp" {
+            &self.rtp_image
+        } else if protocol == "mqtt-sn" {
             &self.mqtt_sn_image
         } else if protocol == "iec104" {
             &self.iec104_image
@@ -222,6 +227,7 @@ mod tests {
                 telnet_image: "unused".into(),
                 iec104_image: "unused".into(),
                 mqtt_sn_image: "unused".into(),
+                rtp_image: "unused".into(),
             }
         }
     }
@@ -295,7 +301,7 @@ mod tests {
         save(&s.config, &d).unwrap();
         let bytes = std::fs::read(&s.config).unwrap();
         let loaded = load(&s).unwrap();
-        assert_eq!(loaded.instances.len(), 6);
+        assert_eq!(loaded.instances.len(), crate::model::PROTOCOLS.len());
         assert_eq!(loaded.instances[0].id, "custom-http");
         assert!(loaded.instances[0].enabled);
         assert_eq!(loaded.instances[0].status, "checking");
@@ -337,12 +343,15 @@ mod tests {
         save(&s.config, &d).unwrap();
         let loaded = load(&s).unwrap();
         assert_eq!(loaded.deployment_id, d.deployment_id);
-        assert_eq!(loaded.instances.len(), 6);
+        assert_eq!(loaded.instances.len(), crate::model::PROTOCOLS.len());
         let i = &loaded.instances[0];
         assert_eq!(i.id, "http-demo");
         assert!(!i.enabled);
         assert!(i.applied_config.is_none());
-        assert_eq!(load(&s).unwrap().instances.len(), 6);
+        assert_eq!(
+            load(&s).unwrap().instances.len(),
+            crate::model::PROTOCOLS.len()
+        );
         d.deployment_id = uuid::Uuid::new_v4().to_string();
         save(&s.config, &d).unwrap();
         let bytes = std::fs::read(&s.config).unwrap();
@@ -502,7 +511,8 @@ mod tests {
         let fixture = Fixture::new();
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
-        doc.instances.retain(|i| i.protocol_id != "mqtt-sn");
+        doc.instances
+            .retain(|i| !["mqtt-sn", "rtp"].contains(&i.protocol_id.as_str()));
         doc.instances[0].id = "mqtt-sn-demo".into();
         for i in &mut doc.instances {
             i.enabled = true;
@@ -530,6 +540,43 @@ mod tests {
         );
         assert_eq!(loaded.instances[5].id, "mqtt-sn-demo-2");
         assert!(!loaded.instances[5].enabled && loaded.instances[5].applied_config.is_none());
+        let bytes = std::fs::read(&settings.config).unwrap();
+        load(&settings).unwrap();
+        assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);
+    }
+    #[test]
+    fn six_protocol_upgrade_preserves_snapshots_and_resolves_rtp_id_collision() {
+        let fixture = Fixture::new();
+        let settings = fixture.settings();
+        let mut doc = load(&settings).unwrap();
+        doc.instances.retain(|i| i.protocol_id != "rtp");
+        doc.instances[0].id = "rtp-demo".into();
+        for i in &mut doc.instances {
+            i.enabled = true;
+            i.applied_config = Some(i.config.clone());
+        }
+        let original = serde_json::to_value(&doc.instances).unwrap();
+        let hashes = doc
+            .instances
+            .iter()
+            .map(|i| i.config.fingerprint())
+            .collect::<Vec<_>>();
+        save(&settings.config, &doc).unwrap();
+        let loaded = load(&settings).unwrap();
+        assert_eq!(loaded.deployment_id, doc.deployment_id);
+        assert_eq!(
+            serde_json::to_value(&loaded.instances[..6]).unwrap(),
+            original
+        );
+        assert_eq!(
+            loaded.instances[..6]
+                .iter()
+                .map(|i| i.config.fingerprint())
+                .collect::<Vec<_>>(),
+            hashes
+        );
+        assert_eq!(loaded.instances[6].id, "rtp-demo-2");
+        assert!(!loaded.instances[6].enabled && loaded.instances[6].applied_config.is_none());
         let bytes = std::fs::read(&settings.config).unwrap();
         load(&settings).unwrap();
         assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);

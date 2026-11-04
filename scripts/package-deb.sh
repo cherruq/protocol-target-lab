@@ -2,7 +2,7 @@
 set -euo pipefail
 project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$project_root"
-version=${VERSION:-0.10.0}
+version=${VERSION:-0.11.0}
 architecture=${ARCH:-amd64}
 [[ $architecture == amd64 ]] || { printf '%s\n' 'Phase 1 supports amd64 only.' >&2; exit 2; }
 dpkg --validate-version "$version"
@@ -46,7 +46,7 @@ install -m 0644 third-party/licenses.json "$stage/root/usr/share/doc/protocol-ta
 # Keep notices alongside the optional standalone binary distribution as well.
 install -m 0644 LICENSE THIRD_PARTY_NOTICES THIRD_PARTY_LICENSES.txt "$project_root/dist/"
 install -m 0644 third-party/licenses.json "$project_root/dist/third-party-licenses.json"
-install -m 0644 docs/http.md docs/dns.md docs/dns-acceptance.md docs/mqtt.md docs/mqtt-acceptance.md docs/telnet.md docs/telnet-acceptance.md docs/iec104.md docs/iec104-acceptance.md docs/mqtt-sn.md docs/mqtt-sn-acceptance.md docs/cli.md docs/phase1-acceptance.md "$stage/root/usr/share/doc/protocol-target-lab/docs/"
+install -m 0644 docs/http.md docs/dns.md docs/dns-acceptance.md docs/mqtt.md docs/mqtt-acceptance.md docs/telnet.md docs/telnet-acceptance.md docs/iec104.md docs/iec104-acceptance.md docs/mqtt-sn.md docs/mqtt-sn-acceptance.md docs/rtp.md docs/rtp-acceptance.md docs/cli.md docs/phase1-acceptance.md "$stage/root/usr/share/doc/protocol-target-lab/docs/"
 for script in postinst prerm postrm; do install -m 0755 "packaging/debian/$script" "$stage/root/DEBIAN/$script"; done
 shlibs=$(cd "$stage" && dpkg-shlibdeps -O -e"$stage/root/usr/bin/protocol-target-lab")
 shlibs=${shlibs#shlibs:Depends=}

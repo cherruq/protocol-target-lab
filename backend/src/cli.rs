@@ -20,6 +20,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
   config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
   config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
+  config set rtp [--bind-ip IP] [--port N] [--max-packet-size N]
   config set mqtt-sn [--port N] [--discovery-group IP] [--discovery-port N] [--gateway-id N] [--broker-port N] [--predefined-topics-json JSON]
   config set iec104 [--bind-ip IP] [--port N] [--max-connections N] [--points-json JSON]
   config set telnet [--bind-ip IP] [--port N] [--banner TEXT] [--max-connections N] [--max-line-bytes N]
@@ -343,6 +344,8 @@ fn parse(args: &[String]) -> Result<Options> {
                         "ALL".into()
                     } else if *p == "mqtt" {
                         crate::mqtt::TEST_TOPIC.into()
+                    } else if *p == "rtp" {
+                        crate::rtp::PATH.into()
                     } else if *p == "mqtt-sn" {
                         crate::mqtt_sn::PATH.into()
                     } else if *p == "iec104" {
@@ -1033,6 +1036,19 @@ mod tests {
         ] {
             assert!(full.patch(patch).is_err());
         }
+    }
+    #[test]
+    fn rtp_cli_defaults_and_partial_capacity_are_protocol_specific() {
+        let o = parse(&args("tests run rtp")).unwrap();
+        assert!(
+            matches!(o.command,Command::TestRun(ref p,ref m,ref path,true) if p=="rtp" && m=="ALL" && path==crate::rtp::PATH)
+        );
+        let p = config_patch(BTreeMap::from([("--max-packet-size".into(), "64".into())])).unwrap();
+        let c: ProtocolConfig = crate::rtp::RtpConfig::default().into();
+        let edited = c.patch(p).unwrap();
+        assert_eq!(edited.port(), 5004);
+        assert_eq!(serde_json::to_value(edited).unwrap()["max_packet_size"], 64);
+        assert!(c.patch(serde_json::json!({"max_connections":1})).is_err());
     }
     #[tokio::test]
     async fn mqtt_sn_defaults_and_partial_topic_updates_preserve_other_endpoints() {

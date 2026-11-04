@@ -336,3 +336,30 @@ Discovery selects the target-facing membership interface for remote targets;
 local targets use the native multicast route. Up to six idempotent SEARCHGW
 queries share one absolute three-second budget. Retries do not relax gateway
 identity/source/destination checks or change host routing.
+
+## RTP automation (manager 0.11.0)
+
+```sh
+plabctl config set rtp --bind-ip 0.0.0.0 --port 15004 --max-packet-size 2048
+plabctl start rtp
+plabctl tests list rtp
+plabctl tests run rtp --method ALL
+plabctl connection-info rtp
+plabctl logs rtp
+plabctl stop rtp
+```
+
+RTP uses the same schema/config/lifecycle/query commands. Full JSON has
+`bind_ip`, `port` (1..65535) and `max_packet_size` (64..65507); field edits are
+atomic and preserve other values. Packet capacity counts the entire UDP payload,
+not a minimum RTP packet size. Methods are `BASIC`, `CSRC_EXTENSION`, `PADDING`,
+`SEQUENCE` and `ALL`, with fixed path `stream` and two rounds per case.
+
+The target receives RTPv2 without sending an RTP response. Test success requires
+fresh actual receiver observations correlated by boot ID, counter, raw/payload
+hashes and header fields. The observer is a private, read-only control interface;
+its address is derived from the exact owned container and cannot be overridden
+through Web/API/CLI configuration. The client sends RTP to the published host
+UDP endpoint. Opaque payload validation does not imply media decoding/playback,
+RTCP feedback, measured network loss or jitter. Same-host tests do not establish
+separate-node reachability.

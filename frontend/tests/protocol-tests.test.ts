@@ -76,3 +76,18 @@ test("generic structured previews keep TELNET IAC and negotiation traces without
     "未知选项拒绝",
   );
 });
+
+test("RTP summaries preserve actual receiver evidence without interpreting it as a protocol reply", () => {
+  const evidence = {
+    observation_source: "private receiver observer",
+    rtp_reply_expected: false,
+    boot_id: "receiver-boot",
+    event_id: 42,
+    raw: { length: 60, sha256: "a".repeat(64) },
+    payload: { length: 24, sha256: "b".repeat(64) },
+    sequence: 65535,
+  };
+  const summary = boundedWireSummary(evidence);
+  assert.deepEqual(JSON.parse(summary.text), evidence);
+  assert.equal(summary.truncated, false);
+});

@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation is **HTTP, DNS, MQTT, Telnet, IEC104 and MQTT-SN**, with manager version **0.10.0**,
-HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, and MQTT-SN server/client image **0.1.1**. Each protocol has one fixed workspace and
+The current implementation is **HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN and RTP**, with manager version **0.11.0**,
+HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, and RTP receiver/client image **0.1.0**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -94,7 +94,7 @@ build image.
 
 The HTTP image is
 `protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.10.0_amd64.deb`.
+The manager package is `dist/protocol-target-lab_0.11.0_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -127,7 +127,7 @@ Docker provider; a host with Docker CE can run development builds directly, whil
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.10.0_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.11.0_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
@@ -469,3 +469,26 @@ broker reserves system namespaces and the native CSV reader rewrites some
 whitespace/Unicode bytes. Private broker supervision, socket conflicts and
 restart adoption preserve the existing protocol workspaces. See
 [MQTT-SN details](docs/mqtt-sn.md) and [CLI reference](docs/cli.md).
+
+## RTP receiver
+
+RTP uses a single UDP receiver workspace with configurable binding and complete
+packet capacity. It parses RTPv2 headers, CSRCs, opaque extensions and padding;
+payloads remain opaque and no RTP ACK is generated. Disposable clients and
+startup readiness prove actual fresh receive observations through an unpublished
+read-only observer in the same container. See [RTP guide](docs/rtp.md),
+[acceptance criteria](docs/rtp-acceptance.md) and [CLI reference](docs/cli.md).
+
+```sh
+make rtp-images OFFLINE=1
+make rtp-assets OFFLINE=1
+sudo plabctl assets import ./dist/rtp-assets
+plabctl config set rtp --port 15004 --max-packet-size 2048
+plabctl start rtp
+plabctl tests run rtp --method ALL
+```
+
+The image uses the already prepared locked Python base. Startup never pulls.
+The observer is not a configurable external service or a protocol reply; only
+the RTP UDP endpoint is published. Host-to-private-bridge connectivity on the
+supported rootful Linux Docker setup is required for managed receive verification.
