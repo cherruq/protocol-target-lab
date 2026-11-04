@@ -1,4 +1,5 @@
 mod api;
+mod cli;
 mod docker;
 mod manager;
 mod model;
@@ -119,8 +120,20 @@ async fn import_assets(directory: &Path) -> Result<()> {
 }
 #[tokio::main]
 async fn main() -> Result<()> {
-    let settings = Settings::env()?;
     let args = std::env::args().skip(1).collect::<Vec<_>>();
+    let invoked_as_ctl = std::env::args().next().is_some_and(|p| {
+        std::path::Path::new(&p)
+            .file_name()
+            .is_some_and(|n| n == "plabctl")
+    });
+    if invoked_as_ctl && args.is_empty() {
+        println!("{}", cli::HELP);
+        return Ok(());
+    }
+    if let Some(code) = cli::dispatch(&args).await {
+        std::process::exit(code);
+    }
+    let settings = Settings::env()?;
     let action = args.first().map(String::as_str).unwrap_or("serve");
     match action {
         "--version" | "-V" => {
@@ -128,9 +141,7 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         "--help" | "-h" | "help" => {
-            println!(
-                "protocol-target-lab serve\nplabctl start | stop-all | status | doctor | assets import <directory>\nSettings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DOCKER_SOCKET"
-            );
+            println!("{}", cli::HELP);
             return Ok(());
         }
         "start" => {

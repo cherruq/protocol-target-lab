@@ -146,6 +146,73 @@ impl HttpConfig {
     }
 }
 
+fn present<'de, D, T>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
+/// A partial edit is merged with the latest saved configuration under the
+/// manager's control/data locks. Null and unknown fields are rejected.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HttpConfigPatch {
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub bind_ip: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub port: Option<u16>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub response_length: Option<u32>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub response_mode: Option<ResponseMode>,
+}
+impl HttpConfigPatch {
+    pub fn apply(self, mut config: HttpConfig) -> Result<HttpConfig> {
+        if self.bind_ip.is_none()
+            && self.port.is_none()
+            && self.response_length.is_none()
+            && self.response_mode.is_none()
+        {
+            bail!("config.patch: provide at least one configuration field");
+        }
+        if self.response_length.is_some() || self.response_mode.is_some() {
+            config.legacy_body = None;
+        }
+        if let Some(ip) = self.bind_ip {
+            config.bind_ip = ip;
+        }
+        if let Some(port) = self.port {
+            config.port = port;
+        }
+        if let Some(length) = self.response_length {
+            config.response_length = length;
+        }
+        if let Some(mode) = self.response_mode {
+            config.response_mode = mode;
+        }
+        config.validate()?;
+        Ok(config)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Instance {
     pub id: String,
@@ -305,5 +372,36 @@ mod tests {
         c.response_length = 64;
         c.response_mode = ResponseMode::Random;
         assert!(c.expected_body().is_none());
+    }
+    #[test]
+    fn atomic_patch_preserves_unmentioned_fields_and_rejects_empty_null_or_unknown() {
+        let old: HttpConfig = serde_json::from_str(
+            r#"{"bind_ip":"127.0.0.1","port":18191,"response_body":"old body"}"#,
+        )
+        .unwrap();
+        let patch: HttpConfigPatch = serde_json::from_str(r#"{"port":18192}"#).unwrap();
+        let edited = patch.apply(old.clone()).unwrap();
+        assert_eq!(edited.legacy_body, old.legacy_body);
+        let patch: HttpConfigPatch = serde_json::from_str(r#"{"response_length":128}"#).unwrap();
+        let edited = patch.apply(old.clone()).unwrap();
+        assert_eq!(edited.port, 18191);
+        assert_eq!(edited.bind_ip, old.bind_ip);
+        assert!(edited.legacy_body.is_none());
+        assert_eq!(edited.response_length, 128);
+        for raw in [
+            r#"{"port":null}"#,
+            r#"{"response_mode":null}"#,
+            r#"{"unknown":1}"#,
+        ] {
+            assert!(serde_json::from_str::<HttpConfigPatch>(raw).is_err());
+        }
+        for raw in ["{}", r#"{"port":0}"#, r#"{"response_length":1048577}"#] {
+            assert!(
+                serde_json::from_str::<HttpConfigPatch>(raw)
+                    .unwrap()
+                    .apply(old.clone())
+                    .is_err()
+            );
+        }
     }
 }
