@@ -4,8 +4,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 pub const MAX_RESPONSE_LENGTH: u32 = 1024 * 1024;
-pub const PROTOCOLS: [&str; 10] = [
-    "http", "dns", "mqtt", "telnet", "iec104", "mqtt-sn", "rtp", "rtcp", "dlt645", "iec101",
+pub const PROTOCOLS: [&str; 11] = [
+    "http", "dns", "mqtt", "telnet", "iec104", "mqtt-sn", "rtp", "rtcp", "dlt645", "iec101", "bfd",
 ];
 pub const HTTP_METHODS: [&str; 7] = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 pub const FIXED_PATTERN: &[u8] = b"0123456789abcdef";
@@ -230,6 +230,7 @@ pub enum ProtocolConfig {
     Rtcp(crate::rtcp::RtcpConfig),
     Dlt645(crate::dlt645::Dlt645Config),
     Iec101(crate::iec101::Iec101Config),
+    Bfd(crate::bfd::BfdConfig),
 }
 impl From<HttpConfig> for ProtocolConfig {
     fn from(c: HttpConfig) -> Self {
@@ -281,6 +282,11 @@ impl From<crate::iec101::Iec101Config> for ProtocolConfig {
         Self::Iec101(c)
     }
 }
+impl From<crate::bfd::BfdConfig> for ProtocolConfig {
+    fn from(c: crate::bfd::BfdConfig) -> Self {
+        Self::Bfd(c)
+    }
+}
 impl ProtocolConfig {
     pub fn validate(&self) -> Result<()> {
         match self {
@@ -294,6 +300,7 @@ impl ProtocolConfig {
             Self::Rtcp(c) => c.validate(),
             Self::Dlt645(c) => c.validate(),
             Self::Iec101(c) => c.validate(),
+            Self::Bfd(c) => c.validate(),
         }
     }
     pub fn as_http(&self) -> Option<&HttpConfig> {
@@ -315,6 +322,7 @@ impl ProtocolConfig {
             Self::Rtcp(_) => "rtcp",
             Self::Dlt645(_) => "dlt645",
             Self::Iec101(_) => "iec101",
+            Self::Bfd(_) => "bfd",
         }
     }
     pub fn bind_ip(&self) -> &str {
@@ -329,6 +337,7 @@ impl ProtocolConfig {
             Self::Rtcp(c) => &c.bind_ip,
             Self::Dlt645(c) => &c.bind_ip,
             Self::Iec101(c) => &c.bind_ip,
+            Self::Bfd(c) => &c.bind_ip,
         }
     }
     pub fn port(&self) -> u16 {
@@ -343,12 +352,13 @@ impl ProtocolConfig {
             Self::Rtcp(c) => c.port,
             Self::Dlt645(c) => c.port,
             Self::Iec101(c) => c.single.port,
+            Self::Bfd(_) => crate::bfd::PORT,
         }
     }
     pub fn transports(&self) -> Vec<&'static str> {
         match self {
             Self::Dns(c) => c.transports(),
-            Self::MqttSn(_) | Self::Rtp(_) | Self::Rtcp(_) => vec!["UDP"],
+            Self::MqttSn(_) | Self::Rtp(_) | Self::Rtcp(_) | Self::Bfd(_) => vec!["UDP"],
             Self::Http(_)
             | Self::Mqtt(_)
             | Self::Telnet(_)
@@ -370,6 +380,7 @@ impl ProtocolConfig {
             Self::Rtcp(_) => 5005,
             Self::Dlt645(_) => 20645,
             Self::Iec101(_) => 24741,
+            Self::Bfd(_) => crate::bfd::PORT,
             Self::Http(c) => c.port,
         }
     }
@@ -391,7 +402,8 @@ impl ProtocolConfig {
             | Self::Rtp(_)
             | Self::Rtcp(_)
             | Self::Dlt645(_)
-            | Self::Iec101(_) => {
+            | Self::Iec101(_)
+            | Self::Bfd(_) => {
                 format!(
                     "{:x}",
                     Sha256::digest(serde_json::to_vec(self).expect("serializable config"))
@@ -426,6 +438,7 @@ impl ProtocolConfig {
                 Ok(result)
             }
             Self::Iec101(c) => Ok(c.patch(value)?.into()),
+            Self::Bfd(c) => Ok(c.patch(value)?.into()),
             Self::Dlt645(c) => {
                 let r: Self = typed_patch(
                     c,
@@ -637,6 +650,7 @@ impl Document {
                 Instance::new("rtcp-demo".into(), crate::rtcp::RtcpConfig::default()),
                 Instance::new("dlt645-demo".into(), crate::dlt645::Dlt645Config::default()),
                 Instance::new("iec101-demo".into(), crate::iec101::Iec101Config::default()),
+                Instance::new("bfd-demo".into(), crate::bfd::BfdConfig::default()),
             ],
         }
     }

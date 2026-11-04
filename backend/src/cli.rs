@@ -20,6 +20,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
   config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
   config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
+  config set bfd [--bind-ip IP] [--peer-ip IP] [--interface IFACE] [--source-port N] [--local-discriminator N] [--min-tx-us N] [--min-rx-us N] [--detect-mult N] [--scenario-json JSON]
   config set iec101 [--bind-ip IP] [--single-port N] [--double-port N] [--single-json JSON] [--double-json JSON] [--serial-json JSON]
   config set dlt645 [--port N] [--meter-address DIGITS] [--energy-hundredths N] [--period-minutes N] [--programming-key-enabled true|false] [--security-json JSON]
   config set rtcp [--bind-ip IP] [--port N] [--max-packet-size N] [--packet-profile sr-sdes]
@@ -28,7 +29,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set iec104 [--bind-ip IP] [--port N] [--max-connections N] [--points-json JSON]
   config set telnet [--bind-ip IP] [--port N] [--banner TEXT] [--max-connections N] [--max-line-bytes N]
   start PROTOCOL | stop PROTOCOL | restart PROTOCOL [--wait | --no-wait]
-  connection-info PROTOCOL
+  connection-info PROTOCOL | runtime bfd
   logs PROTOCOL [--follow]
   tests list PROTOCOL
   tests run PROTOCOL [--method ALL] [--path /ok | --name DNS_NAME] (DNS defaults to ALL) [--wait | --no-wait]
@@ -36,7 +37,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
 
 API mutations wait for their exact operation/test by default; config set only saves.
 JSON is the default. --follow emits JSON Lines; Ctrl-C stops following.
-PLAB_URL supplies the URL when --url is absent. Total timeout is 1..3600 seconds.
+PLAB_URL supplies the URL when --url is absent. Total timeout is 1..3600 seconds (BFD test commands default to150).
 Exit codes: 0 success, 1 operation/test failure, 2 usage/input, 3 transport/invalid
 reply, 4 API rejection, 5 timeout, 6 interrupted/replaced operation or test.
 Timeout/interruption does not cancel an already accepted manager operation.
@@ -92,6 +93,7 @@ enum Command {
     ConfigSet(String, ConfigInput),
     Action(String, &'static str, bool),
     Connection(String),
+    Runtime(String),
     Logs(String, bool),
     TestsList(String),
     TestRun(String, String, String, bool),
@@ -112,6 +114,7 @@ impl Command {
             Self::ConfigSet(..) => "config.set",
             Self::Action(_, kind, _) => kind,
             Self::Connection(_) => "connection-info",
+            Self::Runtime(_) => "runtime",
             Self::Logs(..) => "logs",
             Self::TestsList(_) => "tests.list",
             Self::TestRun(..) => "tests.run",
@@ -158,6 +161,14 @@ const VALUE_OPTIONS: &[&str] = &[
     "--max-packet-size",
     "--packet-profile",
     "--wire-profile",
+    "--peer-ip",
+    "--interface",
+    "--source-port",
+    "--local-discriminator",
+    "--min-tx-us",
+    "--min-rx-us",
+    "--detect-mult",
+    "--scenario-json",
     "--meter-address",
     "--energy-hundredths",
     "--period-minutes",
@@ -256,9 +267,14 @@ fn parse(args: &[String]) -> Result<Options> {
             "--url must be http://HOST:PORT without credentials, path, query or fragment",
         ));
     }
+    let default_timeout = if matches!(positional.as_slice(), ["tests", "run" | "result", "bfd"]) {
+        "150"
+    } else {
+        "120"
+    };
     let timeout = values
         .remove("--timeout")
-        .unwrap_or_else(|| "120".into())
+        .unwrap_or_else(|| default_timeout.into())
         .parse::<u64>()
         .map_err(|_| Failure::usage("--timeout must be an integer in 1..3600"))?;
     if !(1..=3600).contains(&timeout) {
@@ -312,6 +328,14 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--max-packet-size",
                 "--packet-profile",
                 "--wire-profile",
+                "--peer-ip",
+                "--interface",
+                "--source-port",
+                "--local-discriminator",
+                "--min-tx-us",
+                "--min-rx-us",
+                "--detect-mult",
+                "--scenario-json",
                 "--meter-address",
                 "--energy-hundredths",
                 "--period-minutes",
@@ -351,6 +375,7 @@ fn parse(args: &[String]) -> Result<Options> {
             waiting(&mut flags, true)?,
         ),
         ["connection-info", p] => Command::Connection(protocol(p)?),
+        ["runtime", p] => Command::Runtime(protocol(p)?),
         ["logs", p] => Command::Logs(protocol(p)?, flags.remove("--follow")),
         ["tests", "list", p] => Command::TestsList(protocol(p)?),
         ["tests", "run", p] => Command::TestRun(
@@ -369,7 +394,9 @@ fn parse(args: &[String]) -> Result<Options> {
                     return Err(Failure::usage("--name applies to DNS tests"));
                 }
                 path.or(name).unwrap_or_else(|| {
-                    if *p == "iec101" {
+                    if *p == "bfd" {
+                        crate::bfd::PATH.into()
+                    } else if *p == "iec101" {
                         "dual".into()
                     } else if *p == "dns" {
                         "ALL".into()
@@ -700,7 +727,12 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
             continue;
         }
         let value = match key.as_str() {
-            "--port"
+            "--source-port"
+            | "--local-discriminator"
+            | "--min-tx-us"
+            | "--min-rx-us"
+            | "--detect-mult"
+            | "--port"
             | "--response-length"
             | "--max-connections"
             | "--max-packet-size"
@@ -719,7 +751,8 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
                     .parse::<bool>()
                     .map_err(|_| Failure::usage(format!("{key} must be true or false")))?,
             ),
-            "--records-json"
+            "--scenario-json"
+            | "--records-json"
             | "--points-json"
             | "--predefined-topics-json"
             | "--security-json"
@@ -730,7 +763,9 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
             _ => Value::String(value),
         };
         patch.insert(
-            if matches!(
+            if key == "--scenario-json" {
+                "scenario".into()
+            } else if matches!(
                 key.as_str(),
                 "--single-json" | "--double-json" | "--serial-json"
             ) {
@@ -869,6 +904,10 @@ async fn execute(api: &Api, command: Command) -> Result<Value> {
             )
             .await
         }
+        Command::Runtime(p) => {
+            let (id, _) = api.target(&p).await?;
+            api.get(&format!("/api/instances/{id}/runtime")).await
+        }
         Command::Connection(p) => {
             let (id, _) = api.target(&p).await?;
             api.get(&format!("/api/instances/{id}/connection-info"))
@@ -1006,6 +1045,32 @@ mod tests {
     use crate::model::ResponseMode;
     fn args(s: &str) -> Vec<String> {
         s.split_whitespace().map(str::to_owned).collect()
+    }
+    #[test]
+    fn bfd_cli_uses_complete_scenarios_and_a_bounded_longer_wait() {
+        let p = config_patch(BTreeMap::from([
+            (
+                "--scenario-json".into(),
+                r#"{"mode":"ttl254","after_up_ms":1000,"duration_ms":4000}"#.into(),
+            ),
+            ("--local-discriminator".into(), "4294967295".into()),
+        ]))
+        .unwrap();
+        let c: ProtocolConfig = crate::bfd::BfdConfig::default().into();
+        let changed = c.patch(p).unwrap();
+        if let ProtocolConfig::Bfd(c) = changed {
+            assert_eq!(c.cases(), ["TTL254", "ALL"]);
+            assert_eq!(c.local_discriminator, u32::MAX);
+        } else {
+            panic!("BFD shape lost");
+        }
+        let opts = parse(&args("tests run bfd")).unwrap();
+        assert_eq!(opts.timeout, 150);
+        assert!(matches!(opts.command,Command::TestRun(_,_,p,true) if p=="session"));
+        assert_eq!(parse(&args("tests run http")).unwrap().timeout, 120);
+        assert!(
+            matches!(parse(&args("runtime bfd")).unwrap().command,Command::Runtime(p) if p=="bfd")
+        );
     }
     #[test]
     fn iec101_nested_ports_preserve_other_channel_and_reject_overlap() {

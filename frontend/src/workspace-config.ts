@@ -1,3 +1,4 @@
+import { isBfdConfig, sameBfdConfig, type BfdConfig } from "./bfd-config.ts";
 import {
   normalizeConfig,
   isHttpConfig,
@@ -53,7 +54,8 @@ export type WorkspaceConfig =
   | RtpConfig
   | RtcpConfig
   | Dlt645Config
-  | Iec101Config;
+  | Iec101Config
+  | BfdConfig;
 export type DraftConfig =
   | Config
   | DnsConfig
@@ -64,13 +66,16 @@ export type DraftConfig =
   | RtpConfig
   | RtcpConfig
   | Dlt645Config
-  | Iec101Config;
+  | Iec101Config
+  | BfdConfig;
 export type WorkspaceDrafts = Record<string, DraftConfig>;
 
 export function sameWorkspaceConfig(
   a: WorkspaceConfig,
   b: WorkspaceConfig,
 ): boolean {
+  if (isBfdConfig(a) || isBfdConfig(b))
+    return isBfdConfig(a) && isBfdConfig(b) && sameBfdConfig(a, b);
   if (isIec101Config(a) || isIec101Config(b))
     return isIec101Config(a) && isIec101Config(b) && sameIec101Config(a, b);
   if (isDlt645Config(a) || isDlt645Config(b))
@@ -97,26 +102,29 @@ export function updateWorkspaceDrafts(
   edited: DraftConfig,
   saved: WorkspaceConfig,
 ): WorkspaceDrafts {
-  const changed = isDnsConfig(edited)
-    ? !isDnsConfig(saved) || !sameDnsConfig(edited, saved)
-    : isMqttConfig(edited)
-      ? !isMqttConfig(saved) || !sameMqttConfig(edited, saved)
-      : isTelnetConfig(edited)
-        ? !isTelnetConfig(saved) || !sameTelnetConfig(edited, saved)
-        : isIec104Config(edited)
-          ? !isIec104Config(saved) || !sameIec104Config(edited, saved)
-          : isMqttSnConfig(edited)
-            ? !isMqttSnConfig(saved) || !sameMqttSnConfig(edited, saved)
-            : isRtpConfig(edited)
-              ? !isRtpConfig(saved) || !sameRtpConfig(edited, saved)
-              : isRtcpConfig(edited)
-                ? !isRtcpConfig(saved) || !sameRtcpConfig(edited, saved)
-                : isDlt645Config(edited)
-                  ? !isDlt645Config(saved) || !sameDlt645Config(edited, saved)
-                  : isIec101Config(edited)
-                    ? !isIec101Config(saved) || !sameIec101Config(edited, saved)
-                    : !isHttpConfig(saved) ||
-                      !sameGeneratedConfig(edited, normalizeConfig(saved));
+  const changed = isBfdConfig(edited)
+    ? !isBfdConfig(saved) || !sameBfdConfig(edited, saved)
+    : isDnsConfig(edited)
+      ? !isDnsConfig(saved) || !sameDnsConfig(edited, saved)
+      : isMqttConfig(edited)
+        ? !isMqttConfig(saved) || !sameMqttConfig(edited, saved)
+        : isTelnetConfig(edited)
+          ? !isTelnetConfig(saved) || !sameTelnetConfig(edited, saved)
+          : isIec104Config(edited)
+            ? !isIec104Config(saved) || !sameIec104Config(edited, saved)
+            : isMqttSnConfig(edited)
+              ? !isMqttSnConfig(saved) || !sameMqttSnConfig(edited, saved)
+              : isRtpConfig(edited)
+                ? !isRtpConfig(saved) || !sameRtpConfig(edited, saved)
+                : isRtcpConfig(edited)
+                  ? !isRtcpConfig(saved) || !sameRtcpConfig(edited, saved)
+                  : isDlt645Config(edited)
+                    ? !isDlt645Config(saved) || !sameDlt645Config(edited, saved)
+                    : isIec101Config(edited)
+                      ? !isIec101Config(saved) ||
+                        !sameIec101Config(edited, saved)
+                      : !isHttpConfig(saved) ||
+                        !sameGeneratedConfig(edited, normalizeConfig(saved));
   const next = { ...drafts };
   if (changed) next[id] = edited;
   else delete next[id];

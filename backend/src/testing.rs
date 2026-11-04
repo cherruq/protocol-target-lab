@@ -51,6 +51,15 @@ impl TestRequest {
     pub fn validate_for(&self, config: &ProtocolConfig) -> Result<()> {
         match config {
             ProtocolConfig::Http(_) => self.validate(),
+            ProtocolConfig::Bfd(c) => {
+                if !c.cases().contains(&self.method.as_str()) || self.path != crate::bfd::PATH {
+                    bail!(
+                        "config.test: choose the current applied BFD scenario or ALL and session path"
+                    );
+                }
+                c.test_budget()?;
+                Ok(())
+            }
             ProtocolConfig::Iec101(_) => {
                 if !crate::iec101::CASES.contains(&self.method.as_str())
                     || !crate::iec101::PATHS.contains(&self.path.as_str())
@@ -285,6 +294,15 @@ pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) ->
             "configured image has no built-in protocol client; import matching assets before testing"
         );
     }
+    if let ProtocolConfig::Bfd(c) = &config {
+        if resources[0]["Image"] != image_id {
+            bail!(
+                "config.test: BFD client image differs from running source image; restart explicitly to apply the configured image"
+            );
+        }
+        let state = crate::bfd::snapshot(&deployment, instance_id, &source_id, c).await?;
+        crate::bfd::client_preflight(c, &state).await?;
+    }
     cleanup_tests(&deployment, None)
         .await
         .context("cannot clean previous client resources")?;
@@ -423,7 +441,8 @@ async fn run_client(
         | ProtocolConfig::Rtp(_)
         | ProtocolConfig::Rtcp(_)
         | ProtocolConfig::Dlt645(_)
-        | ProtocolConfig::Iec101(_) => args.extend([
+        | ProtocolConfig::Iec101(_)
+        | ProtocolConfig::Bfd(_) => args.extend([
             "--config-json".into(),
             serde_json::to_string(&run.applied_config)?,
         ]),
@@ -439,6 +458,57 @@ async fn run_client(
                 ]);
             }
         }
+    }
+    let mut bfd_identity = None;
+    if let ProtocolConfig::Bfd(c) = &run.applied_config {
+        let before = docker::owned(deployment, Some(&run.instance_id)).await?;
+        if before.len() != 1 || before[0]["Image"] != image {
+            bail!("BFD source image changed before client execution");
+        }
+        let state =
+            crate::bfd::snapshot(deployment, &run.instance_id, &run.source_container_id, c).await?;
+        let interface = crate::bfd::client_preflight(c, &state).await?;
+        let index = args
+            .iter()
+            .position(|s| s == image)
+            .context("client image argument missing")?;
+        args.splice(
+            index..index,
+            [
+                "--user".into(),
+                "0:0".into(),
+                "--cap-drop".into(),
+                "ALL".into(),
+                "--cap-add".into(),
+                "NET_RAW".into(),
+                "--ipc".into(),
+                "private".into(),
+            ],
+        );
+        args.extend([
+            "--interface".into(),
+            interface,
+            "--observer-host".into(),
+            "127.0.0.1".into(),
+            "--observer-port".into(),
+            crate::bfd::OBSERVER_PORT.to_string(),
+            "--expected-boot-id".into(),
+            state["boot_id"]
+                .as_str()
+                .context("BFD boot missing")?
+                .into(),
+            "--expected-runtime-id".into(),
+            state["runtime_id"]
+                .as_str()
+                .context("BFD runtime missing")?
+                .into(),
+        ]);
+        bfd_identity = Some((
+            before[0]["State"]["Pid"].clone(),
+            before[0]["State"]["StartedAt"].clone(),
+            state["boot_id"].clone(),
+            state["runtime_id"].clone(),
+        ));
     }
     let mut iec101_identity = None;
     if let ProtocolConfig::Iec101(c) = &run.applied_config {
@@ -510,7 +580,12 @@ async fn run_client(
         .take(8193);
     let mut out = vec![];
     let mut err = vec![];
-    let result = tokio::time::timeout(Duration::from_secs(45), async {
+    let limit = if matches!(run.applied_config, ProtocolConfig::Bfd(_)) {
+        135
+    } else {
+        45
+    };
+    let result = tokio::time::timeout(Duration::from_secs(limit), async {
         let (status, a, b) = tokio::join!(
             child.wait(),
             stdout.read_to_end(&mut out),
@@ -525,7 +600,7 @@ async fn run_client(
         Ok(status) => status?,
         Err(_) => {
             let _ = child.kill().await;
-            bail!("client execution exceeded the 45-second limit");
+            bail!("client execution exceeded the {limit}-second limit");
         }
     };
     if out.len() as u64 > report_limit {
@@ -567,6 +642,27 @@ async fn run_client(
     {
         report["passed"] = false.into();
         report["error"] = "target container changed or stopped during testing".into();
+    }
+    if let (ProtocolConfig::Bfd(c), Some((pid, start, boot, nonce))) =
+        (&run.applied_config, bfd_identity)
+    {
+        let result =
+            crate::bfd::snapshot(deployment, &run.instance_id, &run.source_container_id, c).await;
+        let unchanged = target.len() == 1
+            && target[0]["State"]["Pid"] == pid
+            && target[0]["State"]["StartedAt"] == start
+            && result
+                .as_ref()
+                .is_ok_and(|s| s["boot_id"] == boot && s["runtime_id"] == nonce);
+        if !unchanged {
+            report["passed"] = false.into();
+            report["source_verification_error"] = json!(
+                result
+                    .err()
+                    .map(|e| format!("{e:#}"))
+                    .unwrap_or_else(|| "BFD source PID/boot changed during testing".into())
+            );
+        }
     }
     Ok(report)
 }

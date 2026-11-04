@@ -18,3 +18,4 @@ PLAB_RTP_IMAGE=protocol-target-lab/rtp:0.1.0
 PLAB_RTCP_IMAGE=protocol-target-lab/rtcp:0.1.0
 PLAB_DLT645_IMAGE=protocol-target-lab/dlt645:0.1.0
 PLAB_IEC101_IMAGE=protocol-target-lab/iec101:0.1.0
+PLAB_BFD_IMAGE=protocol-target-lab/bfd:0.1.0

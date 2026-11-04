@@ -63,6 +63,7 @@ export default function ProtocolClientTests<C>({
   caseLabels,
   pathLabel = "测试参数",
   receiveEvidence = false,
+  reportLabel,
 }: {
   instance: Target<C>;
   protocolName: string;
@@ -72,6 +73,7 @@ export default function ProtocolClientTests<C>({
   caseLabels?: Record<string, string>;
   pathLabel?: string;
   receiveEvidence?: boolean;
+  reportLabel?: (method: string, appliedConfig: C) => string;
 }) {
   const state = useProtocolTests<C>(instance.id);
   const {
@@ -208,7 +210,10 @@ export default function ProtocolClientTests<C>({
                 {statuses[current.status]}
               </span>
               <strong>
-                {label(current.method)} · {current.path}
+                {reportLabel
+                  ? reportLabel(current.method, current.applied_config)
+                  : label(current.method)}{" "}
+                · {current.path}
               </strong>
               <span className="test-elapsed">
                 {typeof current.report?.seconds === "number" &&

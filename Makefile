@@ -13,9 +13,9 @@ ifneq ($(origin RESPONSE_BODY),undefined)
 export RESPONSE_BODY
 endif
 
-.PHONY: fetch-iec101-deps iec101-images iec101-assets fetch-dlt645-deps dlt645-images dlt645-assets fetch-rtcp-deps rtcp-images rtcp-assets fetch-rtp-deps rtp-images rtp-assets fetch-mqtt-sn-deps mqtt-sn-images mqtt-sn-assets fetch-iec104-deps iec104-images iec104-assets fetch-telnet-deps telnet-images telnet-assets fetch-mqtt-deps mqtt-images mqtt-assets fetch-dns-deps dns-images dns-assets licenses help fetch-deps verify-deps build build-ubuntu24 images assets deb smoke test
+.PHONY: fetch-bfd-deps bfd-images bfd-assets fetch-iec101-deps iec101-images iec101-assets fetch-dlt645-deps dlt645-images dlt645-assets fetch-rtcp-deps rtcp-images rtcp-assets fetch-rtp-deps rtp-images rtp-assets fetch-mqtt-sn-deps mqtt-sn-images mqtt-sn-assets fetch-iec104-deps iec104-images iec104-assets fetch-telnet-deps telnet-images telnet-assets fetch-mqtt-deps mqtt-images mqtt-assets fetch-dns-deps dns-images dns-assets licenses help fetch-deps verify-deps build build-ubuntu24 images assets deb smoke test
 help:
-	@printf '%s\n' 'Protocol Target Lab — HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645 and IEC101' 'make fetch-deps   prepare locked Cargo/npm packages and the public HTTP base image' 'make verify-deps  check the prepared caches and base image' 'make build       build Web, then the native Rust manager' 'make build-ubuntu24  build Web, then Rust in the supported Ubuntu baseline' 'make images      build the HTTP image from the locked local base' 'make deb         package a Ubuntu 24.04-compatible binary (PLAB_BINARY=...)' 'make smoke SCENARIO=http-basic TARGET_ADDR=... TARGET_PORT=...' 'make test        worker/helper Python, Rust and frontend checks' 'OFFLINE=1        disallow Cargo/npm/build-container network access'
+	@printf '%s\n' 'Protocol Target Lab — HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101 and BFD' 'make fetch-deps   prepare locked Cargo/npm packages and the public HTTP base image' 'make verify-deps  check the prepared caches and base image' 'make build       build Web, then the native Rust manager' 'make build-ubuntu24  build Web, then Rust in the supported Ubuntu baseline' 'make images      build the HTTP image from the locked local base' 'make deb         package a Ubuntu 24.04-compatible binary (PLAB_BINARY=...)' 'make smoke SCENARIO=http-basic TARGET_ADDR=... TARGET_PORT=...' 'make test        worker/helper Python, Rust and frontend checks' 'OFFLINE=1        disallow Cargo/npm/build-container network access'
 
 fetch-deps:
 	./scripts/fetch-deps.sh
@@ -37,6 +37,7 @@ licenses:
 	python3 scripts/collect-third-party-licenses.py
 
 test:
+	python3 -B -m unittest discover -s workers/bfd -p 'test_*.py'
 	python3 -B -m unittest discover -s workers/iec101 -p 'test_*.py'
 	python3 -B -m unittest discover -s client-tools -p 'test_*.py'
 	python3 -B -m unittest discover -s workers/dlt645 -p 'test_*.py'
@@ -116,3 +117,10 @@ iec101-images:
 	./scripts/iec101-images.sh
 iec101-assets:
 	./scripts/iec101-assets.sh
+
+fetch-bfd-deps:
+	./scripts/bfd-fetch-deps.sh
+bfd-images:
+	./scripts/bfd-images.sh
+bfd-assets:
+	./scripts/bfd-assets.sh

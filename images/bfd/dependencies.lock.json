@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "image": "protocol-target-lab/bfd:0.1.0",
+  "base_image": "python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337",
+  "implementation": "Autonomous IPv4 single-hop asynchronous BFD Control, active single peer and six target-side scenarios",
+  "runtime_dependencies": [],
+  "new_external_sources": [],
+  "source_license": "MIT",
+  "public_transport": "host-network exact IPv4 UDP3784 receiver and configured high source port; private read-only observer127.0.0.1:18084TCP",
+  "optional_test_oracle": {
+    "name": "FRRouting bfdd",
+    "version": "8.4.4",
+    "upstream": "https://github.com/FRRouting/frr/tree/frr-8.4.4",
+    "runtime_dependency": false,
+    "scope": "Independent original native interoperability in isolated test topology; not bundled or copied into this standard-library runtime"
+  }
+}
