@@ -51,6 +51,13 @@ impl TestRequest {
     pub fn validate_for(&self, config: &ProtocolConfig) -> Result<()> {
         match config {
             ProtocolConfig::Http(_) => self.validate(),
+            ProtocolConfig::CustomEthernet(c) => {
+                if self.path != crate::custom_ethernet::PATH {
+                    bail!("config.test: choose frame path")
+                };
+                c.test_budget(&self.method)?;
+                Ok(())
+            }
             ProtocolConfig::ArpClient(c) => {
                 if self.path != crate::arp_client::PATH {
                     bail!("config.test: choose inverse-peer path");
@@ -329,6 +336,22 @@ pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) ->
         crate::vxlan::snapshot(&deployment, instance_id, &source_id, c).await?;
         crate::vxlan::client_preflight(c).await?;
     }
+    if let ProtocolConfig::CustomEthernet(c) = &config {
+        if resources[0]["Image"] != image_id {
+            bail!(
+                "config.test: custom Ethernet peer image differs from actual source; restart explicitly to apply image"
+            );
+        }
+        crate::custom_l2::snapshot(&deployment, instance_id, &source_id, c).await?;
+        crate::custom_l2::client_preflight(
+            &deployment,
+            instance_id,
+            &source_id,
+            c,
+            &request.method,
+        )
+        .await?;
+    }
     if let ProtocolConfig::ArpClient(c) = &config {
         if resources[0]["Image"] != image_id {
             bail!(
@@ -427,6 +450,32 @@ async fn run_client(
     image: &str,
     run: &TestRun,
 ) -> Result<Value> {
+    let custom_execution = if let ProtocolConfig::CustomEthernet(c) = &run.applied_config {
+        let before = docker::owned(deployment, Some(&run.instance_id)).await?;
+        if before.len() != 1 || before[0]["Image"] != image {
+            bail!("custom Ethernet source image changed before peer execution");
+        }
+        let state =
+            crate::custom_l2::snapshot(deployment, &run.instance_id, &run.source_container_id, c)
+                .await?;
+        let (view, interface) = crate::custom_l2::client_preflight(
+            deployment,
+            &run.instance_id,
+            &run.source_container_id,
+            c,
+            &run.method,
+        )
+        .await?;
+        Some((
+            view,
+            interface,
+            state,
+            before[0]["State"]["Pid"].clone(),
+            before[0]["State"]["StartedAt"].clone(),
+        ))
+    } else {
+        None
+    };
     let arp_execution = if let ProtocolConfig::ArpClient(c) = &run.applied_config {
         let before = docker::owned(deployment, Some(&run.instance_id)).await?;
         if before.len() != 1 || before[0]["Image"] != image {
@@ -461,6 +510,11 @@ async fn run_client(
         arp_execution
             .as_ref()
             .and_then(|(view, _, _, _, _)| view.network_id.clone())
+            .or_else(|| {
+                custom_execution
+                    .as_ref()
+                    .and_then(|(view, _, _, _, _)| view.network_id.clone())
+            })
             .unwrap_or_else(|| "host".into()),
         "--restart".into(),
         "no".into(),
@@ -501,6 +555,7 @@ async fn run_client(
         ]);
     }
     match &run.applied_config {
+        ProtocolConfig::CustomEthernet(c) => args.extend(crate::custom_ethernet::config_args(c)?),
         ProtocolConfig::Dns(_)
         | ProtocolConfig::Mqtt(_)
         | ProtocolConfig::Telnet(_)
@@ -528,6 +583,60 @@ async fn run_client(
                 ]);
             }
         }
+    }
+    if let (ProtocolConfig::CustomEthernet(c), Some((view, interface, state, _, _))) =
+        (&run.applied_config, &custom_execution)
+    {
+        let index = args
+            .iter()
+            .position(|s| s == image)
+            .context("peer image argument missing")?;
+        let mut flags = vec![
+            "--user".into(),
+            "0:0".into(),
+            "--cap-drop".into(),
+            "ALL".into(),
+            "--cap-add".into(),
+            "NET_RAW".into(),
+            "--ipc".into(),
+            "private".into(),
+            "--label".into(),
+            format!(
+                "{}={}",
+                crate::custom_l2::TEST_SOURCE,
+                run.source_container_id
+            ),
+            "--label".into(),
+            format!(
+                "{}={}",
+                crate::custom_l2::PARENT_NONCE,
+                state["runtime_id"]
+                    .as_str()
+                    .context("custom Ethernet runtime missing")?
+            ),
+        ];
+        if c.link.is_bridge() {
+            flags.extend(["--mac-address".into(), c.peer_mac.clone()]);
+        }
+        args.splice(index..index, flags);
+        args.extend([
+            "--interface".into(),
+            interface.clone(),
+            "--observer-host".into(),
+            view.observer_host.clone(),
+            "--observer-port".into(),
+            crate::custom_ethernet::OBSERVER_PORT.to_string(),
+            "--expected-boot-id".into(),
+            state["boot_id"]
+                .as_str()
+                .context("custom Ethernet boot missing")?
+                .into(),
+            "--expected-runtime-id".into(),
+            state["runtime_id"]
+                .as_str()
+                .context("custom Ethernet runtime missing")?
+                .into(),
+        ]);
     }
     if let (ProtocolConfig::ArpClient(c), Some((view, interface, state, _, _))) =
         (&run.applied_config, &arp_execution)
@@ -852,6 +961,30 @@ async fn run_client(
                     .err()
                     .map(|e| format!("{e:#}"))
                     .unwrap_or_else(|| "VXLAN source PID/boot changed during testing".into())
+            );
+        }
+    }
+    if let (ProtocolConfig::CustomEthernet(c), Some((_, _, state, pid, start))) =
+        (&run.applied_config, custom_execution)
+    {
+        let verification =
+            crate::custom_l2::snapshot(deployment, &run.instance_id, &run.source_container_id, c)
+                .await;
+        if target.len() != 1
+            || target[0]["State"]["Pid"] != pid
+            || target[0]["State"]["StartedAt"] != start
+            || !verification.as_ref().is_ok_and(|s| {
+                s["boot_id"] == state["boot_id"] && s["runtime_id"] == state["runtime_id"]
+            })
+        {
+            report["passed"] = false.into();
+            report["source_verification_error"] = json!(
+                verification
+                    .err()
+                    .map(|e| format!("{e:#}"))
+                    .unwrap_or_else(
+                        || "custom Ethernet source changed during fixed-frame test".into()
+                    )
             );
         }
     }

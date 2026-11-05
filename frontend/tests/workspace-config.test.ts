@@ -559,3 +559,94 @@ test("portless ARP-client adds a thirteenth draft without losing incompatible ed
   for (const c of [...configs, iec101Defaults, bfdDefaults])
     assert.equal(sameWorkspaceConfig(arpClientDefaults, c), false);
 });
+
+test("custom dual response banks join fourteen isolated drafts; a valid save retains its invalid inactive text", async () => {
+  const { customEthernetDefaults, prepareCustomEthernetSave } = await import(
+    "../src/custom-ethernet-config.ts"
+  );
+  const { rtpDefaults } = await import("../src/rtp-config.ts");
+  const { rtcpDefaults } = await import("../src/rtcp-config.ts");
+  const { dlt645Defaults } = await import("../src/dlt645-config.ts");
+  const { iec101Defaults, updateIec101Channel } = await import(
+    "../src/iec101-config.ts"
+  );
+  const { bfdDefaults, changeBfdMode } = await import("../src/bfd-config.ts");
+  const { vxlanDefaults } = await import("../src/vxlan-config.ts");
+  const { arpClientDefaults } = await import("../src/arp-client-config.ts");
+  const prior = [
+    dnsDefaults,
+    mqttDefaults,
+    telnetDefaults,
+    iec104Defaults,
+    mqttSnDefaults,
+    rtpDefaults,
+    rtcpDefaults,
+    dlt645Defaults,
+    vxlanDefaults,
+  ];
+  let drafts = {};
+  for (const [i, c] of prior.entries())
+    drafts = updateWorkspaceDrafts(
+      drafts,
+      `old-${i}`,
+      { ...c, port: c.port + 2 },
+      c,
+    );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "http",
+    { ...defaults, response_length: 128 },
+    defaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "iec101",
+    updateIec101Channel(iec101Defaults, "single", { point: { value: false } }),
+    iec101Defaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "bfd",
+    changeBfdMode(bfdDefaults, "quiet"),
+    bfdDefaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "arp",
+    { ...arpClientDefaults, interval_ms: 600 },
+    arpClientDefaults,
+  );
+  const edited = structuredClone(customEthernetDefaults);
+  edited.response.frame_hex = "abc";
+  edited.response.payload.payload_hex = "ff";
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "custom-id",
+    edited,
+    customEthernetDefaults,
+  );
+  assert.equal(Object.keys(drafts).length, 14);
+  const priorDrafts = structuredClone(drafts);
+  const save = prepareCustomEthernetSave(edited, customEthernetDefaults);
+  drafts = updateWorkspaceDrafts(drafts, "custom-id", edited, save.config);
+  assert.equal(Object.keys(drafts).length, 14);
+  assert.equal(drafts["custom-id"].response.frame_hex, "abc");
+  for (const [key, value] of Object.entries(priorDrafts))
+    if (key !== "custom-id") assert.deepEqual(drafts[key], value);
+  edited.response.frame_hex = customEthernetDefaults.response.frame_hex;
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "custom-id",
+    edited,
+    prepareCustomEthernetSave(edited, save.config).config,
+  );
+  assert.equal(Object.keys(drafts).length, 13);
+  for (const c of [
+    ...prior,
+    defaults,
+    iec101Defaults,
+    bfdDefaults,
+    arpClientDefaults,
+  ])
+    assert.equal(sameWorkspaceConfig(customEthernetDefaults, c), false);
+});

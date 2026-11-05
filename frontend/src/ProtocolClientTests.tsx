@@ -1,5 +1,6 @@
 import {
   boundedWireSummary,
+  actualProtocolExchanges,
   ownProtocolTest,
   protocolTestLabel,
 } from "./protocol-tests";
@@ -64,6 +65,7 @@ export default function ProtocolClientTests<C>({
   pathLabel = "测试参数",
   receiveEvidence = false,
   reportLabel,
+  showActualExchanges = false,
 }: {
   instance: Target<C>;
   protocolName: string;
@@ -74,6 +76,7 @@ export default function ProtocolClientTests<C>({
   pathLabel?: string;
   receiveEvidence?: boolean;
   reportLabel?: (method: string, appliedConfig: C) => string;
+  showActualExchanges?: boolean;
 }) {
   const state = useProtocolTests<C>(instance.id);
   const {
@@ -276,6 +279,13 @@ export default function ProtocolClientTests<C>({
                 message={{ trace: current.report.trace }}
               />
             </div>
+          )}
+          {showActualExchanges && current.report && (
+            <p className="test-counts">
+              实际完成且具完整证据的交换：
+              {actualProtocolExchanges(current.report.summary) ?? "未提供"}{" "}
+              次；计划次数不计为完成。
+            </p>
           )}
           {checks.length ? (
             <>

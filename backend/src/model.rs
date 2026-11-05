@@ -4,7 +4,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 pub const MAX_RESPONSE_LENGTH: u32 = 1024 * 1024;
-pub const PROTOCOLS: [&str; 13] = [
+pub const PROTOCOLS: [&str; 14] = [
     "http",
     "dns",
     "mqtt",
@@ -18,6 +18,7 @@ pub const PROTOCOLS: [&str; 13] = [
     "bfd",
     "vxlan",
     "arp-client",
+    "custom-ethernet",
 ];
 pub const HTTP_METHODS: [&str; 7] = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 pub const FIXED_PATTERN: &[u8] = b"0123456789abcdef";
@@ -245,6 +246,7 @@ pub enum ProtocolConfig {
     Bfd(crate::bfd::BfdConfig),
     Vxlan(crate::vxlan::VxlanConfig),
     ArpClient(crate::arp_client::ArpClientConfig),
+    CustomEthernet(crate::custom_ethernet::CustomEthernetConfig),
 }
 impl From<HttpConfig> for ProtocolConfig {
     fn from(c: HttpConfig) -> Self {
@@ -325,6 +327,11 @@ impl From<crate::arp_client::ArpClientConfig> for ProtocolConfig {
         Self::ArpClient(c)
     }
 }
+impl From<crate::custom_ethernet::CustomEthernetConfig> for ProtocolConfig {
+    fn from(c: crate::custom_ethernet::CustomEthernetConfig) -> Self {
+        Self::CustomEthernet(c)
+    }
+}
 impl ProtocolConfig {
     pub fn validate(&self) -> Result<()> {
         match self {
@@ -341,6 +348,7 @@ impl ProtocolConfig {
             Self::Bfd(c) => c.validate(),
             Self::Vxlan(c) => c.validate(),
             Self::ArpClient(c) => c.validate(),
+            Self::CustomEthernet(c) => c.validate(),
         }
     }
     pub fn as_http(&self) -> Option<&HttpConfig> {
@@ -365,6 +373,7 @@ impl ProtocolConfig {
             Self::Bfd(_) => "bfd",
             Self::Vxlan(_) => "vxlan",
             Self::ArpClient(_) => "arp-client",
+            Self::CustomEthernet(_) => "custom-ethernet",
         }
     }
     /// A view of actual IP socket roles; link-layer protocols have no fabricated endpoint.
@@ -382,7 +391,7 @@ impl ProtocolConfig {
             Self::Iec101(c) => (c.bind_ip.as_str(), c.single.port, 24741),
             Self::Bfd(c) => (c.bind_ip.as_str(), crate::bfd::PORT, crate::bfd::PORT),
             Self::Vxlan(c) => (c.bind_ip.as_str(), c.port, c.port),
-            Self::ArpClient(_) => return None,
+            Self::ArpClient(_) | Self::CustomEthernet(_) => return None,
         };
         Some(IpEndpoint {
             bind_ip,
@@ -392,7 +401,7 @@ impl ProtocolConfig {
     }
     pub fn transports(&self) -> Vec<&'static str> {
         match self {
-            Self::ArpClient(_) => vec!["ETHERNET"],
+            Self::ArpClient(_) | Self::CustomEthernet(_) => vec!["ETHERNET"],
             Self::Dns(c) => c.transports(),
             Self::MqttSn(_) | Self::Rtp(_) | Self::Rtcp(_) | Self::Bfd(_) | Self::Vxlan(_) => {
                 vec!["UDP"]
@@ -421,7 +430,8 @@ impl ProtocolConfig {
             | Self::Iec101(_)
             | Self::Bfd(_)
             | Self::Vxlan(_)
-            | Self::ArpClient(_) => {
+            | Self::ArpClient(_)
+            | Self::CustomEthernet(_) => {
                 format!(
                     "{:x}",
                     Sha256::digest(serde_json::to_vec(self).expect("serializable config"))
@@ -459,6 +469,7 @@ impl ProtocolConfig {
             Self::Bfd(c) => Ok(c.patch(value)?.into()),
             Self::Vxlan(c) => Ok(c.patch(value)?.into()),
             Self::ArpClient(c) => Ok(c.patch(value)?.into()),
+            Self::CustomEthernet(c) => Ok(c.patch(value)?.into()),
             Self::Dlt645(c) => {
                 let r: Self = typed_patch(
                     c,
@@ -675,6 +686,10 @@ impl Document {
                 Instance::new(
                     "arp-client-demo".into(),
                     crate::arp_client::ArpClientConfig::default(),
+                ),
+                Instance::new(
+                    "custom-ethernet-demo".into(),
+                    crate::custom_ethernet::CustomEthernetConfig::default(),
                 ),
             ],
         }

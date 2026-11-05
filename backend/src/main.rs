@@ -2,6 +2,8 @@ mod api;
 mod arp_client;
 mod bfd;
 mod cli;
+mod custom_ethernet;
+mod custom_l2;
 mod dlt645;
 mod dns;
 mod docker;
@@ -87,6 +89,7 @@ async fn stop_all(settings: &Settings) -> Result<()> {
         docker::remove(&v, &deployment, id).await?;
     }
     crate::l2::cleanup_deployment(&deployment).await?;
+    crate::custom_l2::cleanup_deployment(&deployment).await?;
     println!("Stopped owned resources; configuration and enabled intent preserved.");
     Ok(())
 }
@@ -265,6 +268,7 @@ mod cleanup_tests {
             bfd_image: "unused".into(),
             vxlan_image: "unused".into(),
             arp_client_image: "unused".into(),
+            custom_ethernet_image: "unused".into(),
         };
         struct Cleanup(std::path::PathBuf);
         impl Drop for Cleanup {

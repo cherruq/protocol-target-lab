@@ -20,6 +20,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
   config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
   config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
+  config set custom-ethernet [--link-json JSON] [--local-mac MAC] [--peer-mac MAC] [--packet-filter TEXT] [--request-marker-json JSON] [--response-json JSON] [--promiscuous true|false] [--multicast-macs-json JSON] [--test-request-json JSON]
   config set arp-client [--link-json JSON] [--source-mac MAC] [--source-ip IP] [--server-mac MAC] [--server-ip IP] [--assigned-ip IP] [--mode whois|response-fuzz|rarp|inarp] [--request-scenario-json JSON] [--interval-ms N] [--timeout-ms N] [--retries N]
   config set vxlan [--bind-ip IP] [--port N] [--peer-ip IP] [--peer-port N] [--source-port N] [--vni N] [--inner-ip IP] [--inner-mac MAC] [--requester-ip IP] [--requester-mac MAC] [--reply-padding 0|18] [--scenario-json JSON]
   config set bfd [--bind-ip IP] [--peer-ip IP] [--interface IFACE] [--source-port N] [--local-discriminator N] [--min-tx-us N] [--min-rx-us N] [--detect-mult N] [--scenario-json JSON]
@@ -31,7 +32,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set iec104 [--bind-ip IP] [--port N] [--max-connections N] [--points-json JSON]
   config set telnet [--bind-ip IP] [--port N] [--banner TEXT] [--max-connections N] [--max-line-bytes N]
   start PROTOCOL | stop PROTOCOL | restart PROTOCOL [--wait | --no-wait]
-  connection-info PROTOCOL | runtime bfd|vxlan|arp-client
+  connection-info PROTOCOL | runtime bfd|vxlan|arp-client|custom-ethernet
   logs PROTOCOL [--follow]
   tests list PROTOCOL
   tests run PROTOCOL [--method ALL] [--path /ok | --name DNS_NAME] (DNS defaults to ALL) [--wait | --no-wait]
@@ -52,7 +53,7 @@ Local administrative commands (retain existing behavior; may require root):
   plabctl serial start --host IPv4 --single-port N --double-port N
   plabctl serial status | stop   local root-owned dual PTY helper
   plabctl assets import DIR     local image import from a checked manifest
-Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_IEC104_IMAGE, PLAB_MQTTSN_IMAGE, PLAB_RTP_IMAGE, PLAB_RTCP_IMAGE, PLAB_DLT645_IMAGE, PLAB_IEC101_IMAGE, PLAB_BFD_IMAGE, PLAB_VXLAN_IMAGE, PLAB_ARP_CLIENT_IMAGE, PLAB_DOCKER_SOCKET
+Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_IEC104_IMAGE, PLAB_MQTTSN_IMAGE, PLAB_RTP_IMAGE, PLAB_RTCP_IMAGE, PLAB_DLT645_IMAGE, PLAB_IEC101_IMAGE, PLAB_BFD_IMAGE, PLAB_VXLAN_IMAGE, PLAB_ARP_CLIENT_IMAGE, PLAB_CUSTOM_ETHERNET_IMAGE, PLAB_DOCKER_SOCKET
 "#;
 const LIMIT: usize = 8 * 1024 * 1024;
 type Result<T> = std::result::Result<T, Failure>;
@@ -165,6 +166,14 @@ const VALUE_OPTIONS: &[&str] = &[
     "--wire-profile",
     "--peer-ip",
     "--link-json",
+    "--local-mac",
+    "--peer-mac",
+    "--packet-filter",
+    "--request-marker-json",
+    "--response-json",
+    "--promiscuous",
+    "--multicast-macs-json",
+    "--test-request-json",
     "--source-mac",
     "--source-ip",
     "--server-mac",
@@ -350,6 +359,14 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--wire-profile",
                 "--peer-ip",
                 "--link-json",
+                "--local-mac",
+                "--peer-mac",
+                "--packet-filter",
+                "--request-marker-json",
+                "--response-json",
+                "--promiscuous",
+                "--multicast-macs-json",
+                "--test-request-json",
                 "--source-mac",
                 "--source-ip",
                 "--server-mac",
@@ -432,7 +449,9 @@ fn parse(args: &[String]) -> Result<Options> {
                     return Err(Failure::usage("--name applies to DNS tests"));
                 }
                 path.or(name).unwrap_or_else(|| {
-                    if *p == "arp-client" {
+                    if *p == "custom-ethernet" {
+                        crate::custom_ethernet::PATH.into()
+                    } else if *p == "arp-client" {
                         crate::arp_client::PATH.into()
                     } else if *p == "vxlan" {
                         crate::vxlan::PATH.into()
@@ -794,12 +813,18 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
                     .parse::<u32>()
                     .map_err(|_| Failure::usage(format!("{key} must be a nonnegative integer")))?
             ),
-            "--udp-enabled" | "--tcp-enabled" | "--programming-key-enabled" => Value::Bool(
-                value
-                    .parse::<bool>()
-                    .map_err(|_| Failure::usage(format!("{key} must be true or false")))?,
-            ),
+            "--udp-enabled" | "--tcp-enabled" | "--programming-key-enabled" | "--promiscuous" => {
+                Value::Bool(
+                    value
+                        .parse::<bool>()
+                        .map_err(|_| Failure::usage(format!("{key} must be true or false")))?,
+                )
+            }
             "--link-json"
+            | "--request-marker-json"
+            | "--response-json"
+            | "--multicast-macs-json"
+            | "--test-request-json"
             | "--request-scenario-json"
             | "--scenario-json"
             | "--records-json"
@@ -813,7 +838,16 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
             _ => Value::String(value),
         };
         patch.insert(
-            if key == "--link-json" {
+            if key == "--request-marker-json" {
+                "request_marker_hex".into()
+            } else if matches!(
+                key.as_str(),
+                "--response-json" | "--multicast-macs-json" | "--test-request-json"
+            ) {
+                key.trim_start_matches("--")
+                    .trim_end_matches("-json")
+                    .replace('-', "_")
+            } else if key == "--link-json" {
                 "link".into()
             } else if key == "--request-scenario-json" {
                 "request_scenario".into()
@@ -1096,6 +1130,31 @@ pub async fn dispatch(args: &[String]) -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn custom_cli_preserves_inactive_bank_and_nullable_marker() {
+        let p = config_patch(BTreeMap::from([
+            (
+                "--response-json".into(),
+                r#"{"mode":"frame","payload":{"vlan":{"vid":0}}}"#.into(),
+            ),
+            ("--request-marker-json".into(), "null".into()),
+            ("--promiscuous".into(), "false".into()),
+        ]))
+        .unwrap();
+        let c = crate::custom_ethernet::CustomEthernetConfig::default();
+        let n = c.patch(p).unwrap();
+        assert!(n.request_marker_hex.is_none());
+        assert_eq!(n.response.frame_hex, c.response.frame_hex);
+        assert_eq!(
+            n.response.payload.payload_hex,
+            c.response.payload.payload_hex
+        );
+        assert_eq!(n.response.payload.vlan.vid, 0);
+        assert_ne!(n.observer_hash(), c.observer_hash());
+        let o = parse(&args("tests run custom-ethernet")).unwrap();
+        assert!(matches!(o.command,Command::TestRun(_,_,ref path,_) if path=="frame"));
+    }
+
     use crate::model::ResponseMode;
     fn args(s: &str) -> Vec<String> {
         s.split_whitespace().map(str::to_owned).collect()

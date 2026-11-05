@@ -1,0 +1,7 @@
+The original Python wrapper and client are MIT licensed (project LICENSE).
+libpcap 1.10.5 is built from the original hash-locked public archive. Its LICENSE
+and individual source copyright/license notices are retained in the full archive
+included in this image and exported source assets. It is not private reference code.
+The pinned Python base retains CPython LICENSE and base OS copyright materials.
+Rebuilding offline requires the prepared fixed base and compiler image cache;
+this does not claim complete corresponding source for the entire OS/toolchain.
