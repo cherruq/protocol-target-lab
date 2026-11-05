@@ -67,12 +67,9 @@ pub async fn prepare_image(image: &str, config: &ProtocolConfig) -> Result<Strin
             bail!("Protocol image is incompatible; import matching assets");
         }
         if matches!(config, ProtocolConfig::Igmp(_))
-            && ["membership", "observer", "client"].iter().any(|k| {
-                metadata[0]["Config"]["Labels"][format!("io.protocol-target-lab.igmp-{k}-schema")]
-                    != "1"
-            })
+            && !crate::igmp::image_schemas_match(&metadata[0]["Config"]["Labels"])
         {
-            bail!("IGMP image lacks native membership/observer/client schemas");
+            bail!("IGMP image lacks required membership/response/client/control/observer schemas");
         }
         if matches!(config, ProtocolConfig::CustomEthernet(_))
             && ["request", "client", "control", "observer", "compiler"]

@@ -10,10 +10,16 @@ pub const PATH: &str = "membership";
 pub const CASES: [&str; 3] = ["GENERAL_QUERY", "GROUP_QUERY", "ALL"];
 pub const RUNTIME_LABEL: &str = "io.protocol-target-lab.igmp-runtime-id";
 pub const NETWORK_KIND: &str = "igmp-member-l2";
+pub const IMAGE_SCHEMAS: [&str; 5] = ["membership", "response", "client", "control", "observer"];
 pub const CLIENT_BUDGET_MS: u64 = 90000;
 pub const MANAGER_BUDGET_MS: u64 = 105000;
 pub const CLEANUP_BUDGET_MS: u64 = 5000;
 pub const EXECUTION_BUDGET_MS: u64 = MANAGER_BUDGET_MS - CLEANUP_BUDGET_MS;
+pub fn image_schemas_match(labels: &Value) -> bool {
+    IMAGE_SCHEMAS
+        .iter()
+        .all(|kind| labels[format!("io.protocol-target-lab.igmp-{kind}-schema")] == "1")
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum WireProfile {
@@ -308,6 +314,32 @@ pub fn schema() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn all_runtime_capabilities_are_required_before_replacing_a_source() {
+        let labels = Value::Object(
+            IMAGE_SCHEMAS
+                .iter()
+                .map(|kind| {
+                    (
+                        format!("io.protocol-target-lab.igmp-{kind}-schema"),
+                        json!("1"),
+                    )
+                })
+                .collect(),
+        );
+        assert!(image_schemas_match(&labels));
+        for kind in IMAGE_SCHEMAS {
+            let key = format!("io.protocol-target-lab.igmp-{kind}-schema");
+            let mut missing = labels.clone();
+            missing.as_object_mut().unwrap().remove(&key);
+            assert!(!image_schemas_match(&missing), "missing {kind}");
+            for bad in [json!("0"), json!(true), Value::Null] {
+                let mut incompatible = labels.clone();
+                incompatible[&key] = bad;
+                assert!(!image_schemas_match(&incompatible), "incompatible {kind}");
+            }
+        }
+    }
     #[test]
     fn required_fields_strict_types_and_atomic_link_patch() {
         let c = IgmpConfig::default();

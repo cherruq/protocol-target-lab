@@ -227,11 +227,7 @@ pub fn container_matches(v: &Value, c: &IgmpConfig) -> bool {
             .is_some_and(|a| a.is_empty())
         && v["HostConfig"]["CapDrop"] == json!(["ALL"])
         && [json!(["NET_RAW"]), json!(["CAP_NET_RAW"])].contains(&v["HostConfig"]["CapAdd"])
-        && ["membership", "response", "client", "control", "observer"]
-            .iter()
-            .all(|k| {
-                v["Config"]["Labels"][format!("io.protocol-target-lab.igmp-{k}-schema")] == "1"
-            })
+        && crate::igmp::image_schemas_match(&v["Config"]["Labels"])
         && runtime_id(v).is_ok()
         && if c.link.is_bridge() {
             v["NetworkSettings"]["Networks"].as_object().is_some_and(|n|n.len()==1&&n.values().all(|e|e["NetworkID"]==v["HostConfig"]["NetworkMode"]&&e["DriverOpts"]==json!({"com.docker.network.endpoint.sysctls":"net.ipv4.conf.ifname.force_igmp_version=2"})))

@@ -78,6 +78,13 @@ fn progress(line: &[u8], run: &TestRun, previous: Option<&Value>) -> Result<Opti
     }
     Ok(Some(v))
 }
+fn query_epoch_still_eligible(before: &Value, after: &Value) -> bool {
+    before["testability"]["available"] == true
+        && after["testability"]["available"] == true
+        && after["boot_id"] == before["boot_id"]
+        && after["runtime_id"] == before["runtime_id"]
+        && after["config_sha256"] == before["config_sha256"]
+}
 pub async fn run(manager: &Shared, deployment: &str, image: &str, run: &TestRun) -> Result<Value> {
     tokio::time::timeout(
         Duration::from_millis(igmp::EXECUTION_BUDGET_MS),
@@ -307,19 +314,21 @@ async fn execute(manager: &Shared, deployment: &str, image: &str, run: &TestRun)
         || after[0]["Image"] != before[0]["Image"]
         || after[0]["State"]["Pid"] != before[0]["State"]["Pid"]
         || after[0]["State"]["StartedAt"] != before[0]["State"]["StartedAt"]
-        || !observed.as_ref().is_ok_and(|s| {
-            s["boot_id"] == state["boot_id"]
-                && s["runtime_id"] == state["runtime_id"]
-                && s["config_sha256"] == state["config_sha256"]
-        })
+        || !observed
+            .as_ref()
+            .is_ok_and(|s| query_epoch_still_eligible(&state, s))
     {
         report["passed"] = false.into();
-        report["source_verification_error"] = json!(
-            observed
-                .err()
-                .map(|e| format!("{e:#}"))
-                .unwrap_or_else(|| "IGMP source/link identity changed during test".into())
-        );
+        if report["error"].is_null() {
+            report["error"] =
+                "IGMP source identity or native query-test eligibility changed during testing"
+                    .into();
+        }
+        report["source_verification_error"] =
+            json!(observed.err().map(|e| format!("{e:#}")).unwrap_or_else(|| {
+                "IGMP source/link identity or native query-test eligibility changed during test"
+                    .into()
+            }));
     }
     Ok(report)
 }
@@ -374,5 +383,18 @@ mod tests {
         let mut r = run();
         r.applied_config = crate::model::HttpConfig::default().into();
         assert!(serde_json::to_value(r).unwrap().get("progress").is_none());
+    }
+    #[test]
+    fn late_shared_reference_or_parameter_change_cannot_publish_a_pass() {
+        let before = json!({"boot_id":"boot","runtime_id":"runtime","config_sha256":"config","testability":{"available":true}});
+        assert!(query_epoch_still_eligible(&before, &before));
+        let mut after = before.clone();
+        after["testability"] = json!({"available":false,"reason":"shared or changed native state"});
+        assert!(!query_epoch_still_eligible(&before, &after));
+        for key in ["boot_id", "runtime_id", "config_sha256"] {
+            let mut after = before.clone();
+            after[key] = "changed".into();
+            assert!(!query_epoch_still_eligible(&before, &after));
+        }
     }
 }
