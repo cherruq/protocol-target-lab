@@ -1,3 +1,4 @@
+import { protocolNavigationItems } from "./protocol-navigation";
 import ProfinetConfigForm from "./ProfinetConfigForm";
 import ProfinetRuntimePanel from "./ProfinetRuntimePanel";
 import ProfinetConnectionHelp from "./ProfinetConnectionHelp";
@@ -567,6 +568,7 @@ export default function App() {
   const [environment, setEnvironment] = useState<Environment | null>(null);
   const [assets, setAssets] = useState<Assets | null>(null);
   const [selectedProtocolId, setSelectedProtocolId] = useState("http");
+  const [protocolSearch, setProtocolSearch] = useState("");
   const [drafts, setDrafts] = useState<Record<string, DraftConfig>>({});
   const [customInterfaceDrafts, setCustomInterfaceDrafts] = useState<
     Record<string, string>
@@ -1079,6 +1081,7 @@ export default function App() {
       setError((cause as Error).message);
     }
   }
+  const visibleProtocols = protocolNavigationItems(protocols, protocolSearch);
   const appliedDiffers = Boolean(
     selected?.applied_config &&
     !sameWorkspaceConfig(selected.config, selected.applied_config),
@@ -1107,60 +1110,50 @@ export default function App() {
           <span>已接入协议</span>
           <span className="subtle-pill">{protocols.length}</span>
         </div>
+        <div className="protocol-search">
+          <input
+            type="search"
+            aria-label="搜索协议"
+            placeholder="搜索协议…"
+            value={protocolSearch}
+            onChange={(event) => setProtocolSearch(event.target.value)}
+          />
+          {protocolSearch && (
+            <button type="button" aria-label="清空协议搜索" onClick={() => setProtocolSearch("")}>×</button>
+          )}
+        </div>
         <nav className="protocol-navigation" aria-label="协议工作台">
-          {protocols.map((protocol) => (
-            <button
-              key={protocol.id}
-              type="button"
-              className={`protocol-workspace-button ${protocol.id === selectedProtocolId ? "selected" : ""}`}
-              aria-current={
-                protocol.id === selectedProtocolId ? "page" : undefined
-              }
-              onClick={() => {
-                setSelectedProtocolId(protocol.id);
-                setError("");
-                setNotice("");
-              }}
-            >
-              <span className="protocol-symbol">
-                {protocol.name.slice(0, 1)}
-              </span>
-              <span className="protocol-nav-content">
-                <strong>{protocol.name}</strong>
-                <Status
-                  value={connectionError ? "checking" : protocol.status}
-                />
-                {protocol.workspace && drafts[protocol.workspace.id] && (
-                  <span className="protocol-nav-operation">草稿未保存</span>
-                )}
-                {protocol.workspace?.current_operation && (
-                  <span className="protocol-nav-operation">
-                    正在执行：{protocol.workspace.current_operation.kind}
-                  </span>
-                )}
-                {(connectionError ||
-                  protocol.error ||
-                  protocol.workspace?.error) && (
-                  <span
-                    className="protocol-nav-error"
-                    title={
-                      connectionError ||
-                      protocol.error ||
-                      protocol.workspace?.error ||
-                      ""
-                    }
-                  >
-                    {connectionError
-                      ? "管理连接中断，状态待核对"
-                      : protocol.error || protocol.workspace?.error}
-                  </span>
-                )}
-              </span>
-            </button>
-          ))}
-          {!protocols.length && (
-            <p className="sidebar-loading">
-              {loading ? "正在读取协议…" : "无法读取协议目录"}
+          {visibleProtocols.map((protocol) => {
+            const status = connectionError ? "checking" : protocol.status;
+            const draft = Boolean(protocol.workspace && drafts[protocol.workspace.id]);
+            const operation = protocol.workspace?.current_operation;
+            const protocolError = connectionError || protocol.error || protocol.workspace?.error;
+            const detail = [protocol.name, statusNames[status] || status, draft && "草稿未保存", operation && `正在执行：${operation.kind}`, protocolError].filter(Boolean).join(" · ");
+            return (
+              <button
+                key={protocol.id}
+                type="button"
+                className={`protocol-workspace-button ${protocol.id === selectedProtocolId ? "selected" : ""}`}
+                aria-current={protocol.id === selectedProtocolId ? "page" : undefined}
+                aria-label={detail}
+                title={detail}
+                onClick={() => {
+                  setSelectedProtocolId(protocol.id);
+                  setError("");
+                  setNotice("");
+                }}
+              >
+                <strong className="protocol-nav-name">{protocol.name}</strong>
+                {draft && <span className="protocol-nav-marker" aria-label="草稿未保存">•</span>}
+                {operation && <span className="protocol-nav-marker" aria-label={`正在执行：${operation.kind}`}>↻</span>}
+                {protocolError && <span className="protocol-nav-marker protocol-nav-warning" aria-label={protocolError}>!</span>}
+                <Status value={status} />
+              </button>
+            );
+          })}
+          {!visibleProtocols.length && (
+            <p className="sidebar-loading" role="status">
+              {protocols.length ? "没有匹配的协议" : loading ? "正在读取协议…" : "无法读取协议目录"}
             </p>
           )}
         </nav>
