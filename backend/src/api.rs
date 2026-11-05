@@ -1,4 +1,5 @@
 use crate::{docker, manager::Shared, model::ProtocolConfig};
+use anyhow::Context;
 use axum::{
     Json, Router,
     body::Body,
@@ -15,6 +16,7 @@ use serde_json::{Value, json};
 use std::{convert::Infallible, time::Duration};
 
 static WEB: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/frontend/dist");
+#[derive(Debug)]
 pub struct ApiError(pub StatusCode, pub String);
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
@@ -88,8 +90,8 @@ async fn protocols(State(m): State<Shared>) -> Json<Value> {
         let workspace=d.doc.instances.iter().find(|i|i.protocol_id==protocol);
         let status=if d.config_error.is_some() {"unavailable"} else if d.docker_error.is_some() {"environment-unavailable"} else {workspace.map(|i|i.status.as_str()).unwrap_or("unavailable")};
         let error=d.config_error.as_deref().or(d.docker_error.as_deref()).or_else(||workspace.and_then(|i|i.runtime_error.as_deref().or(i.error.as_deref())));
-        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":match protocol {"vxlan"=>"stdlib IPv4 unicast VXLAN Ethernet/ARP responder with eleven target scenarios","bfd"=>"stdlib IPv4 single-hop active BFD Control with explicit target fault scenarios","iec101"=>"lib60870-C 2.4.1 native unbalanced dual-channel slave via PTY/TCP","dlt645"=>"software DL/T645-2007 meter over TCP byte stream","rtcp"=>"stdlib RFC3550 RTCPv2 SR+SDES compound receiver","rtp"=>"stdlib RFC3550v2 structural receiver; opaque payload","dns"=>"dnsmasq 2.90","mqtt"=>"Mosquitto 2.0.18 + packet-size backports","telnet"=>"telnetlib3 4.0.3","iec104"=>"c104 2.2.1 + incremental TCP framing fix","mqtt-sn"=>"Eclipse Paho MQTT-SN Gateway 1.5.1 + project capacity guard; private Mosquitto 2.0.18",_=>"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
-        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP"]);} else if protocol=="mqtt" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);} else if protocol=="vxlan" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["wire_profiles"]=json!(["vxlan-ipv4-arp"]);descriptor["supported_features"]=json!(["Ethernet/IPv4 ARP Request-to-Reply","eleven configured target scenarios","fixed peer receive port","fresh causal receive/send observation"]);} else if protocol=="bfd" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["single-hop TTL255/interface validation","Down/Init/Up","Poll/Final","normal/poll/quiet/wrong-your/ttl254/short target modes"]);} else if protocol=="iec101" {descriptor["supported_transports"]=json!(["TCP byte stream via software PTY"]);descriptor["supported_features"]=json!(["simultaneous single/double address channels","RESET/STATUS","CLASS2","GI ACT_CON/data/ACT_TERM","FCB duplicate handling"]);} else if protocol=="dlt645" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["wire_profiles"]=json!(["dlt645-2007-tcp"]);descriptor["software_function_classes"]=json!(["11","13","14","15","16","08","17","18","19","1A","1C","1D","03 reject/fixture"]);descriptor["crypto_verified"]=json!(false);} else if protocol=="rtcp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["packet_profiles"]=json!(["sr-sdes"]);descriptor["rtcp_reply_expected"]=json!(false);} else if protocol=="rtp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["RTPv2 header/CSRC/extension/padding","fresh receive observation"]);descriptor["rtp_reply_expected"]=json!(false);} else if protocol=="mqtt-sn" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["validated_qos"]=json!([1]);descriptor["validated_features"]=json!(["CONNECT/reconnect","REGISTER/PUBLISH","predefined topics","multicast GWINFO","independent MQTT broker delivery"]);} else if protocol=="iec104" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["STARTDT","STOPDT","TESTFR","GI","READ","C_SC_NA_1 DIRECT"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"]);}
+        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":match protocol {"arp-client"=>"Persistent Ethernet/IPv4 ARP, RARP and InARP active requester","vxlan"=>"stdlib IPv4 unicast VXLAN Ethernet/ARP responder with eleven target scenarios","bfd"=>"stdlib IPv4 single-hop active BFD Control with explicit target fault scenarios","iec101"=>"lib60870-C 2.4.1 native unbalanced dual-channel slave via PTY/TCP","dlt645"=>"software DL/T645-2007 meter over TCP byte stream","rtcp"=>"stdlib RFC3550 RTCPv2 SR+SDES compound receiver","rtp"=>"stdlib RFC3550v2 structural receiver; opaque payload","dns"=>"dnsmasq 2.90","mqtt"=>"Mosquitto 2.0.18 + packet-size backports","telnet"=>"telnetlib3 4.0.3","iec104"=>"c104 2.2.1 + incremental TCP framing fix","mqtt-sn"=>"Eclipse Paho MQTT-SN Gateway 1.5.1 + project capacity guard; private Mosquitto 2.0.18",_=>"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
+        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP"]);} else if protocol=="mqtt" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);} else if protocol=="arp-client" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["supported_features"]=json!(["active ARP/RARP/InARP requester","four modes and fifteen legal scenario pairs","same-image inverse responder","owned software L2 or existing host interface"]);} else if protocol=="vxlan" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["wire_profiles"]=json!(["vxlan-ipv4-arp"]);descriptor["supported_features"]=json!(["Ethernet/IPv4 ARP Request-to-Reply","eleven configured target scenarios","fixed peer receive port","fresh causal receive/send observation"]);} else if protocol=="bfd" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["single-hop TTL255/interface validation","Down/Init/Up","Poll/Final","normal/poll/quiet/wrong-your/ttl254/short target modes"]);} else if protocol=="iec101" {descriptor["supported_transports"]=json!(["TCP byte stream via software PTY"]);descriptor["supported_features"]=json!(["simultaneous single/double address channels","RESET/STATUS","CLASS2","GI ACT_CON/data/ACT_TERM","FCB duplicate handling"]);} else if protocol=="dlt645" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["wire_profiles"]=json!(["dlt645-2007-tcp"]);descriptor["software_function_classes"]=json!(["11","13","14","15","16","08","17","18","19","1A","1C","1D","03 reject/fixture"]);descriptor["crypto_verified"]=json!(false);} else if protocol=="rtcp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["packet_profiles"]=json!(["sr-sdes"]);descriptor["rtcp_reply_expected"]=json!(false);} else if protocol=="rtp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["RTPv2 header/CSRC/extension/padding","fresh receive observation"]);descriptor["rtp_reply_expected"]=json!(false);} else if protocol=="mqtt-sn" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["validated_qos"]=json!([1]);descriptor["validated_features"]=json!(["CONNECT/reconnect","REGISTER/PUBLISH","predefined topics","multicast GWINFO","independent MQTT broker delivery"]);} else if protocol=="iec104" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["STARTDT","STOPDT","TESTFR","GI","READ","C_SC_NA_1 DIRECT"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"]);}
         descriptor
     })))
 }
@@ -102,6 +104,7 @@ async fn schema(Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
         "iec101" => Ok(Json(crate::iec101::schema())),
         "bfd" => Ok(Json(crate::bfd::schema())),
         "vxlan" => Ok(Json(crate::vxlan::schema())),
+        "arp-client" => Ok(Json(crate::arp_client::schema())),
         "iec104" => Ok(Json(crate::iec104::schema())),
         "http" => Ok(Json(
             json!({"protocol_id":"http","type":"object","supported_methods":crate::model::HTTP_METHODS,"properties":{"bind_ip":{"type":"string","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18090},"response_length":{"type":"integer","minimum":0,"maximum":crate::model::MAX_RESPONSE_LENGTH,"default":64},"response_mode":{"type":"string","enum":["fixed","random"],"default":"fixed"}},"required":["bind_ip","port","response_length","response_mode"]}),
@@ -193,6 +196,13 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
                     .collect::<Vec<_>>(),
             )
         }
+        ProtocolConfig::ArpClient(_) => (
+            crate::arp_client::CASES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            vec![crate::arp_client::PATH.into()],
+        ),
         ProtocolConfig::Vxlan(_) => (
             crate::vxlan::CASES.iter().map(|s| s.to_string()).collect(),
             vec![crate::vxlan::PATH.into()],
@@ -275,6 +285,14 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
             .collect::<serde_json::Map<String, Value>>();
         result["case_labels"] = Value::Object(labels);
         result["path_label"] = "主题前缀".into();
+    }
+    if let ProtocolConfig::ArpClient(c) = config {
+        result["case_labels"] = json!({"OBSERVE_REQUEST":"实际主动请求","MAPPING":"映射或负请求拒绝","REJECT_REPLY":"错误应答拒绝","TIMEOUT":"真实请求超时","ALL":format!("当前 {}/{} 完整验证（8项）",c.mode.name(),c.request_scenario.mode())});
+        result["path_label"] = "反向应答端".into();
+        result["test_budget"] = match c.test_budget("ALL") {
+            Ok(b) => json!({"available":true,"budget":b}),
+            Err(e) => json!({"available":false,"reason":format!("{e:#}")}),
+        };
     }
     if let ProtocolConfig::Vxlan(c) = config {
         result["case_labels"] = json!({"ARP":"合法 ARP 与精确应答","RESERVED_BITS":"忽略保留位","REQUEST_THA":"忽略请求目标 MAC","INVALID_REQUEST":"拒绝错误 VNI 与目标 IP","ALL":format!("当前 {} 场景完整验证（8项）",c.scenario.mode())});
@@ -383,7 +401,7 @@ async fn runtime_info(
             .clone();
         (d.doc.deployment_id.clone(), i)
     };
-    if !["bfd", "vxlan"].contains(&i.protocol_id.as_str()) {
+    if !["bfd", "vxlan", "arp-client"].contains(&i.protocol_id.as_str()) {
         return Err(ApiError(
             StatusCode::NOT_FOUND,
             "runtime state not implemented for this protocol".into(),
@@ -396,6 +414,7 @@ async fn runtime_info(
     };
     let start = tokio::time::Instant::now();
     let observation = match config {
+        ProtocolConfig::ArpClient(c) => crate::l2::snapshot(&deployment, &id, cid, c).await,
         ProtocolConfig::Bfd(c) => crate::bfd::snapshot(&deployment, &id, cid, c).await,
         ProtocolConfig::Vxlan(c) => crate::vxlan::snapshot(&deployment, &id, cid, c).await,
         _ => unreachable!("validated protocol/config variant"),
@@ -406,6 +425,52 @@ async fn runtime_info(
         }
         Err(e) => json!({"available":false,"source_container_id":cid,"reason":format!("{e:#}")}),
     }))
+}
+fn arp_external_peer(config: &crate::arp_client::ArpClientConfig) -> Result<Value, ApiError> {
+    if config.link.is_bridge() {
+        return Ok(Value::Null);
+    }
+    let argv = vec![
+        "docker".to_string(),
+        "run".into(),
+        "--rm".into(),
+        "--network".into(),
+        "host".into(),
+        "--user".into(),
+        "0:0".into(),
+        "--cap-drop".into(),
+        "ALL".into(),
+        "--cap-add".into(),
+        "NET_RAW".into(),
+        "--ipc".into(),
+        "private".into(),
+        "--pull".into(),
+        "never".into(),
+        "--entrypoint".into(),
+        "python3".into(),
+        "<exact-source-image-id>".into(),
+        "-u".into(),
+        "/opt/protocol-target-lab/client.py".into(),
+        "--method".into(),
+        "ALL".into(),
+        "--path".into(),
+        "peer".into(),
+        "--config-json".into(),
+        serde_json::to_string(config).map_err(anyhow::Error::from)?,
+        "--interface".into(),
+        "<peer-interface>".into(),
+        "--observer-host".into(),
+        "127.0.0.1".into(),
+        "--observer-port".into(),
+        crate::arp_client::OBSERVER_PORT.to_string(),
+        "--expected-boot-id".into(),
+        "<runtime.boot_id>".into(),
+        "--expected-runtime-id".into(),
+        "<runtime.runtime_id>".into(),
+    ];
+    Ok(
+        json!({"argv":argv,"observer_forward":["ssh","-N","-L","127.0.0.1:18086:127.0.0.1:18086","<target-ssh>"],"requires":["Run plabctl runtime arp-client against the manager and record the actual source CID, boot_id and runtime_id","Inspect the actual source Image using the confirmed source CID on the manager host; import the matching frozen assets on the counterpart and replace exact-source-image-id with its verified equivalent immutable image, not an unverified configured tag","Map peer-interface to the counterpart actual NIC with server_mac","Replace every placeholder explicitly; target-ssh is the management SSH destination, never a simulated role IP","Establish the explicit private read-only observer forward; if its local port changes update --observer-port","Run the inverse peer on that counterpart; recheck the original source identity after the test and stop only the task-owned forward"],"notes":["Manual template only; the application does not run SSH or commands on another node","Only private observer HTTP is forwarded; Ethernet protocol traffic uses the actual L2 path","Existing kernel/external replies can legitimately make TIMEOUT fail; never alter host neighbor/sysctl to force silence"]}),
+    )
 }
 async fn connection_info(
     State(m): State<Shared>,
@@ -419,10 +484,19 @@ async fn connection_info(
         .find(|i| i.id == id)
         .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "instance not found".into()))?;
     let c = i.applied_config.as_ref().unwrap_or(&i.config);
-    let host = if c.bind_ip() == "0.0.0.0" {
+    if let ProtocolConfig::ArpClient(config) = c {
+        let external_peer = arp_external_peer(config)?;
+        return Ok(Json(
+            json!({"transport":"ETHERNET","role":"active-requester","external_peer":external_peer,"link":config.link,"source_mac":config.source_mac,"source_ip":config.source_ip,"server_mac":config.server_mac,"server_ip":config.server_ip,"assigned_ip":config.assigned_ip,"mode":config.mode,"request_scenario":config.request_scenario,"commands":["plabctl runtime arp-client","plabctl tests run arp-client --method ALL"],"client_execution":{"role":"inverse-responder","bridge":"Owned internal Docker L2, actual different veth NICs; role IPs do not configure OS addresses","host":"Built-in requires a unique different actual interface with server_mac on manager host; external peer must map its own explicit --interface","observer":"Private18086 derived from exact source CID/network, or explicit read-only SSH loopback forward in host mode"},"notes":["No application UDP/TCP port or fake bind URL","Source running readiness differs from pending/mapping history; no wire transaction ID or response ACK","ALL checks current applied mode/scenario; fifteen-configuration coverage is explicit","Host TIMEOUT can fail due actual external responders; no host neighbor/sysctl modifications"]}),
+        ));
+    }
+    let endpoint = c
+        .ip_endpoint()
+        .context("config.transport: IP endpoint required")?;
+    let host = if endpoint.bind_ip == "0.0.0.0" {
         "<target-ip>"
     } else {
-        c.bind_ip()
+        endpoint.bind_ip
     };
     if let ProtocolConfig::Vxlan(config) = c {
         return Ok(Json(
@@ -494,7 +568,7 @@ async fn connection_info(
             json!({"host":host,"port":config.port,"transports":config.transports(),"records":config.records,"commands":commands,"base_url":format!("dns://{host}:{}",config.port)}),
         ));
     }
-    let url = format!("http://{host}:{}", c.port());
+    let url = format!("http://{host}:{}", endpoint.port);
     Ok(Json(
         json!({"base_url":url,"commands":[format!("curl --noproxy '*' '{url}/ok'"),format!("curl --noproxy '*' -I '{url}/ok'"),format!("curl --noproxy '*' '{url}/chunked'"),format!("curl --noproxy '*' '{url}/close'"),format!("curl --noproxy '*' --data-binary 'sample' '{url}/ok'"),format!("curl --noproxy '*' -X PUT --data-binary 'sample' '{url}/ok'"),format!("curl --noproxy '*' -X PATCH --data-binary 'sample' '{url}/ok'"),format!("curl --noproxy '*' -X DELETE '{url}/ok'"),format!("curl --noproxy '*' -X OPTIONS -i '{url}/ok'")]}),
     ))
@@ -553,6 +627,48 @@ async fn static_file(uri: Uri) -> Response {
 #[cfg(test)]
 mod bfd_input_tests {
     use super::*;
+    #[test]
+    fn arp_host_peer_template_is_explicit_and_bridge_has_no_fake_external_path() {
+        let c = crate::arp_client::ArpClientConfig::default();
+        assert!(arp_external_peer(&c).unwrap().is_null());
+        let c = c
+            .patch(json!({"link":{"mode":"host-interface","interface":"eth0"}}))
+            .unwrap();
+        let v = arp_external_peer(&c).unwrap();
+        let args = v["argv"].as_array().unwrap();
+        let index = args.iter().position(|a| a == "--config-json").unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(args[index + 1].as_str().unwrap()).unwrap(),
+            serde_json::to_value(c).unwrap()
+        );
+        assert!(args.iter().any(|v| v == "<exact-source-image-id>"));
+        assert!(args.iter().any(|v| v == "<peer-interface>"));
+        assert!(args.iter().any(|v| v == "<runtime.boot_id>"));
+        assert_eq!(v["observer_forward"][4], "<target-ssh>");
+    }
+    #[test]
+    fn arp_input_errors_are422_with_no_port_facade() {
+        for patch in [
+            json!({"port":1}),
+            json!({"source_ip":"0.0.0.0"}),
+            json!({"source_mac":"01:00:00:00:00:01"}),
+            json!({"mode":"inarp","request_scenario":{"mode":"nonzero-whois-tha"}}),
+            json!({"link":{"mode":"docker-bridge","interface":"eth0"}}),
+            json!({"timeout_ms":9}),
+            json!({"request_scenario":null}),
+        ] {
+            let error = crate::arp_client::ArpClientConfig::default()
+                .patch(patch.clone())
+                .unwrap_err();
+            let mapped = ApiError::from(error);
+            assert_eq!(
+                mapped.0,
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "{patch}: {}",
+                mapped.1
+            );
+        }
+    }
     #[test]
     fn vxlan_input_errors_are422_not_internal_failure() {
         for patch in [

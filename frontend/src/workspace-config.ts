@@ -1,4 +1,9 @@
 import {
+  isArpClientConfig,
+  sameArpClientConfig,
+  type ArpClientConfig,
+} from "./arp-client-config.ts";
+import {
   isVxlanConfig,
   sameVxlanConfig,
   type VxlanConfig,
@@ -61,7 +66,8 @@ export type WorkspaceConfig =
   | Dlt645Config
   | Iec101Config
   | BfdConfig
-  | VxlanConfig;
+  | VxlanConfig
+  | ArpClientConfig;
 export type DraftConfig =
   | Config
   | DnsConfig
@@ -74,13 +80,18 @@ export type DraftConfig =
   | Dlt645Config
   | Iec101Config
   | BfdConfig
-  | VxlanConfig;
+  | VxlanConfig
+  | ArpClientConfig;
 export type WorkspaceDrafts = Record<string, DraftConfig>;
 
 export function sameWorkspaceConfig(
   a: WorkspaceConfig,
   b: WorkspaceConfig,
 ): boolean {
+  if (isArpClientConfig(a) || isArpClientConfig(b))
+    return (
+      isArpClientConfig(a) && isArpClientConfig(b) && sameArpClientConfig(a, b)
+    );
   if (isVxlanConfig(a) || isVxlanConfig(b))
     return isVxlanConfig(a) && isVxlanConfig(b) && sameVxlanConfig(a, b);
   if (isBfdConfig(a) || isBfdConfig(b))
@@ -111,32 +122,37 @@ export function updateWorkspaceDrafts(
   edited: DraftConfig,
   saved: WorkspaceConfig,
 ): WorkspaceDrafts {
-  const changed = isVxlanConfig(edited)
-    ? !isVxlanConfig(saved) || !sameVxlanConfig(edited, saved)
-    : isBfdConfig(edited)
-      ? !isBfdConfig(saved) || !sameBfdConfig(edited, saved)
-      : isDnsConfig(edited)
-        ? !isDnsConfig(saved) || !sameDnsConfig(edited, saved)
-        : isMqttConfig(edited)
-          ? !isMqttConfig(saved) || !sameMqttConfig(edited, saved)
-          : isTelnetConfig(edited)
-            ? !isTelnetConfig(saved) || !sameTelnetConfig(edited, saved)
-            : isIec104Config(edited)
-              ? !isIec104Config(saved) || !sameIec104Config(edited, saved)
-              : isMqttSnConfig(edited)
-                ? !isMqttSnConfig(saved) || !sameMqttSnConfig(edited, saved)
-                : isRtpConfig(edited)
-                  ? !isRtpConfig(saved) || !sameRtpConfig(edited, saved)
-                  : isRtcpConfig(edited)
-                    ? !isRtcpConfig(saved) || !sameRtcpConfig(edited, saved)
-                    : isDlt645Config(edited)
-                      ? !isDlt645Config(saved) ||
-                        !sameDlt645Config(edited, saved)
-                      : isIec101Config(edited)
-                        ? !isIec101Config(saved) ||
-                          !sameIec101Config(edited, saved)
-                        : !isHttpConfig(saved) ||
-                          !sameGeneratedConfig(edited, normalizeConfig(saved));
+  const changed = isArpClientConfig(edited)
+    ? !isArpClientConfig(saved) || !sameArpClientConfig(edited, saved)
+    : isVxlanConfig(edited)
+      ? !isVxlanConfig(saved) || !sameVxlanConfig(edited, saved)
+      : isBfdConfig(edited)
+        ? !isBfdConfig(saved) || !sameBfdConfig(edited, saved)
+        : isDnsConfig(edited)
+          ? !isDnsConfig(saved) || !sameDnsConfig(edited, saved)
+          : isMqttConfig(edited)
+            ? !isMqttConfig(saved) || !sameMqttConfig(edited, saved)
+            : isTelnetConfig(edited)
+              ? !isTelnetConfig(saved) || !sameTelnetConfig(edited, saved)
+              : isIec104Config(edited)
+                ? !isIec104Config(saved) || !sameIec104Config(edited, saved)
+                : isMqttSnConfig(edited)
+                  ? !isMqttSnConfig(saved) || !sameMqttSnConfig(edited, saved)
+                  : isRtpConfig(edited)
+                    ? !isRtpConfig(saved) || !sameRtpConfig(edited, saved)
+                    : isRtcpConfig(edited)
+                      ? !isRtcpConfig(saved) || !sameRtcpConfig(edited, saved)
+                      : isDlt645Config(edited)
+                        ? !isDlt645Config(saved) ||
+                          !sameDlt645Config(edited, saved)
+                        : isIec101Config(edited)
+                          ? !isIec101Config(saved) ||
+                            !sameIec101Config(edited, saved)
+                          : !isHttpConfig(saved) ||
+                            !sameGeneratedConfig(
+                              edited,
+                              normalizeConfig(saved),
+                            );
   const next = { ...drafts };
   if (changed) next[id] = edited;
   else delete next[id];
@@ -149,4 +165,15 @@ export function discardWorkspaceDraft(
   const next = { ...drafts };
   delete next[id];
   return next;
+}
+
+/** Pure display view only: never add transport endpoint fields to a stored L2 configuration. */
+export function workspaceIpEndpoint(
+  config: WorkspaceConfig | null | undefined,
+): { bind_ip: string; port: number } | null {
+  if (!config || isArpClientConfig(config)) return null;
+  if (isIec101Config(config))
+    return { bind_ip: config.bind_ip, port: config.single.port };
+  if (isBfdConfig(config)) return { bind_ip: config.bind_ip, port: 3784 };
+  return { bind_ip: config.bind_ip, port: config.port };
 }

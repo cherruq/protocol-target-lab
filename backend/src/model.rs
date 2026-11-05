@@ -4,9 +4,20 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 pub const MAX_RESPONSE_LENGTH: u32 = 1024 * 1024;
-pub const PROTOCOLS: [&str; 12] = [
-    "http", "dns", "mqtt", "telnet", "iec104", "mqtt-sn", "rtp", "rtcp", "dlt645", "iec101", "bfd",
+pub const PROTOCOLS: [&str; 13] = [
+    "http",
+    "dns",
+    "mqtt",
+    "telnet",
+    "iec104",
+    "mqtt-sn",
+    "rtp",
+    "rtcp",
+    "dlt645",
+    "iec101",
+    "bfd",
     "vxlan",
+    "arp-client",
 ];
 pub const HTTP_METHODS: [&str; 7] = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 pub const FIXED_PATTERN: &[u8] = b"0123456789abcdef";
@@ -233,6 +244,7 @@ pub enum ProtocolConfig {
     Iec101(crate::iec101::Iec101Config),
     Bfd(crate::bfd::BfdConfig),
     Vxlan(crate::vxlan::VxlanConfig),
+    ArpClient(crate::arp_client::ArpClientConfig),
 }
 impl From<HttpConfig> for ProtocolConfig {
     fn from(c: HttpConfig) -> Self {
@@ -294,6 +306,25 @@ impl From<crate::vxlan::VxlanConfig> for ProtocolConfig {
         Self::Vxlan(c)
     }
 }
+pub struct IpEndpoint<'a> {
+    pub bind_ip: &'a str,
+    pub port: u16,
+    pub internal_port: u16,
+}
+impl IpEndpoint<'_> {
+    pub fn probe_ip(&self) -> &str {
+        if self.bind_ip == "0.0.0.0" {
+            "127.0.0.1"
+        } else {
+            self.bind_ip
+        }
+    }
+}
+impl From<crate::arp_client::ArpClientConfig> for ProtocolConfig {
+    fn from(c: crate::arp_client::ArpClientConfig) -> Self {
+        Self::ArpClient(c)
+    }
+}
 impl ProtocolConfig {
     pub fn validate(&self) -> Result<()> {
         match self {
@@ -309,6 +340,7 @@ impl ProtocolConfig {
             Self::Iec101(c) => c.validate(),
             Self::Bfd(c) => c.validate(),
             Self::Vxlan(c) => c.validate(),
+            Self::ArpClient(c) => c.validate(),
         }
     }
     pub fn as_http(&self) -> Option<&HttpConfig> {
@@ -332,42 +364,35 @@ impl ProtocolConfig {
             Self::Iec101(_) => "iec101",
             Self::Bfd(_) => "bfd",
             Self::Vxlan(_) => "vxlan",
+            Self::ArpClient(_) => "arp-client",
         }
     }
-    pub fn bind_ip(&self) -> &str {
-        match self {
-            Self::Http(c) => &c.bind_ip,
-            Self::Dns(c) => &c.bind_ip,
-            Self::Mqtt(c) => &c.bind_ip,
-            Self::Telnet(c) => &c.bind_ip,
-            Self::Iec104(c) => &c.bind_ip,
-            Self::MqttSn(c) => &c.bind_ip,
-            Self::Rtp(c) => &c.bind_ip,
-            Self::Rtcp(c) => &c.bind_ip,
-            Self::Dlt645(c) => &c.bind_ip,
-            Self::Iec101(c) => &c.bind_ip,
-            Self::Bfd(c) => &c.bind_ip,
-            Self::Vxlan(c) => &c.bind_ip,
-        }
-    }
-    pub fn port(&self) -> u16 {
-        match self {
-            Self::Http(c) => c.port,
-            Self::Dns(c) => c.port,
-            Self::Mqtt(c) => c.port,
-            Self::Telnet(c) => c.port,
-            Self::Iec104(c) => c.port,
-            Self::MqttSn(c) => c.port,
-            Self::Rtp(c) => c.port,
-            Self::Rtcp(c) => c.port,
-            Self::Dlt645(c) => c.port,
-            Self::Iec101(c) => c.single.port,
-            Self::Bfd(_) => crate::bfd::PORT,
-            Self::Vxlan(c) => c.port,
-        }
+    /// A view of actual IP socket roles; link-layer protocols have no fabricated endpoint.
+    pub fn ip_endpoint(&self) -> Option<IpEndpoint<'_>> {
+        let (bind_ip, port, internal_port) = match self {
+            Self::Http(c) => (c.bind_ip.as_str(), c.port, c.port),
+            Self::Dns(c) => (c.bind_ip.as_str(), c.port, 15353),
+            Self::Mqtt(c) => (c.bind_ip.as_str(), c.port, 18883),
+            Self::Telnet(c) => (c.bind_ip.as_str(), c.port, 2323),
+            Self::Iec104(c) => (c.bind_ip.as_str(), c.port, 2404),
+            Self::MqttSn(c) => (c.bind_ip.as_str(), c.port, c.port),
+            Self::Rtp(c) => (c.bind_ip.as_str(), c.port, 5004),
+            Self::Rtcp(c) => (c.bind_ip.as_str(), c.port, 5005),
+            Self::Dlt645(c) => (c.bind_ip.as_str(), c.port, 20645),
+            Self::Iec101(c) => (c.bind_ip.as_str(), c.single.port, 24741),
+            Self::Bfd(c) => (c.bind_ip.as_str(), crate::bfd::PORT, crate::bfd::PORT),
+            Self::Vxlan(c) => (c.bind_ip.as_str(), c.port, c.port),
+            Self::ArpClient(_) => return None,
+        };
+        Some(IpEndpoint {
+            bind_ip,
+            port,
+            internal_port,
+        })
     }
     pub fn transports(&self) -> Vec<&'static str> {
         match self {
+            Self::ArpClient(_) => vec!["ETHERNET"],
             Self::Dns(c) => c.transports(),
             Self::MqttSn(_) | Self::Rtp(_) | Self::Rtcp(_) | Self::Bfd(_) | Self::Vxlan(_) => {
                 vec!["UDP"]
@@ -380,29 +405,6 @@ impl ProtocolConfig {
             | Self::Iec101(_) => {
                 vec!["TCP"]
             }
-        }
-    }
-    pub fn internal_port(&self) -> u16 {
-        match self {
-            Self::Dns(_) => 15353,
-            Self::Mqtt(_) => 18883,
-            Self::Telnet(_) => 2323,
-            Self::Iec104(_) => 2404,
-            Self::MqttSn(c) => c.port,
-            Self::Rtp(_) => 5004,
-            Self::Rtcp(_) => 5005,
-            Self::Dlt645(_) => 20645,
-            Self::Iec101(_) => 24741,
-            Self::Bfd(_) => crate::bfd::PORT,
-            Self::Vxlan(c) => c.port,
-            Self::Http(c) => c.port,
-        }
-    }
-    pub fn probe_ip(&self) -> &str {
-        if self.bind_ip() == "0.0.0.0" {
-            "127.0.0.1"
-        } else {
-            self.bind_ip()
         }
     }
     pub fn fingerprint(&self) -> String {
@@ -418,7 +420,8 @@ impl ProtocolConfig {
             | Self::Dlt645(_)
             | Self::Iec101(_)
             | Self::Bfd(_)
-            | Self::Vxlan(_) => {
+            | Self::Vxlan(_)
+            | Self::ArpClient(_) => {
                 format!(
                     "{:x}",
                     Sha256::digest(serde_json::to_vec(self).expect("serializable config"))
@@ -455,6 +458,7 @@ impl ProtocolConfig {
             Self::Iec101(c) => Ok(c.patch(value)?.into()),
             Self::Bfd(c) => Ok(c.patch(value)?.into()),
             Self::Vxlan(c) => Ok(c.patch(value)?.into()),
+            Self::ArpClient(c) => Ok(c.patch(value)?.into()),
             Self::Dlt645(c) => {
                 let r: Self = typed_patch(
                     c,
@@ -668,6 +672,10 @@ impl Document {
                 Instance::new("iec101-demo".into(), crate::iec101::Iec101Config::default()),
                 Instance::new("bfd-demo".into(), crate::bfd::BfdConfig::default()),
                 Instance::new("vxlan-demo".into(), crate::vxlan::VxlanConfig::default()),
+                Instance::new(
+                    "arp-client-demo".into(),
+                    crate::arp_client::ArpClientConfig::default(),
+                ),
             ],
         }
     }
@@ -784,7 +792,7 @@ mod tests {
         let patched = dns
             .patch(serde_json::json!({"port":15453,"udp_enabled":false}))
             .unwrap();
-        assert_eq!(patched.port(), 15453);
+        assert_eq!(patched.ip_endpoint().unwrap().port, 15453);
         let ProtocolConfig::Dns(c) = patched else {
             panic!("DNS variant lost")
         };

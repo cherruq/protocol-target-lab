@@ -1,4 +1,5 @@
 mod api;
+mod arp_client;
 mod bfd;
 mod cli;
 mod dlt645;
@@ -6,6 +7,7 @@ mod dns;
 mod docker;
 mod iec101;
 mod iec104;
+mod l2;
 mod manager;
 mod model;
 mod mqtt;
@@ -84,6 +86,7 @@ async fn stop_all(settings: &Settings) -> Result<()> {
         }
         docker::remove(&v, &deployment, id).await?;
     }
+    crate::l2::cleanup_deployment(&deployment).await?;
     println!("Stopped owned resources; configuration and enabled intent preserved.");
     Ok(())
 }
@@ -196,7 +199,7 @@ async fn main() -> Result<()> {
             println!(
                 "{}",
                 serde_json::to_string_pretty(
-                    &json!({"config_path":settings.config,"config_error":doc.as_ref().err().map(|e|format!("{e:#}")),"config":doc.ok(),"docker_version":docker_version.as_ref().ok(),"docker_error":docker_version.as_ref().err().map(|e|format!("{e:#}")),"resources":resources,"image":settings.image,"image_available":docker::image_id(&settings.image).await.is_ok(),"dns_image":settings.dns_image,"dns_image_available":docker::image_id(&settings.dns_image).await.is_ok(),"mqtt_image":settings.mqtt_image,"mqtt_image_available":docker::image_id(&settings.mqtt_image).await.is_ok(),"telnet_image":settings.telnet_image,"telnet_image_available":docker::image_id(&settings.telnet_image).await.is_ok(),"iec104_image":settings.iec104_image,"iec104_image_available":docker::image_id(&settings.iec104_image).await.is_ok(),"vxlan_image":settings.vxlan_image,"vxlan_image_available":docker::image_id(&settings.vxlan_image).await.is_ok(),"bfd_image":settings.bfd_image,"bfd_image_available":docker::image_id(&settings.bfd_image).await.is_ok(),"iec101_image":settings.iec101_image,"iec101_image_available":docker::image_id(&settings.iec101_image).await.is_ok(),"dlt645_image":settings.dlt645_image,"dlt645_image_available":docker::image_id(&settings.dlt645_image).await.is_ok(),"rtcp_image":settings.rtcp_image,"rtcp_image_available":docker::image_id(&settings.rtcp_image).await.is_ok(),"rtp_image":settings.rtp_image,"rtp_image_available":docker::image_id(&settings.rtp_image).await.is_ok(),"mqtt_sn_image":settings.mqtt_sn_image,"mqtt_sn_image_available":docker::image_id(&settings.mqtt_sn_image).await.is_ok()})
+                    &json!({"config_path":settings.config,"config_error":doc.as_ref().err().map(|e|format!("{e:#}")),"config":doc.ok(),"docker_version":docker_version.as_ref().ok(),"docker_error":docker_version.as_ref().err().map(|e|format!("{e:#}")),"resources":resources,"image":settings.image,"image_available":docker::image_id(&settings.image).await.is_ok(),"dns_image":settings.dns_image,"dns_image_available":docker::image_id(&settings.dns_image).await.is_ok(),"mqtt_image":settings.mqtt_image,"mqtt_image_available":docker::image_id(&settings.mqtt_image).await.is_ok(),"telnet_image":settings.telnet_image,"telnet_image_available":docker::image_id(&settings.telnet_image).await.is_ok(),"iec104_image":settings.iec104_image,"iec104_image_available":docker::image_id(&settings.iec104_image).await.is_ok(),"arp_client_image":settings.arp_client_image,"arp_client_image_available":docker::image_id(&settings.arp_client_image).await.is_ok(),"vxlan_image":settings.vxlan_image,"vxlan_image_available":docker::image_id(&settings.vxlan_image).await.is_ok(),"bfd_image":settings.bfd_image,"bfd_image_available":docker::image_id(&settings.bfd_image).await.is_ok(),"iec101_image":settings.iec101_image,"iec101_image_available":docker::image_id(&settings.iec101_image).await.is_ok(),"dlt645_image":settings.dlt645_image,"dlt645_image_available":docker::image_id(&settings.dlt645_image).await.is_ok(),"rtcp_image":settings.rtcp_image,"rtcp_image_available":docker::image_id(&settings.rtcp_image).await.is_ok(),"rtp_image":settings.rtp_image,"rtp_image_available":docker::image_id(&settings.rtp_image).await.is_ok(),"mqtt_sn_image":settings.mqtt_sn_image,"mqtt_sn_image_available":docker::image_id(&settings.mqtt_sn_image).await.is_ok()})
                 )?
             );
             return Ok(());
@@ -261,6 +264,7 @@ mod cleanup_tests {
             iec101_image: "unused".into(),
             bfd_image: "unused".into(),
             vxlan_image: "unused".into(),
+            arp_client_image: "unused".into(),
         };
         struct Cleanup(std::path::PathBuf);
         impl Drop for Cleanup {

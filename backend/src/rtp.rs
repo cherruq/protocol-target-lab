@@ -177,7 +177,7 @@ mod tests {
             assert!(c.patch(v.clone()).is_err(), "{v}");
         }
         let c2 = c.patch(json!({"port":15004})).unwrap();
-        assert_eq!(c2.port(), 15004);
+        assert_eq!(c2.ip_endpoint().unwrap().port, 15004);
         assert_eq!(serde_json::to_value(c2).unwrap()["max_packet_size"], 2048);
     }
 }

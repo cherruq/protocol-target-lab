@@ -191,6 +191,9 @@ impl Manager {
             for v in resources {
                 docker::remove(&v, &deployment, id).await?;
             }
+            if instance.protocol_id == "arp-client" {
+                crate::l2::cleanup_empty(&deployment, id, true).await?;
+            }
             return Ok(None);
         }
         let config = restore.unwrap_or(instance.config.clone());
@@ -230,6 +233,8 @@ impl Manager {
             &config,
             own_endpoint,
             resources.first().and_then(|v| v["Id"].as_str()),
+            &deployment,
+            id,
         )
         .await?;
         for v in &resources {
@@ -245,6 +250,9 @@ impl Manager {
                         && docker::running(&owned[0])
                         && docker::container_id(&owned[0])? == container
                     {
+                        if instance.protocol_id == "arp-client" {
+                            crate::l2::cleanup_empty(&deployment, id, false).await?;
+                        }
                         self.record_container(id, container.clone()).await;
                         return Ok(Some(config));
                     }
@@ -269,6 +277,23 @@ impl Manager {
         }
     }
     async fn finish(&self, id: &str, kind: &str, result: Result<Option<ProtocolConfig>>) {
+        let mut result = result;
+        if result.is_err() {
+            let d = self.data.lock().await;
+            let raw = d
+                .doc
+                .instances
+                .iter()
+                .any(|i| i.id == id && i.protocol_id == "arp-client");
+            let deployment = d.doc.deployment_id.clone();
+            drop(d);
+            if raw && let Err(cleanup) = crate::l2::cleanup_empty(&deployment, id, false).await {
+                let primary = result.as_ref().err().unwrap();
+                result = Err(anyhow::anyhow!(
+                    "{primary:#}; owned dependency cleanup failed: {cleanup:#}"
+                ));
+            }
+        }
         let mut d = self.data.lock().await;
         let mut next = d.doc.clone();
         if let Some(i) = next.instances.iter_mut().find(|i| i.id == id) {

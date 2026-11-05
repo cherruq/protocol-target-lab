@@ -20,6 +20,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
   config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
   config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
+  config set arp-client [--link-json JSON] [--source-mac MAC] [--source-ip IP] [--server-mac MAC] [--server-ip IP] [--assigned-ip IP] [--mode whois|response-fuzz|rarp|inarp] [--request-scenario-json JSON] [--interval-ms N] [--timeout-ms N] [--retries N]
   config set vxlan [--bind-ip IP] [--port N] [--peer-ip IP] [--peer-port N] [--source-port N] [--vni N] [--inner-ip IP] [--inner-mac MAC] [--requester-ip IP] [--requester-mac MAC] [--reply-padding 0|18] [--scenario-json JSON]
   config set bfd [--bind-ip IP] [--peer-ip IP] [--interface IFACE] [--source-port N] [--local-discriminator N] [--min-tx-us N] [--min-rx-us N] [--detect-mult N] [--scenario-json JSON]
   config set iec101 [--bind-ip IP] [--single-port N] [--double-port N] [--single-json JSON] [--double-json JSON] [--serial-json JSON]
@@ -30,7 +31,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set iec104 [--bind-ip IP] [--port N] [--max-connections N] [--points-json JSON]
   config set telnet [--bind-ip IP] [--port N] [--banner TEXT] [--max-connections N] [--max-line-bytes N]
   start PROTOCOL | stop PROTOCOL | restart PROTOCOL [--wait | --no-wait]
-  connection-info PROTOCOL | runtime bfd|vxlan
+  connection-info PROTOCOL | runtime bfd|vxlan|arp-client
   logs PROTOCOL [--follow]
   tests list PROTOCOL
   tests run PROTOCOL [--method ALL] [--path /ok | --name DNS_NAME] (DNS defaults to ALL) [--wait | --no-wait]
@@ -51,7 +52,7 @@ Local administrative commands (retain existing behavior; may require root):
   plabctl serial start --host IPv4 --single-port N --double-port N
   plabctl serial status | stop   local root-owned dual PTY helper
   plabctl assets import DIR     local image import from a checked manifest
-Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_IEC104_IMAGE, PLAB_MQTTSN_IMAGE, PLAB_RTP_IMAGE, PLAB_RTCP_IMAGE, PLAB_DLT645_IMAGE, PLAB_IEC101_IMAGE, PLAB_BFD_IMAGE, PLAB_VXLAN_IMAGE, PLAB_DOCKER_SOCKET
+Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_IEC104_IMAGE, PLAB_MQTTSN_IMAGE, PLAB_RTP_IMAGE, PLAB_RTCP_IMAGE, PLAB_DLT645_IMAGE, PLAB_IEC101_IMAGE, PLAB_BFD_IMAGE, PLAB_VXLAN_IMAGE, PLAB_ARP_CLIENT_IMAGE, PLAB_DOCKER_SOCKET
 "#;
 const LIMIT: usize = 8 * 1024 * 1024;
 type Result<T> = std::result::Result<T, Failure>;
@@ -163,6 +164,17 @@ const VALUE_OPTIONS: &[&str] = &[
     "--packet-profile",
     "--wire-profile",
     "--peer-ip",
+    "--link-json",
+    "--source-mac",
+    "--source-ip",
+    "--server-mac",
+    "--server-ip",
+    "--assigned-ip",
+    "--mode",
+    "--request-scenario-json",
+    "--interval-ms",
+    "--timeout-ms",
+    "--retries",
     "--peer-port",
     "--vni",
     "--inner-ip",
@@ -337,6 +349,17 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--packet-profile",
                 "--wire-profile",
                 "--peer-ip",
+                "--link-json",
+                "--source-mac",
+                "--source-ip",
+                "--server-mac",
+                "--server-ip",
+                "--assigned-ip",
+                "--mode",
+                "--request-scenario-json",
+                "--interval-ms",
+                "--timeout-ms",
+                "--retries",
                 "--peer-port",
                 "--vni",
                 "--inner-ip",
@@ -409,7 +432,9 @@ fn parse(args: &[String]) -> Result<Options> {
                     return Err(Failure::usage("--name applies to DNS tests"));
                 }
                 path.or(name).unwrap_or_else(|| {
-                    if *p == "vxlan" {
+                    if *p == "arp-client" {
+                        crate::arp_client::PATH.into()
+                    } else if *p == "vxlan" {
                         crate::vxlan::PATH.into()
                     } else if *p == "bfd" {
                         crate::bfd::PATH.into()
@@ -744,7 +769,10 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
             continue;
         }
         let value = match key.as_str() {
-            "--peer-port"
+            "--interval-ms"
+            | "--timeout-ms"
+            | "--retries"
+            | "--peer-port"
             | "--vni"
             | "--reply-padding"
             | "--source-port"
@@ -771,7 +799,9 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
                     .parse::<bool>()
                     .map_err(|_| Failure::usage(format!("{key} must be true or false")))?,
             ),
-            "--scenario-json"
+            "--link-json"
+            | "--request-scenario-json"
+            | "--scenario-json"
             | "--records-json"
             | "--points-json"
             | "--predefined-topics-json"
@@ -783,7 +813,11 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
             _ => Value::String(value),
         };
         patch.insert(
-            if key == "--scenario-json" {
+            if key == "--link-json" {
+                "link".into()
+            } else if key == "--request-scenario-json" {
+                "request_scenario".into()
+            } else if key == "--scenario-json" {
                 "scenario".into()
             } else if matches!(
                 key.as_str(),
@@ -1067,6 +1101,46 @@ mod tests {
         s.split_whitespace().map(str::to_owned).collect()
     }
     #[test]
+    fn arp_cli_is_portless_and_preserves_whole_role_configuration() {
+        let opts = parse(&args("tests run arp-client")).unwrap();
+        assert!(
+            matches!(opts.command,Command::TestRun(p,m,path,true) if p=="arp-client"&&m=="ALL"&&path=="peer")
+        );
+        let p = config_patch(BTreeMap::from([
+            ("--mode".into(), "rarp".into()),
+            (
+                "--request-scenario-json".into(),
+                r#"{"mode":"nonzero-rarp-proto"}"#.into(),
+            ),
+            (
+                "--link-json".into(),
+                r#"{"mode":"host-interface","interface":"eth0"}"#.into(),
+            ),
+            ("--source-mac".into(), "02:AA:BB:CC:DD:10".into()),
+            ("--timeout-ms".into(), "1000".into()),
+            ("--interval-ms".into(), "500".into()),
+            ("--retries".into(), "10".into()),
+        ]))
+        .unwrap();
+        let c: ProtocolConfig = crate::arp_client::ArpClientConfig::default().into();
+        let changed = c.patch(p).unwrap();
+        assert!(changed.ip_endpoint().is_none());
+        if let ProtocolConfig::ArpClient(c) = changed {
+            assert_eq!(c.mode, crate::arp_client::Mode::Rarp);
+            assert_eq!(c.source_mac, "02:aa:bb:cc:dd:10");
+            assert_eq!(c.retries, 10);
+            assert_eq!(c.test_budget("ALL").unwrap().total_ms, 26200);
+        } else {
+            panic!("active ARP shape lost");
+        }
+        assert!(
+            parse(&args(
+                "config set arp-client --mode rarp --interval-ms 500 --timeout-ms 1000 --retries 0"
+            ))
+            .is_ok()
+        );
+    }
+    #[test]
     fn vxlan_cli_types_ports_modes_and_uses_arp_path() {
         let opts = parse(&args("tests run vxlan")).unwrap();
         assert_eq!(opts.timeout, 120);
@@ -1296,7 +1370,7 @@ mod tests {
         .unwrap();
         let c: ProtocolConfig = crate::rtcp::RtcpConfig::default().into();
         let c = c.patch(patch).unwrap();
-        assert_eq!(c.port(), 15005);
+        assert_eq!(c.ip_endpoint().unwrap().port, 15005);
         assert_eq!(
             serde_json::to_value(c).unwrap()["packet_profile"],
             "sr-sdes"
@@ -1311,7 +1385,7 @@ mod tests {
         let p = config_patch(BTreeMap::from([("--max-packet-size".into(), "64".into())])).unwrap();
         let c: ProtocolConfig = crate::rtp::RtpConfig::default().into();
         let edited = c.patch(p).unwrap();
-        assert_eq!(edited.port(), 5004);
+        assert_eq!(edited.ip_endpoint().unwrap().port, 5004);
         assert_eq!(serde_json::to_value(edited).unwrap()["max_packet_size"], 64);
         assert!(c.patch(serde_json::json!({"max_connections":1})).is_err());
     }
@@ -1370,7 +1444,7 @@ mod tests {
         .unwrap();
         let base: ProtocolConfig = crate::iec104::Iec104Config::default().into();
         let updated = base.patch(patch).unwrap();
-        assert_eq!(updated.port(), 2404);
+        assert_eq!(updated.ip_endpoint().unwrap().port, 2404);
         let ProtocolConfig::Iec104(c) = updated else {
             panic!("IEC104 variant lost")
         };

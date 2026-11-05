@@ -20,3 +20,4 @@ PLAB_DLT645_IMAGE=protocol-target-lab/dlt645:0.1.0
 PLAB_IEC101_IMAGE=protocol-target-lab/iec101:0.1.0
 PLAB_BFD_IMAGE=protocol-target-lab/bfd:0.1.0
 PLAB_VXLAN_IMAGE=protocol-target-lab/vxlan:0.1.0
+PLAB_ARP_CLIENT_IMAGE=protocol-target-lab/arp-client:0.1.0
