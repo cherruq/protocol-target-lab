@@ -20,6 +20,9 @@ mod mpls_l2;
 mod mpls_testing;
 mod mqtt;
 mod mqtt_sn;
+mod profinet;
+mod profinet_link;
+mod profinet_testing;
 mod receiver;
 mod rtcp;
 mod rtp;
@@ -99,6 +102,7 @@ async fn stop_all(settings: &Settings) -> Result<()> {
     crate::l2::cleanup_deployment(&deployment).await?;
     crate::custom_l2::cleanup_deployment(&deployment).await?;
     crate::mpls_l2::cleanup_deployment(&deployment).await?;
+    crate::profinet_link::cleanup_deployment(settings, &deployment).await?;
     crate::igmp_link::cleanup_deployment(settings, &deployment).await?;
     crate::igmp_link::cleanup_package(settings).await?;
     println!("Stopped owned resources; configuration and enabled intent preserved.");
@@ -315,6 +319,7 @@ mod cleanup_tests {
             custom_ethernet_image: "unused".into(),
             igmp_image: "unused".into(),
             mpls_image: "unused".into(),
+            profinet_image: "unused".into(),
             igmp_link_helper: "unused".into(),
         };
         struct Cleanup(std::path::PathBuf);

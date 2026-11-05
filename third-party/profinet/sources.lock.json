@@ -1,0 +1,26 @@
+[
+  {
+    "name": "p-net",
+    "url": "https://codeload.github.com/rtlabs-com/p-net/tar.gz/3e650720850e1f31f8a419c8aa135a2e81b44ddb",
+    "commit": "3e650720850e1f31f8a419c8aa135a2e81b44ddb",
+    "file": "third-party/profinet/p-net-3e650720850e1f31f8a419c8aa135a2e81b44ddb.tar.gz",
+    "bytes": 1712578,
+    "sha256": "29f086de85b3f65c724182654964aa08d99d1a1a62670cf184cde4398cf7f470"
+  },
+  {
+    "name": "osal",
+    "url": "https://codeload.github.com/rtlabs-com/osal/tar.gz/88784fcfff7a1b74e20bdeb71a55c2cdd22b4a59",
+    "commit": "88784fcfff7a1b74e20bdeb71a55c2cdd22b4a59",
+    "file": "third-party/profinet/osal-88784fcfff7a1b74e20bdeb71a55c2cdd22b4a59.tar.gz",
+    "bytes": 61585,
+    "sha256": "db32d3be70c314dfa62eea3e5bdb2f900af6814a1ae5864d3933d31fea8c8462"
+  },
+  {
+    "name": "cmake-tools",
+    "url": "https://codeload.github.com/rtlabs-com/cmake-tools/tar.gz/45c751c60d75bbad5eb327624c259cc02b6564b2",
+    "commit": "45c751c60d75bbad5eb327624c259cc02b6564b2",
+    "file": "third-party/profinet/cmake-tools-45c751c60d75bbad5eb327624c259cc02b6564b2.tar.gz",
+    "bytes": 6403,
+    "sha256": "2207522aa7ecdf3b63183a99c235487ed3a3c58bb886653d26389e4360865753"
+  }
+]

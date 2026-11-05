@@ -20,6 +20,8 @@ export type ProtocolTestRun<C> = {
   applied_config: C;
   report: {
     passed: boolean;
+    restoration_complete?: boolean;
+    restoration?: unknown;
     checks: ProtocolCheck[];
     seconds?: number;
     error?: string;

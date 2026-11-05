@@ -24,3 +24,4 @@ PLAB_ARP_CLIENT_IMAGE=protocol-target-lab/arp-client:0.1.0
 PLAB_CUSTOM_ETHERNET_IMAGE=protocol-target-lab/custom-ethernet:0.1.0
 PLAB_IGMP_IMAGE=protocol-target-lab/igmp:0.1.0
 PLAB_MPLS_IMAGE=protocol-target-lab/mpls:0.1.0
+PLAB_PROFINET_IMAGE=protocol-target-lab/profinet:0.1.0

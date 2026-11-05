@@ -13,9 +13,9 @@ ifneq ($(origin RESPONSE_BODY),undefined)
 export RESPONSE_BODY
 endif
 
-.PHONY: fetch-mpls-deps mpls-images mpls-assets fetch-igmp-deps igmp-images igmp-assets fetch-custom-ethernet-deps custom-ethernet-images custom-ethernet-assets fetch-arp-client-deps arp-client-images arp-client-assets fetch-vxlan-deps vxlan-images vxlan-assets fetch-bfd-deps bfd-images bfd-assets fetch-iec101-deps iec101-images iec101-assets fetch-dlt645-deps dlt645-images dlt645-assets fetch-rtcp-deps rtcp-images rtcp-assets fetch-rtp-deps rtp-images rtp-assets fetch-mqtt-sn-deps mqtt-sn-images mqtt-sn-assets fetch-iec104-deps iec104-images iec104-assets fetch-telnet-deps telnet-images telnet-assets fetch-mqtt-deps mqtt-images mqtt-assets fetch-dns-deps dns-images dns-assets licenses help fetch-deps verify-deps build build-ubuntu24 images assets deb smoke test
+.PHONY: fetch-profinet-deps profinet-images profinet-assets fetch-mpls-deps mpls-images mpls-assets fetch-igmp-deps igmp-images igmp-assets fetch-custom-ethernet-deps custom-ethernet-images custom-ethernet-assets fetch-arp-client-deps arp-client-images arp-client-assets fetch-vxlan-deps vxlan-images vxlan-assets fetch-bfd-deps bfd-images bfd-assets fetch-iec101-deps iec101-images iec101-assets fetch-dlt645-deps dlt645-images dlt645-assets fetch-rtcp-deps rtcp-images rtcp-assets fetch-rtp-deps rtp-images rtp-assets fetch-mqtt-sn-deps mqtt-sn-images mqtt-sn-assets fetch-iec104-deps iec104-images iec104-assets fetch-telnet-deps telnet-images telnet-assets fetch-mqtt-deps mqtt-images mqtt-assets fetch-dns-deps dns-images dns-assets licenses help fetch-deps verify-deps build build-ubuntu24 images assets deb smoke test
 help:
-	@printf '%s\n' 'Protocol Target Lab — HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD, VXLAN, ARP-client, Custom Ethernet, IGMP and MPLS' 'make fetch-deps   prepare locked Cargo/npm packages and the public HTTP base image' 'make verify-deps  check the prepared caches and base image' 'make build       build Web, then the native Rust manager' 'make build-ubuntu24  build Web, then Rust in the supported Ubuntu baseline' 'make images      build the HTTP image from the locked local base' 'make deb         package a Ubuntu 24.04-compatible binary (PLAB_BINARY=...)' 'make smoke SCENARIO=http-basic TARGET_ADDR=... TARGET_PORT=...' 'make test        worker/helper Python, Rust and frontend checks' 'OFFLINE=1        disallow Cargo/npm/build-container network access'
+	@printf '%s\n' 'Protocol Target Lab — HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD, VXLAN, ARP-client, Custom Ethernet, IGMP, MPLS and PROFINET' 'make fetch-deps   prepare locked Cargo/npm packages and the public HTTP base image' 'make verify-deps  check the prepared caches and base image' 'make build       build Web, then the native Rust manager' 'make build-ubuntu24  build Web, then Rust in the supported Ubuntu baseline' 'make images      build the HTTP image from the locked local base' 'make deb         package a Ubuntu 24.04-compatible binary (PLAB_BINARY=...)' 'make smoke SCENARIO=http-basic TARGET_ADDR=... TARGET_PORT=...' 'make test        worker/helper Python, Rust and frontend checks' 'OFFLINE=1        disallow Cargo/npm/build-container network access'
 
 fetch-deps:
 	./scripts/fetch-deps.sh
@@ -37,6 +37,7 @@ licenses:
 	python3 scripts/collect-third-party-licenses.py
 
 test:
+	python3 -B -m unittest discover -s workers/profinet -p 'test_*.py'
 	python3 -B -m unittest discover -s workers/mpls -p 'test_*.py'
 	python3 -B -m unittest discover -s workers/igmp -p 'test_*.py'
 	python3 -B -m unittest discover -s workers/custom-ethernet -p 'test_*.py'
@@ -164,3 +165,10 @@ mpls-images:
 	./scripts/mpls-images.sh
 mpls-assets:
 	./scripts/mpls-assets.sh
+
+fetch-profinet-deps:
+	./scripts/profinet-fetch-deps.sh
+profinet-images:
+	./scripts/profinet-images.sh
+profinet-assets:
+	./scripts/profinet-assets.sh

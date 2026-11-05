@@ -23,7 +23,11 @@ case "$1" in
         # Remove only the known manager marker. Preserve helper/custom recovery
         # directories and lock inodes; a concurrent or unknown owner must never
         # lose its metadata through recursive deletion.
-        rm -f -- "$state/deployment-id"
+        # Native DCP NVRAM volumes and trusted ownership receipts survive purge.
+        # Keep the deployment identity whenever its retained native-store state exists.
+        if [ ! -e "$state/profinet" ] && [ ! -L "$state/profinet" ]; then
+            rm -f -- "$state/deployment-id"
+        fi
         rmdir "$igmp_state" "$state" 2>/dev/null || true
         # Never recursively erase serial ownership IPC after the helper has been
         # removed. A stale/unknown daemon must retain its recovery metadata.

@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation supports **sixteen protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD, VXLAN, ARP-client, Custom Ethernet, IGMP and MPLS**, with manager version **0.20.0**,
-HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, IEC101 dual-channel slave/client image **0.1.0**, BFD peer/client image **0.1.0**, VXLAN ARP responder/client image **0.1.0**, ARP-client requester/inverse-peer image **0.1.0**, Custom Ethernet fixed-responder/client image **0.1.0**, and IGMP native-member/query-client image **0.1.0**. Each protocol has one fixed workspace and
+The current implementation supports **seventeen protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD, VXLAN, ARP-client, Custom Ethernet, IGMP, MPLS and PROFINET**, with manager version **0.21.0**,
+HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, IEC101 dual-channel slave/client image **0.1.0**, BFD peer/client image **0.1.0**, VXLAN ARP responder/client image **0.1.0**, ARP-client requester/inverse-peer image **0.1.0**, Custom Ethernet fixed-responder/client image **0.1.0**, IGMP native-member/query-client image **0.1.0**, MPLS target/client image **0.1.0**, and PROFINET native-DCP/software-PTCP/client image **0.1.0**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -691,3 +691,9 @@ TCP/UDP port or protocol ACK. See [configuration, limits and offline build](docs
 [CLI](docs/cli.md).
 
 MPLS adds a finite single-label Ethernet/IPv4 ICMP Echo workspace with fourteen output scenarios, actual packet evidence and a disposable same-image client. See [MPLS](docs/mpls.md); it does not configure host MPLS forwarding or claim a general router.
+
+PROFINET adds native p-net 0.2.0 DCP with a retained native store and simultaneous
+software PTCP no-FollowUp/FollowUp nodes on three actual MACs. It uses new private
+management/data networks and supports external tools on the data network. See
+[PROFINET](docs/profinet.md). Cyclic PLC IO, IRT and hardware clock precision are
+outside this finite lab profile.
