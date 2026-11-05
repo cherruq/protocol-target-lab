@@ -713,3 +713,18 @@ state before removing its executable. Purge refuses remaining helper ownership
 metadata and preserves lock inodes and unknown recovery directories. Explicit
 custom state directories remain caller-managed: stop their links before removing
 the package; they are not discovered by a filesystem scan.
+
+## MPLS
+
+```sh
+plabctl schema mpls
+plabctl config get mpls
+plabctl config set mpls --label 58 --reply-ttl 64 --scenario-json '{"mode":"normal"}'
+plabctl start mpls
+plabctl runtime mpls
+plabctl tests run mpls --method ALL --path echo
+plabctl logs mpls
+plabctl stop mpls
+```
+
+The fixed workspace is a finite single-label MPLS request/plain IPv4 ICMP response target. Role IPs are simulated packet fields, not assigned OS addresses. Configuration saves a draft; explicit restart applies it. Host mode requires existing UP Ethernet interfaces matching the configured MACs; the built-in client needs a different peer NIC, otherwise use the explicit external command in connection information. Client tests verify the current applied scenario. Short Ethernet output can produce a real TX error; it is never reported as successful silence. See [MPLS](mpls.md) for packet, ownership and validation boundaries.

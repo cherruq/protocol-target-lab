@@ -15,6 +15,9 @@ mod igmp_testing;
 mod l2;
 mod manager;
 mod model;
+mod mpls;
+mod mpls_l2;
+mod mpls_testing;
 mod mqtt;
 mod mqtt_sn;
 mod receiver;
@@ -95,6 +98,7 @@ async fn stop_all(settings: &Settings) -> Result<()> {
     }
     crate::l2::cleanup_deployment(&deployment).await?;
     crate::custom_l2::cleanup_deployment(&deployment).await?;
+    crate::mpls_l2::cleanup_deployment(&deployment).await?;
     crate::igmp_link::cleanup_deployment(settings, &deployment).await?;
     crate::igmp_link::cleanup_package(settings).await?;
     println!("Stopped owned resources; configuration and enabled intent preserved.");
@@ -310,6 +314,7 @@ mod cleanup_tests {
             arp_client_image: "unused".into(),
             custom_ethernet_image: "unused".into(),
             igmp_image: "unused".into(),
+            mpls_image: "unused".into(),
             igmp_link_helper: "unused".into(),
         };
         struct Cleanup(std::path::PathBuf);

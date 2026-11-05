@@ -66,6 +66,11 @@ pub async fn prepare_image(image: &str, config: &ProtocolConfig) -> Result<Strin
         {
             bail!("Protocol image is incompatible; import matching assets");
         }
+        if matches!(config, ProtocolConfig::Mpls(_))
+            && !crate::mpls::image_schemas_match(&metadata[0]["Config"]["Labels"])
+        {
+            bail!("MPLS image lacks required request/response/client/control/observer schemas");
+        }
         if matches!(config, ProtocolConfig::Igmp(_))
             && !crate::igmp::image_schemas_match(&metadata[0]["Config"]["Labels"])
         {
@@ -215,6 +220,11 @@ pub fn matches(v: &Value, config: &ProtocolConfig) -> bool {
     {
         return false;
     }
+    if let ProtocolConfig::Mpls(c) = config
+        && !crate::mpls_l2::container_matches(v, c)
+    {
+        return false;
+    }
     if let ProtocolConfig::ArpClient(c) = config
         && !crate::l2::container_matches(v, c)
     {
@@ -301,7 +311,9 @@ pub async fn start(
     igmp_context: Option<&crate::igmp_link::SourceContext>,
 ) -> Result<String> {
     let immutable_image = image_id(image).await?;
-    let arp_network = if let ProtocolConfig::CustomEthernet(c) = config {
+    let arp_network = if let ProtocolConfig::Mpls(c) = config {
+        Some(crate::mpls_l2::network_for_start(deployment, id, c).await?)
+    } else if let ProtocolConfig::CustomEthernet(c) = config {
         Some(crate::custom_l2::network_for_start(deployment, id, c).await?)
     } else if let ProtocolConfig::ArpClient(c) = config {
         Some(crate::l2::network_for_start(deployment, id, c).await?)
@@ -444,6 +456,31 @@ pub async fn start(
                 prepared.filter_hash.clone(),
             ]);
         }
+        ProtocolConfig::Mpls(c) => {
+            let nonce = uuid::Uuid::new_v4().simple().to_string();
+            args.extend([
+                "--user".into(),
+                "0:0".into(),
+                "--cap-drop".into(),
+                "ALL".into(),
+                "--cap-add".into(),
+                "NET_RAW".into(),
+                "--ipc".into(),
+                "private".into(),
+                "--label".into(),
+                format!("{}={nonce}", crate::mpls::RUNTIME_LABEL),
+                "--env".into(),
+                format!("PLAB_RUNTIME_ID={nonce}"),
+            ]);
+            if c.link.is_bridge() {
+                args.extend(["--mac-address".into(), c.source_mac.clone()]);
+            }
+            args.extend([
+                immutable_image,
+                "--config-json".into(),
+                serde_json::to_string(config)?,
+            ]);
+        }
         ProtocolConfig::ArpClient(c) => {
             let nonce = uuid::Uuid::new_v4().simple().to_string();
             args.extend([
@@ -577,6 +614,10 @@ pub async fn probe_owned(
         crate::custom_l2::snapshot(deployment, instance, source_id, c).await?;
         return Ok(());
     }
+    if let ProtocolConfig::Mpls(c) = config {
+        crate::mpls_l2::snapshot(deployment, instance, source_id, c).await?;
+        return Ok(());
+    }
     if let ProtocolConfig::ArpClient(c) = config {
         crate::l2::snapshot(deployment, instance, source_id, c).await?;
         return Ok(());
@@ -643,6 +684,9 @@ pub async fn probe(config: &ProtocolConfig) -> Result<()> {
         ),
         ProtocolConfig::CustomEthernet(_) => {
             bail!("Custom Ethernet readiness requires exact source/network/filter identity")
+        }
+        ProtocolConfig::Mpls(_) => {
+            bail!("MPLS readiness requires exact owned source/network/filter identity")
         }
         ProtocolConfig::ArpClient(_) => {
             bail!("ARP readiness requires exact owned source/network and private state")

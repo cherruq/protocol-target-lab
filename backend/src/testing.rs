@@ -53,6 +53,13 @@ impl TestRequest {
     pub fn validate_for(&self, config: &ProtocolConfig) -> Result<()> {
         match config {
             ProtocolConfig::Http(_) => self.validate(),
+            ProtocolConfig::Mpls(c) => {
+                if self.path != crate::mpls::PATH {
+                    bail!("config.test: choose echo path");
+                }
+                c.test_budget(&self.method)?;
+                Ok(())
+            }
             ProtocolConfig::Igmp(c) => {
                 if self.path != crate::igmp::PATH {
                     bail!("config.test: choose membership path");
@@ -327,6 +334,14 @@ pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) ->
             "configured image has no built-in protocol client; import matching assets before testing"
         );
     }
+    if let ProtocolConfig::Mpls(c) = &config {
+        if resources[0]["Image"] != image_id {
+            bail!("config.test: MPLS client image differs from actual source; restart explicitly");
+        }
+        crate::mpls_l2::snapshot(&deployment, instance_id, &source_id, c).await?;
+        crate::mpls_l2::client_preflight(&deployment, instance_id, &source_id, c, &request.method)
+            .await?;
+    }
     if let ProtocolConfig::Igmp(c) = &config {
         if resources[0]["Image"] != image_id {
             bail!(
@@ -425,11 +440,14 @@ pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) ->
     tokio::spawn(async move {
         let _control = control;
         let outcome = run_client(&manager, &deployment, &image_id, &run).await;
-        let cleanup = if matches!(run.applied_config, ProtocolConfig::Igmp(_)) {
+        let cleanup = if matches!(
+            run.applied_config,
+            ProtocolConfig::Igmp(_) | ProtocolConfig::Mpls(_)
+        ) {
             tokio::time::timeout(
                 Duration::from_millis(crate::igmp::CLEANUP_BUDGET_MS),
                 cleanup_run(&deployment, &run.id),
-            ).await.unwrap_or_else(|_|Err(anyhow::anyhow!("IGMP exact-owned peer cleanup exceeded5-second reserve; completion is unconfirmed and retained for the owned-resource reaper")))
+            ).await.unwrap_or_else(|_|Err(anyhow::anyhow!("exact-owned peer cleanup exceeded5-second reserve; completion is unconfirmed and retained for the owned-resource reaper")))
         } else {
             cleanup_run(&deployment, &run.id).await
         };
@@ -483,6 +501,9 @@ async fn run_client(
     image: &str,
     run: &TestRun,
 ) -> Result<Value> {
+    if matches!(run.applied_config, ProtocolConfig::Mpls(_)) {
+        return crate::mpls_testing::run(manager, deployment, image, run).await;
+    }
     if matches!(run.applied_config, ProtocolConfig::Igmp(_)) {
         return crate::igmp_testing::run(manager, deployment, image, run).await;
     }
@@ -592,6 +613,7 @@ async fn run_client(
     }
     match &run.applied_config {
         ProtocolConfig::Igmp(_) => unreachable!("IGMP uses dedicated bounded progress runner"),
+        ProtocolConfig::Mpls(c) => args.extend(crate::mpls::config_args(c)?),
         ProtocolConfig::CustomEthernet(c) => args.extend(crate::custom_ethernet::config_args(c)?),
         ProtocolConfig::Dns(_)
         | ProtocolConfig::Mqtt(_)

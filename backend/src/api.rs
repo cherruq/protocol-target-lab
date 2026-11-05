@@ -90,8 +90,8 @@ async fn protocols(State(m): State<Shared>) -> Json<Value> {
         let workspace=d.doc.instances.iter().find(|i|i.protocol_id==protocol);
         let status=if d.config_error.is_some() {"unavailable"} else if d.docker_error.is_some() {"environment-unavailable"} else {workspace.map(|i|i.status.as_str()).unwrap_or("unavailable")};
         let error=d.config_error.as_deref().or(d.docker_error.as_deref()).or_else(||workspace.and_then(|i|i.runtime_error.as_deref().or(i.error.as_deref())));
-        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":match protocol {"igmp"=>"Persistent native Linux kernel IPv4 multicast member","custom-ethernet"=>"libpcap1.10.5 kernel-filtered Ethernet fixed responder","arp-client"=>"Persistent Ethernet/IPv4 ARP, RARP and InARP active requester","vxlan"=>"stdlib IPv4 unicast VXLAN Ethernet/ARP responder with eleven target scenarios","bfd"=>"stdlib IPv4 single-hop active BFD Control with explicit target fault scenarios","iec101"=>"lib60870-C 2.4.1 native unbalanced dual-channel slave via PTY/TCP","dlt645"=>"software DL/T645-2007 meter over TCP byte stream","rtcp"=>"stdlib RFC3550 RTCPv2 SR+SDES compound receiver","rtp"=>"stdlib RFC3550v2 structural receiver; opaque payload","dns"=>"dnsmasq 2.90","mqtt"=>"Mosquitto 2.0.18 + packet-size backports","telnet"=>"telnetlib3 4.0.3","iec104"=>"c104 2.2.1 + incremental TCP framing fix","mqtt-sn"=>"Eclipse Paho MQTT-SN Gateway 1.5.1 + project capacity guard; private Mosquitto 2.0.18",_=>"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
-        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP"]);} else if protocol=="mqtt" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);} else if protocol=="igmp" {descriptor["supported_transports"]=json!(["IGMP"]);descriptor["wire_profiles"]=json!(["linux-kernel-igmp-v2"]);descriptor["supported_features"]=json!(["persistent native kernel membership","actual General/Group Query verification","owned bridge, existing interface or owned kernel VXLAN"]);} else if protocol=="custom-ethernet" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["wire_profiles"]=json!(["ethernet-fixed-response"]);descriptor["supported_features"]=json!(["live libpcap cBPF kernel attach/readback","fixed payload or opaque raw response","single8021q VLAN/AUXDATA","persistent repeated response","owned software L2 or existing host interface"]);} else if protocol=="arp-client" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["supported_features"]=json!(["active ARP/RARP/InARP requester","four modes and fifteen legal scenario pairs","same-image inverse responder","owned software L2 or existing host interface"]);} else if protocol=="vxlan" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["wire_profiles"]=json!(["vxlan-ipv4-arp"]);descriptor["supported_features"]=json!(["Ethernet/IPv4 ARP Request-to-Reply","eleven configured target scenarios","fixed peer receive port","fresh causal receive/send observation"]);} else if protocol=="bfd" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["single-hop TTL255/interface validation","Down/Init/Up","Poll/Final","normal/poll/quiet/wrong-your/ttl254/short target modes"]);} else if protocol=="iec101" {descriptor["supported_transports"]=json!(["TCP byte stream via software PTY"]);descriptor["supported_features"]=json!(["simultaneous single/double address channels","RESET/STATUS","CLASS2","GI ACT_CON/data/ACT_TERM","FCB duplicate handling"]);} else if protocol=="dlt645" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["wire_profiles"]=json!(["dlt645-2007-tcp"]);descriptor["software_function_classes"]=json!(["11","13","14","15","16","08","17","18","19","1A","1C","1D","03 reject/fixture"]);descriptor["crypto_verified"]=json!(false);} else if protocol=="rtcp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["packet_profiles"]=json!(["sr-sdes"]);descriptor["rtcp_reply_expected"]=json!(false);} else if protocol=="rtp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["RTPv2 header/CSRC/extension/padding","fresh receive observation"]);descriptor["rtp_reply_expected"]=json!(false);} else if protocol=="mqtt-sn" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["validated_qos"]=json!([1]);descriptor["validated_features"]=json!(["CONNECT/reconnect","REGISTER/PUBLISH","predefined topics","multicast GWINFO","independent MQTT broker delivery"]);} else if protocol=="iec104" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["STARTDT","STOPDT","TESTFR","GI","READ","C_SC_NA_1 DIRECT"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"]);}
+        let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":match protocol {"mpls"=>"Finite single-label MPLS/IPv4 ICMP software target with fourteen output scenarios","igmp"=>"Persistent native Linux kernel IPv4 multicast member","custom-ethernet"=>"libpcap1.10.5 kernel-filtered Ethernet fixed responder","arp-client"=>"Persistent Ethernet/IPv4 ARP, RARP and InARP active requester","vxlan"=>"stdlib IPv4 unicast VXLAN Ethernet/ARP responder with eleven target scenarios","bfd"=>"stdlib IPv4 single-hop active BFD Control with explicit target fault scenarios","iec101"=>"lib60870-C 2.4.1 native unbalanced dual-channel slave via PTY/TCP","dlt645"=>"software DL/T645-2007 meter over TCP byte stream","rtcp"=>"stdlib RFC3550 RTCPv2 SR+SDES compound receiver","rtp"=>"stdlib RFC3550v2 structural receiver; opaque payload","dns"=>"dnsmasq 2.90","mqtt"=>"Mosquitto 2.0.18 + packet-size backports","telnet"=>"telnetlib3 4.0.3","iec104"=>"c104 2.2.1 + incremental TCP framing fix","mqtt-sn"=>"Eclipse Paho MQTT-SN Gateway 1.5.1 + project capacity guard; private Mosquitto 2.0.18",_=>"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
+        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP"]);} else if protocol=="mqtt" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);} else if protocol=="mpls" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["wire_profiles"]=json!(["mpls-single-label-ipv4-icmp-echo"]);descriptor["supported_features"]=json!(["single-label8847 request to plain0800 ICMP Echo reply","fourteen finite output scenarios","same-image disposable actual L2 client; short13TX may be unavailable"]);} else if protocol=="igmp" {descriptor["supported_transports"]=json!(["IGMP"]);descriptor["wire_profiles"]=json!(["linux-kernel-igmp-v2"]);descriptor["supported_features"]=json!(["persistent native kernel membership","actual General/Group Query verification","owned bridge, existing interface or owned kernel VXLAN"]);} else if protocol=="custom-ethernet" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["wire_profiles"]=json!(["ethernet-fixed-response"]);descriptor["supported_features"]=json!(["live libpcap cBPF kernel attach/readback","fixed payload or opaque raw response","single8021q VLAN/AUXDATA","persistent repeated response","owned software L2 or existing host interface"]);} else if protocol=="arp-client" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["supported_features"]=json!(["active ARP/RARP/InARP requester","four modes and fifteen legal scenario pairs","same-image inverse responder","owned software L2 or existing host interface"]);} else if protocol=="vxlan" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["wire_profiles"]=json!(["vxlan-ipv4-arp"]);descriptor["supported_features"]=json!(["Ethernet/IPv4 ARP Request-to-Reply","eleven configured target scenarios","fixed peer receive port","fresh causal receive/send observation"]);} else if protocol=="bfd" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["single-hop TTL255/interface validation","Down/Init/Up","Poll/Final","normal/poll/quiet/wrong-your/ttl254/short target modes"]);} else if protocol=="iec101" {descriptor["supported_transports"]=json!(["TCP byte stream via software PTY"]);descriptor["supported_features"]=json!(["simultaneous single/double address channels","RESET/STATUS","CLASS2","GI ACT_CON/data/ACT_TERM","FCB duplicate handling"]);} else if protocol=="dlt645" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["wire_profiles"]=json!(["dlt645-2007-tcp"]);descriptor["software_function_classes"]=json!(["11","13","14","15","16","08","17","18","19","1A","1C","1D","03 reject/fixture"]);descriptor["crypto_verified"]=json!(false);} else if protocol=="rtcp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["packet_profiles"]=json!(["sr-sdes"]);descriptor["rtcp_reply_expected"]=json!(false);} else if protocol=="rtp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["RTPv2 header/CSRC/extension/padding","fresh receive observation"]);descriptor["rtp_reply_expected"]=json!(false);} else if protocol=="mqtt-sn" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["validated_qos"]=json!([1]);descriptor["validated_features"]=json!(["CONNECT/reconnect","REGISTER/PUBLISH","predefined topics","multicast GWINFO","independent MQTT broker delivery"]);} else if protocol=="iec104" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["STARTDT","STOPDT","TESTFR","GI","READ","C_SC_NA_1 DIRECT"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"]);}
         descriptor
     })))
 }
@@ -107,6 +107,7 @@ async fn schema(Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
         "arp-client" => Ok(Json(crate::arp_client::schema())),
         "custom-ethernet" => Ok(Json(crate::custom_ethernet::schema())),
         "igmp" => Ok(Json(crate::igmp::schema())),
+        "mpls" => Ok(Json(crate::mpls::schema())),
         "iec104" => Ok(Json(crate::iec104::schema())),
         "http" => Ok(Json(
             json!({"protocol_id":"http","type":"object","supported_methods":crate::model::HTTP_METHODS,"properties":{"bind_ip":{"type":"string","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18090},"response_length":{"type":"integer","minimum":0,"maximum":crate::model::MAX_RESPONSE_LENGTH,"default":64},"response_mode":{"type":"string","enum":["fixed","random"],"default":"fixed"}},"required":["bind_ip","port","response_length","response_mode"]}),
@@ -201,6 +202,10 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
         ProtocolConfig::Igmp(_) => (
             crate::igmp::CASES.iter().map(|s| s.to_string()).collect(),
             vec![crate::igmp::PATH.into()],
+        ),
+        ProtocolConfig::Mpls(_) => (
+            crate::mpls::CASES.into_iter().map(String::from).collect(),
+            vec![crate::mpls::PATH.into()],
         ),
         ProtocolConfig::CustomEthernet(_) => (
             crate::custom_ethernet::CASES
@@ -303,6 +308,11 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
         result["case_labels"] = json!({"GENERAL_QUERY":"General Query：全部配置组（2轮）","GROUP_QUERY":"Group Query：首个配置组（2轮）","ALL":"两类查询（4组检查）"});
         result["path_label"] = "内核成员".into();
         result["test_budget"] = json!({"available":true,"budget":{"client_total_ms":crate::igmp::CLIENT_BUDGET_MS,"manager_total_ms":crate::igmp::MANAGER_BUDGET_MS,"manager_execution_ms":crate::igmp::EXECUTION_BUDGET_MS,"cleanup_reserve_ms":crate::igmp::CLEANUP_BUDGET_MS,"round_ms":12000,"rounds":c.rounds("ALL")?,"expected_general_reports":c.groups.len()*2,"expected_group_reports":2},"notes":["Actual runtime warmup and other references are checked before creating the peer","Query and Report counts differ with multiple groups"]});
+    }
+    if let ProtocolConfig::Mpls(c) = config {
+        result["case_labels"] = json!({"ECHO":"当前响应场景（2轮）","TC_TTL":"TC/TTL边界（2轮）","PADDING":"载荷与以太填充（2轮）","INVALID_REQUEST":"拒绝错误标签/过期TTL（2轮）","ALL":"全部四类（8组检查）"});
+        result["path_label"] = json!("单标签Echo");
+        result["test_budget"] = json!({"available":true,"budget":c.test_budget("ALL")?});
     }
     if let ProtocolConfig::CustomEthernet(c) = config {
         result["case_labels"] = json!({"ROUNDTRIP":"固定帧往返（2组）","REPEAT":"持续重复收发（2组、6次交换）","ALL":"当前请求帧验证（4组、8次交换）"});
@@ -424,7 +434,15 @@ async fn runtime_info(
             .clone();
         (d.doc.deployment_id.clone(), i)
     };
-    if !["bfd", "vxlan", "arp-client", "custom-ethernet", "igmp"].contains(&i.protocol_id.as_str())
+    if ![
+        "bfd",
+        "vxlan",
+        "arp-client",
+        "custom-ethernet",
+        "igmp",
+        "mpls",
+    ]
+    .contains(&i.protocol_id.as_str())
     {
         return Err(ApiError(
             StatusCode::NOT_FOUND,
@@ -442,6 +460,7 @@ async fn runtime_info(
             crate::igmp_link::snapshot(&m.settings, &deployment, &id, cid, c).await
         }
         ProtocolConfig::ArpClient(c) => crate::l2::snapshot(&deployment, &id, cid, c).await,
+        ProtocolConfig::Mpls(c) => crate::mpls_l2::snapshot(&deployment, &id, cid, c).await,
         ProtocolConfig::CustomEthernet(c) => {
             crate::custom_l2::snapshot(&deployment, &id, cid, c).await
         }
@@ -636,6 +655,55 @@ async fn connection_info(
         .find(|i| i.id == id)
         .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "instance not found".into()))?;
     let c = i.applied_config.as_ref().unwrap_or(&i.config);
+    if let ProtocolConfig::Mpls(config) = c {
+        let external = if config.link.is_bridge() {
+            Value::Null
+        } else {
+            let mut argv = vec![
+                "docker".to_string(),
+                "run".into(),
+                "--rm".into(),
+                "--pull".into(),
+                "never".into(),
+                "--network".into(),
+                "host".into(),
+                "--user".into(),
+                "0:0".into(),
+                "--cap-drop".into(),
+                "ALL".into(),
+                "--cap-add".into(),
+                "NET_RAW".into(),
+                "--ipc".into(),
+                "private".into(),
+                "--entrypoint".into(),
+                "python3".into(),
+                "<exact-source-image-id>".into(),
+                "-u".into(),
+                "/opt/protocol-target-lab/client.py".into(),
+            ];
+            argv.extend(crate::mpls::config_args(config)?);
+            argv.extend([
+                "--interface".into(),
+                "<peer-interface>".into(),
+                "--observer-host".into(),
+                "127.0.0.1".into(),
+                "--observer-port".into(),
+                crate::mpls::OBSERVER_PORT.to_string(),
+                "--expected-boot-id".into(),
+                "<runtime.boot_id>".into(),
+                "--expected-runtime-id".into(),
+                "<runtime.runtime_id>".into(),
+                "--method".into(),
+                "ALL".into(),
+                "--path".into(),
+                crate::mpls::PATH.into(),
+            ]);
+            json!({"argv":argv,"observer_forward":["ssh","-N","-L","127.0.0.1:18089:127.0.0.1:18089","<target-ssh>"],"requires":["Replace placeholders with exact running Image/boot/runtime identity and actual different UP Ethernet counterpart matching client_mac","Explicit manual read-only observer tunnel; raw protocol traffic traverses chosen link","Recheck original source identities afterwards; stop only owned tunnel"],"notes":["Web never executes remote SSH","Builtin client needs unique different existing counterpart NIC; external counterpart interface is selected explicitly"]})
+        };
+        return Ok(Json(
+            json!({"transport":"ETHERNET","role":"mpls-single-label-icmp-echo-target","link":config.link,"source_mac":config.source_mac,"source_ip":config.source_ip,"client_mac":config.client_mac,"client_ip":config.client_ip,"label":config.label,"reply_ttl":config.reply_ttl,"scenario":config.scenario,"external_peer":external,"commands":["plabctl runtime mpls","plabctl tests run mpls --method ALL"],"client_execution":{"role":"MPLS request sender and actual plainIPv4 response receiver","bridge":"Distinct source and disposable peer veths on owned internal L2; simulated role IPs are not assignedOS addresses","host":"Existing Ethernet NICs remain read-only; exact configuredMACs required","observer":"Private TCP18089 observation, not an MPLS business port"},"notes":["Finite software profile, not a general MPLS router or native label switching","ALL verifies current applied output scenario in8checks; no silent switch to normal","Fault verification is distinct from successful normal Echo; TXsubmitted does not prove remote reception","13-byte Ethernet output may fail actual kernel TX; recorded tx_error/unavailable never treated as silence success"]}),
+        ));
+    }
     if let ProtocolConfig::Igmp(config) = c {
         return Ok(Json(igmp_connection(
             config,

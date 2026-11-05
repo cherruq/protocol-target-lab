@@ -298,9 +298,8 @@ test("RTCP fixed profile and capacity join eight isolated drafts without changin
 });
 
 test("DLT645 tagged fixture joins nine drafts while retaining all prior configs", async () => {
-  const { dlt645Defaults, dlt645FixtureDefaults } = await import(
-    "../src/dlt645-config.ts"
-  );
+  const { dlt645Defaults, dlt645FixtureDefaults } =
+    await import("../src/dlt645-config.ts");
   const { rtpDefaults } = await import("../src/rtp-config.ts");
   const { rtcpDefaults } = await import("../src/rtcp-config.ts");
   const configs = [
@@ -339,9 +338,8 @@ test("DLT645 tagged fixture joins nine drafts while retaining all prior configs"
 });
 
 test("IEC101 dual-channel nested drafts join ten workspaces without overwriting prior schemas", async () => {
-  const { iec101Defaults, updateIec101Channel } = await import(
-    "../src/iec101-config.ts"
-  );
+  const { iec101Defaults, updateIec101Channel } =
+    await import("../src/iec101-config.ts");
   const { dlt645Defaults } = await import("../src/dlt645-config.ts");
   const { rtpDefaults } = await import("../src/rtp-config.ts");
   const { rtcpDefaults } = await import("../src/rtcp-config.ts");
@@ -382,9 +380,8 @@ test("IEC101 dual-channel nested drafts join ten workspaces without overwriting 
 
 test("BFD tagged scenarios add an eleventh isolated draft and only its explicit save clears it", async () => {
   const { bfdDefaults, changeBfdMode } = await import("../src/bfd-config.ts");
-  const { iec101Defaults, updateIec101Channel } = await import(
-    "../src/iec101-config.ts"
-  );
+  const { iec101Defaults, updateIec101Channel } =
+    await import("../src/iec101-config.ts");
   const { rtpDefaults } = await import("../src/rtp-config.ts");
   const { rtcpDefaults } = await import("../src/rtcp-config.ts");
   const { dlt645Defaults } = await import("../src/dlt645-config.ts");
@@ -426,13 +423,11 @@ test("BFD tagged scenarios add an eleventh isolated draft and only its explicit 
 });
 
 test("VXLAN is a twelfth isolated normalized workspace draft without changing the prior eleven", async () => {
-  const { vxlanDefaults, normalizeVxlanConfig } = await import(
-    "../src/vxlan-config.ts"
-  );
+  const { vxlanDefaults, normalizeVxlanConfig } =
+    await import("../src/vxlan-config.ts");
   const { bfdDefaults, changeBfdMode } = await import("../src/bfd-config.ts");
-  const { iec101Defaults, updateIec101Channel } = await import(
-    "../src/iec101-config.ts"
-  );
+  const { iec101Defaults, updateIec101Channel } =
+    await import("../src/iec101-config.ts");
   const { rtpDefaults } = await import("../src/rtp-config.ts");
   const { rtcpDefaults } = await import("../src/rtcp-config.ts");
   const { dlt645Defaults } = await import("../src/dlt645-config.ts");
@@ -486,14 +481,12 @@ test("VXLAN is a twelfth isolated normalized workspace draft without changing th
 });
 
 test("portless ARP-client adds a thirteenth draft without losing incompatible edits or prior workspace schemas", async () => {
-  const { arpClientDefaults, normalizeArpClientConfig } = await import(
-    "../src/arp-client-config.ts"
-  );
+  const { arpClientDefaults, normalizeArpClientConfig } =
+    await import("../src/arp-client-config.ts");
   const { vxlanDefaults } = await import("../src/vxlan-config.ts");
   const { bfdDefaults, changeBfdMode } = await import("../src/bfd-config.ts");
-  const { iec101Defaults, updateIec101Channel } = await import(
-    "../src/iec101-config.ts"
-  );
+  const { iec101Defaults, updateIec101Channel } =
+    await import("../src/iec101-config.ts");
   const { rtpDefaults } = await import("../src/rtp-config.ts");
   const { rtcpDefaults } = await import("../src/rtcp-config.ts");
   const { dlt645Defaults } = await import("../src/dlt645-config.ts");
@@ -561,15 +554,13 @@ test("portless ARP-client adds a thirteenth draft without losing incompatible ed
 });
 
 test("custom dual response banks join fourteen isolated drafts; a valid save retains its invalid inactive text", async () => {
-  const { customEthernetDefaults, prepareCustomEthernetSave } = await import(
-    "../src/custom-ethernet-config.ts"
-  );
+  const { customEthernetDefaults, prepareCustomEthernetSave } =
+    await import("../src/custom-ethernet-config.ts");
   const { rtpDefaults } = await import("../src/rtp-config.ts");
   const { rtcpDefaults } = await import("../src/rtcp-config.ts");
   const { dlt645Defaults } = await import("../src/dlt645-config.ts");
-  const { iec101Defaults, updateIec101Channel } = await import(
-    "../src/iec101-config.ts"
-  );
+  const { iec101Defaults, updateIec101Channel } =
+    await import("../src/iec101-config.ts");
   const { bfdDefaults, changeBfdMode } = await import("../src/bfd-config.ts");
   const { vxlanDefaults } = await import("../src/vxlan-config.ts");
   const { arpClientDefaults } = await import("../src/arp-client-config.ts");
@@ -652,18 +643,15 @@ test("custom dual response banks join fourteen isolated drafts; a valid save ret
 });
 
 test("IGMP native groups become a fifteenth isolated draft without changing custom invalid hidden text or prior14", async () => {
-  const { igmpDefaults, normalizeIgmpConfig } = await import(
-    "../src/igmp-config.ts"
-  );
-  const { customEthernetDefaults } = await import(
-    "../src/custom-ethernet-config.ts"
-  );
+  const { igmpDefaults, normalizeIgmpConfig } =
+    await import("../src/igmp-config.ts");
+  const { customEthernetDefaults } =
+    await import("../src/custom-ethernet-config.ts");
   const { rtpDefaults } = await import("../src/rtp-config.ts");
   const { rtcpDefaults } = await import("../src/rtcp-config.ts");
   const { dlt645Defaults } = await import("../src/dlt645-config.ts");
-  const { iec101Defaults, updateIec101Channel } = await import(
-    "../src/iec101-config.ts"
-  );
+  const { iec101Defaults, updateIec101Channel } =
+    await import("../src/iec101-config.ts");
   const { bfdDefaults, changeBfdMode } = await import("../src/bfd-config.ts");
   const { vxlanDefaults } = await import("../src/vxlan-config.ts");
   const { arpClientDefaults } = await import("../src/arp-client-config.ts");
@@ -740,4 +728,104 @@ test("IGMP native groups become a fifteenth isolated draft without changing cust
     customEthernetDefaults,
   ])
     assert.equal(sameWorkspaceConfig(igmpDefaults, c), false);
+});
+
+test("MPLS joins sixteen isolated drafts and clearing its explicit save preserves all fifteen and custom invalid bank", async () => {
+  const { igmpDefaults, normalizeIgmpConfig } =
+    await import("../src/igmp-config.ts");
+  const { customEthernetDefaults } =
+    await import("../src/custom-ethernet-config.ts");
+  const { rtpDefaults } = await import("../src/rtp-config.ts");
+  const { rtcpDefaults } = await import("../src/rtcp-config.ts");
+  const { dlt645Defaults } = await import("../src/dlt645-config.ts");
+  const { iec101Defaults, updateIec101Channel } =
+    await import("../src/iec101-config.ts");
+  const { bfdDefaults, changeBfdMode } = await import("../src/bfd-config.ts");
+  const { vxlanDefaults } = await import("../src/vxlan-config.ts");
+  const { arpClientDefaults } = await import("../src/arp-client-config.ts");
+  const prior = [
+    dnsDefaults,
+    mqttDefaults,
+    telnetDefaults,
+    iec104Defaults,
+    mqttSnDefaults,
+    rtpDefaults,
+    rtcpDefaults,
+    dlt645Defaults,
+    vxlanDefaults,
+  ];
+  let drafts = {};
+  for (const [i, c] of prior.entries())
+    drafts = updateWorkspaceDrafts(
+      drafts,
+      `old-${i}`,
+      { ...c, port: c.port + 2 },
+      c,
+    );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "http",
+    { ...defaults, response_length: 128 },
+    defaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "iec101",
+    updateIec101Channel(iec101Defaults, "single", { point: { value: false } }),
+    iec101Defaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "bfd",
+    changeBfdMode(bfdDefaults, "quiet"),
+    bfdDefaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "arp",
+    { ...arpClientDefaults, interval_ms: 600 },
+    arpClientDefaults,
+  );
+  const custom = structuredClone(customEthernetDefaults);
+  custom.response.frame_hex = "abc";
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "custom",
+    custom,
+    customEthernetDefaults,
+  );
+  const { mplsDefaults, normalizeMplsConfig } =
+    await import("../src/mpls-config.ts");
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "igmp",
+    { ...igmpDefaults, groups: ["239.64.19.1", "239.192.19.1"] },
+    igmpDefaults,
+  );
+  const old = structuredClone(drafts);
+  const mpls = {
+    ...mplsDefaults,
+    label: 1048575,
+    scenario: { mode: "short-ethernet" as const },
+  };
+  drafts = updateWorkspaceDrafts(drafts, "mpls", mpls, mplsDefaults);
+  assert.equal(Object.keys(drafts).length, 16);
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "mpls",
+    mpls,
+    normalizeMplsConfig(mpls),
+  );
+  assert.deepEqual(drafts, old);
+  assert.equal(drafts.custom.response.frame_hex, "abc");
+  for (const c of [
+    ...prior,
+    defaults,
+    iec101Defaults,
+    bfdDefaults,
+    arpClientDefaults,
+    customEthernetDefaults,
+    igmpDefaults,
+  ])
+    assert.equal(sameWorkspaceConfig(mplsDefaults, c), false);
 });

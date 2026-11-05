@@ -27,63 +27,67 @@ pub struct Settings {
     pub arp_client_image: String,
     pub custom_ethernet_image: String,
     pub igmp_image: String,
+    pub mpls_image: String,
     pub igmp_link_helper: PathBuf,
+}
+fn parse_defaults(text: &str) -> Result<std::collections::HashMap<String, String>> {
+    let mut defaults = std::collections::HashMap::new();
+    for line in text
+        .lines()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && !s.starts_with('#'))
+    {
+        let (key, value) = line
+            .split_once('=')
+            .context("invalid manager defaults; expected KEY=VALUE")?;
+        if ![
+            "PLAB_CONFIG_FILE",
+            "PLAB_DATA_DIR",
+            "PLAB_LISTEN",
+            "PLAB_HTTP_IMAGE",
+            "PLAB_DNS_IMAGE",
+            "PLAB_MQTT_IMAGE",
+            "PLAB_TELNET_IMAGE",
+            "PLAB_IEC104_IMAGE",
+            "PLAB_MQTTSN_IMAGE",
+            "PLAB_RTP_IMAGE",
+            "PLAB_RTCP_IMAGE",
+            "PLAB_DLT645_IMAGE",
+            "PLAB_IEC101_IMAGE",
+            "PLAB_BFD_IMAGE",
+            "PLAB_VXLAN_IMAGE",
+            "PLAB_ARP_CLIENT_IMAGE",
+            "PLAB_CUSTOM_ETHERNET_IMAGE",
+            "PLAB_IGMP_IMAGE",
+            "PLAB_MPLS_IMAGE",
+            "PLAB_IGMP_LINK_HELPER",
+        ]
+        .contains(&key)
+        {
+            anyhow::bail!("unsupported key in manager defaults: {key}");
+        }
+        let value = value.trim();
+        let value = if value.len() >= 2
+            && ((value.starts_with('\'') && value.ends_with('\''))
+                || (value.starts_with('"') && value.ends_with('"')))
+        {
+            &value[1..value.len() - 1]
+        } else {
+            value
+        };
+        defaults.insert(key.to_owned(), value.to_owned());
+    }
+    Ok(defaults)
 }
 impl Settings {
     pub fn env() -> Result<Self> {
-        let mut defaults = std::collections::HashMap::new();
         let env_path = std::env::var("PLAB_ENV_FILE")
             .unwrap_or_else(|_| "/etc/default/protocol-target-lab".into());
-        match std::fs::read_to_string(&env_path) {
-            Ok(text) => {
-                for line in text
-                    .lines()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty() && !s.starts_with('#'))
-                {
-                    let (key, value) = line
-                        .split_once('=')
-                        .context("invalid manager defaults; expected KEY=VALUE")?;
-                    if ![
-                        "PLAB_CONFIG_FILE",
-                        "PLAB_DATA_DIR",
-                        "PLAB_LISTEN",
-                        "PLAB_HTTP_IMAGE",
-                        "PLAB_DNS_IMAGE",
-                        "PLAB_MQTT_IMAGE",
-                        "PLAB_TELNET_IMAGE",
-                        "PLAB_IEC104_IMAGE",
-                        "PLAB_MQTTSN_IMAGE",
-                        "PLAB_RTP_IMAGE",
-                        "PLAB_RTCP_IMAGE",
-                        "PLAB_DLT645_IMAGE",
-                        "PLAB_IEC101_IMAGE",
-                        "PLAB_BFD_IMAGE",
-                        "PLAB_VXLAN_IMAGE",
-                        "PLAB_ARP_CLIENT_IMAGE",
-                        "PLAB_CUSTOM_ETHERNET_IMAGE",
-                        "PLAB_IGMP_IMAGE",
-                        "PLAB_IGMP_LINK_HELPER",
-                    ]
-                    .contains(&key)
-                    {
-                        anyhow::bail!("unsupported key in manager defaults: {key}");
-                    }
-                    let value = value.trim();
-                    let value = if value.len() >= 2
-                        && ((value.starts_with('\'') && value.ends_with('\''))
-                            || (value.starts_with('"') && value.ends_with('"')))
-                    {
-                        &value[1..value.len() - 1]
-                    } else {
-                        value
-                    };
-                    defaults.insert(key.to_owned(), value.to_owned());
-                }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        let defaults = match std::fs::read_to_string(&env_path) {
+            Ok(text) => parse_defaults(&text)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => std::collections::HashMap::new(),
             Err(e) => return Err(e).context("cannot read manager defaults"),
-        }
+        };
         let value = |key: &str, fallback: &str| {
             std::env::var(key)
                 .ok()
@@ -110,6 +114,7 @@ impl Settings {
             iec101_image: value("PLAB_IEC101_IMAGE", "protocol-target-lab/iec101:0.1.0"),
             bfd_image: value("PLAB_BFD_IMAGE", "protocol-target-lab/bfd:0.1.0"),
             vxlan_image: value("PLAB_VXLAN_IMAGE", "protocol-target-lab/vxlan:0.1.0"),
+            mpls_image: value("PLAB_MPLS_IMAGE", "protocol-target-lab/mpls:0.1.0"),
             igmp_image: value("PLAB_IGMP_IMAGE", "protocol-target-lab/igmp:0.1.0"),
             igmp_link_helper: value(
                 "PLAB_IGMP_LINK_HELPER",
@@ -127,7 +132,9 @@ impl Settings {
         })
     }
     pub fn image_for(&self, protocol: &str) -> &str {
-        if protocol == "igmp" {
+        if protocol == "mpls" {
+            &self.mpls_image
+        } else if protocol == "igmp" {
             &self.igmp_image
         } else if protocol == "custom-ethernet" {
             &self.custom_ethernet_image
@@ -289,6 +296,7 @@ mod tests {
                 arp_client_image: "unused".into(),
                 custom_ethernet_image: "unused".into(),
                 igmp_image: "unused".into(),
+                mpls_image: "unused".into(),
                 igmp_link_helper: "unused".into(),
             }
         }
@@ -585,6 +593,7 @@ mod tests {
                 "arp-client",
                 "custom-ethernet",
                 "igmp",
+                "mpls",
             ]
             .contains(&i.protocol_id.as_str())
         });
@@ -635,6 +644,7 @@ mod tests {
                 "arp-client",
                 "custom-ethernet",
                 "igmp",
+                "mpls",
             ]
             .contains(&i.protocol_id.as_str())
         });
@@ -684,6 +694,7 @@ mod tests {
                 "arp-client",
                 "custom-ethernet",
                 "igmp",
+                "mpls",
             ]
             .contains(&i.protocol_id.as_str())
         });
@@ -732,6 +743,7 @@ mod tests {
                 "arp-client",
                 "custom-ethernet",
                 "igmp",
+                "mpls",
             ]
             .contains(&i.protocol_id.as_str())
         });
@@ -779,6 +791,7 @@ mod tests {
                 "arp-client",
                 "custom-ethernet",
                 "igmp",
+                "mpls",
             ]
             .contains(&i.protocol_id.as_str())
         });
@@ -819,8 +832,15 @@ mod tests {
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
         doc.instances.retain(|i| {
-            !["bfd", "vxlan", "arp-client", "custom-ethernet", "igmp"]
-                .contains(&i.protocol_id.as_str())
+            ![
+                "bfd",
+                "vxlan",
+                "arp-client",
+                "custom-ethernet",
+                "igmp",
+                "mpls",
+            ]
+            .contains(&i.protocol_id.as_str())
         });
         doc.instances[0].id = "bfd-demo".into();
         for i in &mut doc.instances {
@@ -859,7 +879,8 @@ mod tests {
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
         doc.instances.retain(|i| {
-            !["vxlan", "arp-client", "custom-ethernet", "igmp"].contains(&i.protocol_id.as_str())
+            !["vxlan", "arp-client", "custom-ethernet", "igmp", "mpls"]
+                .contains(&i.protocol_id.as_str())
         });
         doc.instances[0].id = "vxlan-demo".into();
         for i in &mut doc.instances {
@@ -898,7 +919,7 @@ mod tests {
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
         doc.instances.retain(|i| {
-            !["arp-client", "custom-ethernet", "igmp"].contains(&i.protocol_id.as_str())
+            !["arp-client", "custom-ethernet", "igmp", "mpls"].contains(&i.protocol_id.as_str())
         });
         doc.instances[0].id = "arp-client-demo".into();
         for i in &mut doc.instances {
@@ -957,7 +978,7 @@ mod tests {
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
         doc.instances
-            .retain(|i| !["custom-ethernet", "igmp"].contains(&i.protocol_id.as_str()));
+            .retain(|i| !["custom-ethernet", "igmp", "mpls"].contains(&i.protocol_id.as_str()));
         doc.instances[0].id = "custom-ethernet-demo".into();
         for i in &mut doc.instances {
             i.enabled = true;
@@ -994,7 +1015,8 @@ mod tests {
         let fixture = Fixture::new();
         let settings = fixture.settings();
         let mut doc = load(&settings).unwrap();
-        doc.instances.retain(|i| i.protocol_id != "igmp");
+        doc.instances
+            .retain(|i| !["igmp", "mpls"].contains(&i.protocol_id.as_str()));
         doc.instances[0].id = "igmp-demo".into();
         for i in &mut doc.instances {
             i.enabled = true;
@@ -1025,5 +1047,60 @@ mod tests {
         let bytes = std::fs::read(&settings.config).unwrap();
         load(&settings).unwrap();
         assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);
+    }
+    #[test]
+    fn fifteen_protocol_upgrade_preserves_all_snapshots_and_mpls_id_collision() {
+        let fixture = Fixture::new();
+        let settings = fixture.settings();
+        let mut doc = load(&settings).unwrap();
+        doc.instances.retain(|i| i.protocol_id != "mpls");
+        doc.instances[0].id = "mpls-demo".into();
+        for i in &mut doc.instances {
+            i.enabled = true;
+            i.applied_config = Some(i.config.clone());
+        }
+        let original = serde_json::to_value(&doc.instances).unwrap();
+        let hashes = doc
+            .instances
+            .iter()
+            .map(|i| i.config.fingerprint())
+            .collect::<Vec<_>>();
+        save(&settings.config, &doc).unwrap();
+        let loaded = load(&settings).unwrap();
+        assert_eq!(loaded.deployment_id, doc.deployment_id);
+        assert_eq!(
+            serde_json::to_value(&loaded.instances[..15]).unwrap(),
+            original
+        );
+        assert_eq!(
+            loaded.instances[..15]
+                .iter()
+                .map(|i| i.config.fingerprint())
+                .collect::<Vec<_>>(),
+            hashes
+        );
+        assert_eq!(loaded.instances[15].id, "mpls-demo-2");
+        assert!(!loaded.instances[15].enabled && loaded.instances[15].applied_config.is_none());
+        let bytes = std::fs::read(&settings.config).unwrap();
+        load(&settings).unwrap();
+        assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);
+    }
+    #[test]
+    fn actual_packaged_defaults_are_accepted_for_every_registered_image() {
+        let packaged = parse_defaults(include_str!("../../packaging/debian/default")).unwrap();
+        assert_eq!(
+            packaged.keys().filter(|k| k.ends_with("_IMAGE")).count(),
+            crate::model::PROTOCOLS.len()
+        );
+        assert_eq!(
+            packaged["PLAB_MPLS_IMAGE"],
+            "protocol-target-lab/mpls:0.1.0"
+        );
+        assert_eq!(
+            parse_defaults("PLAB_MPLS_IMAGE='local/mpls:test'\n").unwrap()["PLAB_MPLS_IMAGE"],
+            "local/mpls:test"
+        );
+        assert!(parse_defaults("PLAB_UNSUPPORTED_IMAGE=value\n").is_err());
+        assert!(parse_defaults("PLAB_MPLS_IMAGE\n").is_err());
     }
 }

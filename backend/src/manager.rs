@@ -200,6 +200,9 @@ impl Manager {
             if instance.protocol_id == "custom-ethernet" {
                 crate::custom_l2::cleanup_empty(&deployment, id, true).await?;
             }
+            if instance.protocol_id == "mpls" {
+                crate::mpls_l2::cleanup_empty(&deployment, id, true).await?;
+            }
             if instance.protocol_id == "arp-client" {
                 crate::l2::cleanup_empty(&deployment, id, true).await?;
             }
@@ -259,6 +262,23 @@ impl Manager {
                 id,
                 c,
                 igmp_old,
+                resources.first().and_then(|v| v["Id"].as_str()),
+            )
+            .await?;
+            None
+        } else if let ProtocolConfig::Mpls(c) = &config {
+            let old = own_endpoint.and_then(|o| {
+                if let ProtocolConfig::Mpls(c) = o {
+                    Some(c)
+                } else {
+                    None
+                }
+            });
+            crate::mpls_l2::preflight(
+                &deployment,
+                id,
+                c,
+                old,
                 resources.first().and_then(|v| v["Id"].as_str()),
             )
             .await?;
@@ -397,6 +417,9 @@ impl Manager {
                         if instance.protocol_id == "custom-ethernet" {
                             crate::custom_l2::cleanup_empty(&deployment, id, false).await?;
                         }
+                        if instance.protocol_id == "mpls" {
+                            crate::mpls_l2::cleanup_empty(&deployment, id, false).await?;
+                        }
                         if instance.protocol_id == "arp-client" {
                             crate::l2::cleanup_empty(&deployment, id, false).await?;
                         }
@@ -437,6 +460,11 @@ impl Manager {
                 .instances
                 .iter()
                 .any(|i| i.id == id && i.protocol_id == "custom-ethernet");
+            let mpls = d
+                .doc
+                .instances
+                .iter()
+                .any(|i| i.id == id && i.protocol_id == "mpls");
             let deployment = d.doc.deployment_id.clone();
             drop(d);
             if custom
@@ -445,6 +473,14 @@ impl Manager {
                 let primary = result.as_ref().err().unwrap();
                 result = Err(anyhow::anyhow!(
                     "{primary:#}; owned custom dependency cleanup failed: {cleanup:#}"
+                ));
+            }
+            if mpls
+                && let Err(cleanup) = crate::mpls_l2::cleanup_empty(&deployment, id, false).await
+            {
+                let primary = result.as_ref().err().unwrap();
+                result = Err(anyhow::anyhow!(
+                    "{primary:#}; owned MPLS dependency cleanup failed: {cleanup:#}"
                 ));
             }
             if raw && let Err(cleanup) = crate::l2::cleanup_empty(&deployment, id, false).await {
