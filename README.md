@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation supports **fourteen protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD, VXLAN, ARP-client and Custom Ethernet**, with manager version **0.18.0**,
-HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, IEC101 dual-channel slave/client image **0.1.0**, BFD peer/client image **0.1.0**, VXLAN ARP responder/client image **0.1.0**, ARP-client requester/inverse-peer image **0.1.0**, and Custom Ethernet fixed-responder/client image **0.1.0**. Each protocol has one fixed workspace and
+The current implementation supports **fifteen protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD, VXLAN, ARP-client, Custom Ethernet and IGMP**, with manager version **0.19.0**,
+HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, IEC101 dual-channel slave/client image **0.1.0**, BFD peer/client image **0.1.0**, VXLAN ARP responder/client image **0.1.0**, ARP-client requester/inverse-peer image **0.1.0**, Custom Ethernet fixed-responder/client image **0.1.0**, and IGMP native-member/query-client image **0.1.0**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -54,7 +54,7 @@ The manager runs directly on the host and invokes the installed Docker CLI using
 argument arrays. Its Web files are embedded at compilation time; production does
 not need Node, npm, Cargo, or Nginx on the host. The Rust core and API client do
 not use host Python. The deb additionally depends on **Python 3** for the optional
-local `plabctl serial` PTY helper, installed at
+local `plabctl serial` PTY helper and typed `plabctl igmp link` helper. The latter only creates new project-owned kernel VXLAN devices; existing physical links remain read-only. See [IGMP](docs/igmp.md). The serial helper is installed at
 `/usr/libexec/protocol-target-lab/iec101_serial.py` and invoked with Python isolated
 mode. The host also needs **iproute2** for the manager's read-only `ip -j`
 address/interface checks before BFD operations; the deb declares this dependency.
@@ -171,7 +171,7 @@ There is one main configuration per protocol. Start, stop, restart, logs, and
 connection tests operate directly on that protocol's workspace. Internal runtime
 components do not create more workspaces: IEC101 keeps both independent
 address-width channels simultaneously in one workspace, while an MQTT-SN private broker is an internal dependency. Temporary
-test containers also remain internal resources. The thirteen implemented protocols
+test containers also remain internal resources. The fifteen implemented protocols
 listed above each have one fixed workspace.
 
 Existing single-HTTP configurations retain their original ID, ownership hash,

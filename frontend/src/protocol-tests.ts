@@ -29,6 +29,7 @@ export type ProtocolTestRun<C> = {
   } | null;
   error: string | null;
   cleanup_complete: boolean;
+  progress?: unknown;
 };
 export type ProtocolTestSnapshot<C> = {
   session_id: string;

@@ -9,6 +9,14 @@ case "$1" in
         fi
         # stop-all stops the manager first, preventing automatic recreation.
         /usr/bin/plabctl stop-all
+        # Peer-only helpers may use a remote deployment UUID and need no local
+        # manager document. Also check the fixed package state if PLAB_DATA_DIR
+        # points elsewhere. Never scan arbitrary caller-selected state dirs.
+        igmp_state=/var/lib/protocol-target-lab/igmp-links
+        if [ -e "$igmp_state" ] || [ -L "$igmp_state" ]; then
+            /usr/bin/python3 -I /usr/libexec/protocol-target-lab/igmp_link.py \
+                _cleanup_package --spec-json '{"schema_version":1}' --state-dir "$igmp_state"
+        fi
         if [ -d /run/systemd/system ]; then
             systemctl disable protocol-target-lab.service
         fi

@@ -650,3 +650,94 @@ test("custom dual response banks join fourteen isolated drafts; a valid save ret
   ])
     assert.equal(sameWorkspaceConfig(customEthernetDefaults, c), false);
 });
+
+test("IGMP native groups become a fifteenth isolated draft without changing custom invalid hidden text or prior14", async () => {
+  const { igmpDefaults, normalizeIgmpConfig } = await import(
+    "../src/igmp-config.ts"
+  );
+  const { customEthernetDefaults } = await import(
+    "../src/custom-ethernet-config.ts"
+  );
+  const { rtpDefaults } = await import("../src/rtp-config.ts");
+  const { rtcpDefaults } = await import("../src/rtcp-config.ts");
+  const { dlt645Defaults } = await import("../src/dlt645-config.ts");
+  const { iec101Defaults, updateIec101Channel } = await import(
+    "../src/iec101-config.ts"
+  );
+  const { bfdDefaults, changeBfdMode } = await import("../src/bfd-config.ts");
+  const { vxlanDefaults } = await import("../src/vxlan-config.ts");
+  const { arpClientDefaults } = await import("../src/arp-client-config.ts");
+  const prior = [
+    dnsDefaults,
+    mqttDefaults,
+    telnetDefaults,
+    iec104Defaults,
+    mqttSnDefaults,
+    rtpDefaults,
+    rtcpDefaults,
+    dlt645Defaults,
+    vxlanDefaults,
+  ];
+  let drafts = {};
+  for (const [i, c] of prior.entries())
+    drafts = updateWorkspaceDrafts(
+      drafts,
+      `old-${i}`,
+      { ...c, port: c.port + 2 },
+      c,
+    );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "http",
+    { ...defaults, response_length: 128 },
+    defaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "iec101",
+    updateIec101Channel(iec101Defaults, "single", { point: { value: false } }),
+    iec101Defaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "bfd",
+    changeBfdMode(bfdDefaults, "quiet"),
+    bfdDefaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "arp",
+    { ...arpClientDefaults, interval_ms: 600 },
+    arpClientDefaults,
+  );
+  const custom = structuredClone(customEthernetDefaults);
+  custom.response.frame_hex = "abc";
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "custom",
+    custom,
+    customEthernetDefaults,
+  );
+  const old = structuredClone(drafts);
+  const igmp = { ...igmpDefaults, groups: ["239.192.19.2", "239.192.19.1"] };
+  drafts = updateWorkspaceDrafts(drafts, "igmp", igmp, igmpDefaults);
+  assert.equal(Object.keys(drafts).length, 15);
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "igmp",
+    igmp,
+    normalizeIgmpConfig(igmp),
+  );
+  assert.equal(Object.keys(drafts).length, 14);
+  assert.deepEqual(drafts, old);
+  assert.equal(drafts.custom.response.frame_hex, "abc");
+  for (const c of [
+    ...prior,
+    defaults,
+    iec101Defaults,
+    bfdDefaults,
+    arpClientDefaults,
+    customEthernetDefaults,
+  ])
+    assert.equal(sameWorkspaceConfig(igmpDefaults, c), false);
+});

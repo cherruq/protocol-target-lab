@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import type { ProtocolTestRun } from "./protocol-tests";
 import {
   boundedWireSummary,
   actualProtocolExchanges,
@@ -66,6 +68,8 @@ export default function ProtocolClientTests<C>({
   receiveEvidence = false,
   reportLabel,
   showActualExchanges = false,
+  renderExtra,
+  showRetainedResultNotice = false,
 }: {
   instance: Target<C>;
   protocolName: string;
@@ -77,6 +81,8 @@ export default function ProtocolClientTests<C>({
   receiveEvidence?: boolean;
   reportLabel?: (method: string, appliedConfig: C) => string;
   showActualExchanges?: boolean;
+  renderExtra?: (run: ProtocolTestRun<C>) => ReactNode;
+  showRetainedResultNotice?: boolean;
 }) {
   const state = useProtocolTests<C>(instance.id);
   const {
@@ -195,6 +201,12 @@ export default function ProtocolClientTests<C>({
           {startError}
         </div>
       )}
+      {startError && current && showRetainedResultNotice && (
+        <p className="test-config-notice" role="status">
+          本次发起出现错误。下方为当前保留结果（测试ID <code>{current.id}</code>
+          ），不能把它当作这次新请求已通过；请求超时也不代表一定未受理，请按测试ID核对。
+        </p>
+      )}
       {notice && (
         <div className="test-config-notice" role="status">
           {notice}
@@ -262,6 +274,7 @@ export default function ProtocolClientTests<C>({
                 ? "客户端容器运行中，尚未清理"
                 : `客户端容器未清理，存在残留：${current.container_name}`}
           </div>
+          {renderExtra?.(current)}
           {current.error && (
             <div className="test-error" role="alert">
               客户端执行错误：{current.error}

@@ -40,6 +40,8 @@ pub struct TestRun {
     pub report: Option<Value>,
     pub error: Option<String>,
     pub cleanup_complete: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<Value>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -51,6 +53,13 @@ impl TestRequest {
     pub fn validate_for(&self, config: &ProtocolConfig) -> Result<()> {
         match config {
             ProtocolConfig::Http(_) => self.validate(),
+            ProtocolConfig::Igmp(c) => {
+                if self.path != crate::igmp::PATH {
+                    bail!("config.test: choose membership path");
+                }
+                c.rounds(&self.method)?;
+                Ok(())
+            }
             ProtocolConfig::CustomEthernet(c) => {
                 if self.path != crate::custom_ethernet::PATH {
                     bail!("config.test: choose frame path")
@@ -318,6 +327,22 @@ pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) ->
             "configured image has no built-in protocol client; import matching assets before testing"
         );
     }
+    if let ProtocolConfig::Igmp(c) = &config {
+        if resources[0]["Image"] != image_id {
+            bail!(
+                "config.test: IGMP peer image differs from actual source; restart explicitly to apply configured image"
+            );
+        }
+        crate::igmp_link::client_preflight(
+            &manager.settings,
+            &deployment,
+            instance_id,
+            &source_id,
+            c,
+            &request.method,
+        )
+        .await?;
+    }
     if let ProtocolConfig::Bfd(c) = &config {
         if resources[0]["Image"] != image_id {
             bail!(
@@ -380,6 +405,7 @@ pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) ->
         report: None,
         error: None,
         cleanup_complete: false,
+        progress: None,
     };
     {
         let mut d = manager.data.lock().await;
@@ -399,7 +425,14 @@ pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) ->
     tokio::spawn(async move {
         let _control = control;
         let outcome = run_client(&manager, &deployment, &image_id, &run).await;
-        let cleanup = cleanup_run(&deployment, &run.id).await;
+        let cleanup = if matches!(run.applied_config, ProtocolConfig::Igmp(_)) {
+            tokio::time::timeout(
+                Duration::from_millis(crate::igmp::CLEANUP_BUDGET_MS),
+                cleanup_run(&deployment, &run.id),
+            ).await.unwrap_or_else(|_|Err(anyhow::anyhow!("IGMP exact-owned peer cleanup exceeded5-second reserve; completion is unconfirmed and retained for the owned-resource reaper")))
+        } else {
+            cleanup_run(&deployment, &run.id).await
+        };
         let mut d = manager.data.lock().await;
         if let Some(current) = d.tests.get_mut(&run.instance_id).filter(|t| t.id == run.id) {
             current.finished_at = Some(now());
@@ -450,6 +483,9 @@ async fn run_client(
     image: &str,
     run: &TestRun,
 ) -> Result<Value> {
+    if matches!(run.applied_config, ProtocolConfig::Igmp(_)) {
+        return crate::igmp_testing::run(manager, deployment, image, run).await;
+    }
     let custom_execution = if let ProtocolConfig::CustomEthernet(c) = &run.applied_config {
         let before = docker::owned(deployment, Some(&run.instance_id)).await?;
         if before.len() != 1 || before[0]["Image"] != image {
@@ -555,6 +591,7 @@ async fn run_client(
         ]);
     }
     match &run.applied_config {
+        ProtocolConfig::Igmp(_) => unreachable!("IGMP uses dedicated bounded progress runner"),
         ProtocolConfig::CustomEthernet(c) => args.extend(crate::custom_ethernet::config_args(c)?),
         ProtocolConfig::Dns(_)
         | ProtocolConfig::Mqtt(_)

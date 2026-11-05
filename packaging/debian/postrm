@@ -2,8 +2,29 @@
 set -e
 case "$1" in
     purge)
-        # These fixed directories belong exclusively to this package.
-        rm -rf -- /etc/protocol-target-lab /var/lib/protocol-target-lab
+        # The helper executable is already removed. Never discard a remaining
+        # receipt or unknown ownership journal, even after forced removal.
+        state=/var/lib/protocol-target-lab
+        igmp_state=$state/igmp-links
+        if [ -L "$state" ] || [ -L "$igmp_state" ] || { [ -e "$igmp_state" ] && [ ! -d "$igmp_state" ]; }; then
+            printf '%s\n' 'Refusing purge of changed IGMP ownership state path; recovery metadata retained.' >&2
+            exit 1
+        fi
+        if [ -d "$igmp_state" ]; then
+            for entry in "$igmp_state"/* "$igmp_state"/.[!.]* "$igmp_state"/..?*; do
+                [ -e "$entry" ] || [ -L "$entry" ] || continue
+                if [ "${entry##*/}" != control.lock ] || [ -L "$entry" ] || [ ! -f "$entry" ] || [ -s "$entry" ]; then
+                    printf '%s\n' 'Refusing purge with remaining IGMP ownership metadata; reinstall the helper and stop its owned links first.' >&2
+                    exit 1
+                fi
+            done
+        fi
+        rm -rf -- /etc/protocol-target-lab
+        # Remove only the known manager marker. Preserve helper/custom recovery
+        # directories and lock inodes; a concurrent or unknown owner must never
+        # lose its metadata through recursive deletion.
+        rm -f -- "$state/deployment-id"
+        rmdir "$igmp_state" "$state" 2>/dev/null || true
         # Never recursively erase serial ownership IPC after the helper has been
         # removed. A stale/unknown daemon must retain its recovery metadata.
         # Harmless lock files can remain in volatile /run until reboot.

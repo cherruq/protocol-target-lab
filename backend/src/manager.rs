@@ -191,6 +191,12 @@ impl Manager {
             for v in resources {
                 docker::remove(&v, &deployment, id).await?;
             }
+            if let ProtocolConfig::Igmp(c) =
+                instance.applied_config.as_ref().unwrap_or(&instance.config)
+            {
+                crate::igmp_link::stop_link(&self.settings, &deployment, id, c).await?;
+                crate::igmp_link::cleanup_empty(&deployment, id, true).await?;
+            }
             if instance.protocol_id == "custom-ethernet" {
                 crate::custom_l2::cleanup_empty(&deployment, id, true).await?;
             }
@@ -211,8 +217,14 @@ impl Manager {
         if let Some(existing) = resources.first() {
             if kind != "restart" && docker::running(existing) && docker::matches(existing, &config)
             {
-                docker::probe_owned(&deployment, id, &docker::container_id(existing)?, &config)
-                    .await?;
+                docker::probe_owned(
+                    &self.settings,
+                    &deployment,
+                    id,
+                    &docker::container_id(existing)?,
+                    &config,
+                )
+                .await?;
                 self.record_container(id, docker::container_id(existing)?)
                     .await;
                 return Ok(Some(config));
@@ -232,7 +244,26 @@ impl Manager {
             .first()
             .filter(|v| docker::running(v))
             .and(instance.applied_config.as_ref());
-        let compilation = if let ProtocolConfig::CustomEthernet(c) = &config {
+        let igmp_old = instance.applied_config.as_ref().and_then(|c| {
+            if let ProtocolConfig::Igmp(c) = c {
+                Some(c)
+            } else {
+                None
+            }
+        });
+        let igmp_restore_running = resources.first().is_some_and(docker::running);
+        let compilation = if let ProtocolConfig::Igmp(c) = &config {
+            crate::igmp_link::preflight(
+                &self.settings,
+                &deployment,
+                id,
+                c,
+                igmp_old,
+                resources.first().and_then(|v| v["Id"].as_str()),
+            )
+            .await?;
+            None
+        } else if let ProtocolConfig::CustomEthernet(c) = &config {
             let old = own_endpoint.and_then(|o| {
                 if let ProtocolConfig::CustomEthernet(c) = o {
                     Some(c)
@@ -266,17 +297,97 @@ impl Manager {
         for v in &resources {
             docker::remove(v, &deployment, id).await?;
         }
-        let container = docker::start(
-            &deployment,
-            id,
-            &config,
-            &prepared_image,
-            compilation.as_ref(),
-        )
-        .await?;
+        let container = if let ProtocolConfig::Igmp(c) = &config {
+            let attempt = async {
+                if let Some(old) = igmp_old.filter(|old| old.link != c.link) {
+                    crate::igmp_link::stop_link(&self.settings, &deployment, id, old).await?;
+                }
+                let ctx =
+                    crate::igmp_link::prepare_start(&self.settings, &deployment, id, c).await?;
+                let cid =
+                    docker::start(&deployment, id, &config, &prepared_image, None, Some(&ctx))
+                        .await?;
+                let ready = async {
+                    let mut last = String::new();
+                    for _ in 0..40 {
+                        match docker::probe_owned(&self.settings, &deployment, id, &cid, &config)
+                            .await
+                        {
+                            Ok(()) => return Ok(()),
+                            Err(e) => last = format!("{e:#}"),
+                        }
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    }
+                    bail!("IGMP native membership readiness failed: {last}")
+                }
+                .await;
+                if let Err(e) = ready {
+                    for v in docker::owned(&deployment, Some(id)).await? {
+                        if docker::container_id(&v)? == cid {
+                            docker::remove(&v, &deployment, id).await?;
+                        }
+                    }
+                    return Err(e);
+                }
+                Ok(cid)
+            }
+            .await;
+            match attempt {
+                Ok(cid) => {
+                    crate::igmp_link::cleanup_empty(&deployment, id, false).await?;
+                    self.record_container(id, cid).await;
+                    return Ok(Some(config));
+                }
+                Err(primary) => {
+                    let rollback = async {
+                        // Membership holders must be gone before deleting the native link,
+                        // including when the first exact-candidate removal failed.
+                        for v in docker::owned(&deployment,Some(id)).await? {
+                            if !docker::matches(&v,&config) { bail!("candidate cleanup identity drift; native link preserved"); }
+                            docker::remove(&v,&deployment,id).await?;
+                        }
+                        crate::igmp_link::stop_link(&self.settings,&deployment,id,c).await?;
+                        crate::igmp_link::cleanup_empty(&deployment,id,false).await?;
+                        if let Some(old) = igmp_old.filter(|_| igmp_restore_running) {
+                            let ctx = crate::igmp_link::prepare_start(&self.settings,&deployment,id,old).await?;
+                            let old_config: ProtocolConfig=old.clone().into();
+                            let old_image=resources.first().and_then(|v|v["Image"].as_str()).context("old IGMP immutable image missing")?;
+                            let cid=docker::start(&deployment,id,&old_config,old_image,None,Some(&ctx)).await?;
+                            let mut last=String::new();
+                            for _ in 0..40 {
+                                match docker::probe_owned(&self.settings,&deployment,id,&cid,&old_config).await {
+                                    Ok(()) => { self.record_container(id,cid.clone()).await; return Ok(format!("old applied membership restored with new source CID {cid}; PID/boot may change")); },
+                                    Err(e) => last=format!("{e:#}"),
+                                }
+                                tokio::time::sleep(Duration::from_millis(100)).await;
+                            }
+                            bail!("rollback membership not ready: {last}");
+                        }
+                        Ok("no previously running applied source to restore".into())
+                    }.await;
+                    bail!(
+                        "IGMP commit failed: {primary:#}; rollback: {}",
+                        match rollback {
+                            Ok(s) => s,
+                            Err(e) => format!("failed: {e:#}"),
+                        }
+                    );
+                }
+            }
+        } else {
+            docker::start(
+                &deployment,
+                id,
+                &config,
+                &prepared_image,
+                compilation.as_ref(),
+                None,
+            )
+            .await?
+        };
         let mut ready_error = "Protocol worker did not become ready".to_owned();
         for _ in 0..40 {
-            match docker::probe_owned(&deployment, id, &container, &config).await {
+            match docker::probe_owned(&self.settings, &deployment, id, &container, &config).await {
                 Ok(()) => {
                     let owned = docker::owned(&deployment, Some(id)).await?;
                     if owned.len() == 1
@@ -438,6 +549,43 @@ impl Manager {
             return Ok(());
         };
         let resources = docker::owned(deployment, Some(id)).await?;
+        let igmp_sample = {
+            let d = self.data.lock().await;
+            d.doc
+                .instances
+                .iter()
+                .find(|i| i.id == id && i.current_operation.is_none() && i.enabled)
+                .and_then(|i| i.applied_config.as_ref())
+                .and_then(|c| {
+                    if let ProtocolConfig::Igmp(c) = c {
+                        Some(c.clone())
+                    } else {
+                        None
+                    }
+                })
+        };
+        if let (Some(c), Some(v)) = (
+            igmp_sample,
+            resources.first().filter(|v| docker::running(v)),
+        ) && docker::matches(v, &c.clone().into())
+            && let Err(e) = crate::igmp_link::snapshot(
+                &self.settings,
+                deployment,
+                id,
+                &docker::container_id(v)?,
+                &c,
+            )
+            .await
+        {
+            let mut d = self.data.lock().await;
+            if let Some(i) = d.doc.instances.iter_mut().find(|i| i.id == id) {
+                i.status = "error".into();
+                i.runtime_error = Some(format!(
+                    "IGMP native membership/link verification failed: {e:#}"
+                ));
+            }
+            return Ok(());
+        }
         let mut recover = None;
         {
             let mut d = self.data.lock().await;

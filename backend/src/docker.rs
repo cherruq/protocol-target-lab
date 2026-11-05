@@ -66,6 +66,11 @@ pub async fn prepare_image(image: &str, config: &ProtocolConfig) -> Result<Strin
         {
             bail!("Protocol image is incompatible; import matching assets");
         }
+        if matches!(config, ProtocolConfig::Igmp(_))
+            && !crate::igmp::image_schemas_match(&metadata[0]["Config"]["Labels"])
+        {
+            bail!("IGMP image lacks required membership/response/client/control/observer schemas");
+        }
         if matches!(config, ProtocolConfig::CustomEthernet(_))
             && ["request", "client", "control", "observer", "compiler"]
                 .iter()
@@ -200,6 +205,11 @@ pub fn running(v: &Value) -> bool {
     v["State"]["Running"].as_bool() == Some(true)
 }
 pub fn matches(v: &Value, config: &ProtocolConfig) -> bool {
+    if let ProtocolConfig::Igmp(c) = config
+        && !crate::igmp_link::container_matches(v, c)
+    {
+        return false;
+    }
     if let ProtocolConfig::CustomEthernet(c) = config
         && !crate::custom_l2::container_matches(v, c)
     {
@@ -288,6 +298,7 @@ pub async fn start(
     config: &ProtocolConfig,
     image: &str,
     compilation: Option<&crate::custom_l2::Compilation>,
+    igmp_context: Option<&crate::igmp_link::SourceContext>,
 ) -> Result<String> {
     let immutable_image = image_id(image).await?;
     let arp_network = if let ProtocolConfig::CustomEthernet(c) = config {
@@ -303,7 +314,16 @@ pub async fn start(
         "--name".into(),
         name,
         "--network".into(),
-        if let Some(network) = arp_network {
+        if let Some(ctx) = igmp_context {
+            if matches!(config, ProtocolConfig::Igmp(c) if c.link.is_bridge()) {
+                format!(
+                    "name={},driver-opt=com.docker.network.endpoint.sysctls=net.ipv4.conf.IFNAME.force_igmp_version=2",
+                    ctx.network_mode
+                )
+            } else {
+                ctx.network_mode.clone()
+            }
+        } else if let Some(network) = arp_network {
             network
         } else if matches!(
             config,
@@ -336,6 +356,35 @@ pub async fn start(
         format!("{HASH}={}", config.fingerprint()),
     ];
     match config {
+        ProtocolConfig::Igmp(c) => {
+            let ctx =
+                igmp_context.context("IGMP source requires successful typed link preparation")?;
+            let nonce = uuid::Uuid::new_v4().simple().to_string();
+            args.extend([
+                "--user".into(),
+                "0:0".into(),
+                "--cap-drop".into(),
+                "ALL".into(),
+                "--cap-add".into(),
+                "NET_RAW".into(),
+                "--ipc".into(),
+                "private".into(),
+                "--label".into(),
+                format!("{}={nonce}", crate::igmp::RUNTIME_LABEL),
+                "--env".into(),
+                format!("PLAB_RUNTIME_ID={nonce}"),
+                immutable_image,
+            ]);
+            args.extend(crate::igmp::config_args(c)?);
+            if let Some(ip) = &ctx.interface_ip {
+                args.extend([
+                    "--interface".into(),
+                    ctx.interface.clone(),
+                    "--interface-ip".into(),
+                    ip.clone(),
+                ]);
+            }
+        }
         ProtocolConfig::Http(c) => {
             args.extend([
                 immutable_image,
@@ -514,11 +563,16 @@ pub async fn start(
     Ok(container)
 }
 pub async fn probe_owned(
+    settings: &crate::storage::Settings,
     deployment: &str,
     instance: &str,
     source_id: &str,
     config: &ProtocolConfig,
 ) -> Result<()> {
+    if let ProtocolConfig::Igmp(c) = config {
+        crate::igmp_link::snapshot(settings, deployment, instance, source_id, c).await?;
+        return Ok(());
+    }
     if let ProtocolConfig::CustomEthernet(c) = config {
         crate::custom_l2::snapshot(deployment, instance, source_id, c).await?;
         return Ok(());
@@ -584,6 +638,9 @@ pub async fn probe_owned(
 }
 pub async fn probe(config: &ProtocolConfig) -> Result<()> {
     let config = match config {
+        ProtocolConfig::Igmp(_) => bail!(
+            "IGMP readiness requires exact source, actual native membership and owned link identity"
+        ),
         ProtocolConfig::CustomEthernet(_) => {
             bail!("Custom Ethernet readiness requires exact source/network/filter identity")
         }
