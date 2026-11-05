@@ -1,0 +1,11 @@
+Protocol Target Lab finite MPLS Echo target and independent same-image test peer
+use autonomous MIT project code and the Python standard library. It is not a
+native Linux MPLS router or complete MPLS protocol suite. No label table, route,
+module or sysctl is changed by the source or client. The host provides Linux
+AF_PACKET; the container does not distribute a new guest kernel.
+
+The pinned base retains CPython LICENSE at /usr/local/lib/python3.12/LICENSE.txt
+and OS copyright notices under /usr/share/doc. Wrapper MIT terms do not replace
+those licenses. Offline wrapper rebuilding needs the prepared fixed base cache;
+this export is not complete kernel/OS source distribution. Independent native
+oracle tooling is validation-only and is not included in this runtime image.

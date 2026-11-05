@@ -70,6 +70,7 @@ export default function ProtocolClientTests<C>({
   showActualExchanges = false,
   renderExtra,
   showRetainedResultNotice = false,
+  validateResult,
 }: {
   instance: Target<C>;
   protocolName: string;
@@ -83,6 +84,7 @@ export default function ProtocolClientTests<C>({
   showActualExchanges?: boolean;
   renderExtra?: (run: ProtocolTestRun<C>) => ReactNode;
   showRetainedResultNotice?: boolean;
+  validateResult?: (run: ProtocolTestRun<C>) => string | null;
 }) {
   const state = useProtocolTests<C>(instance.id);
   const {
@@ -116,6 +118,7 @@ export default function ProtocolClientTests<C>({
     Boolean(instance.current_operation) ||
     !instance.applied_config;
   const checks = current?.report?.checks || [];
+  const resultProblem = current ? validateResult?.(current) : null;
   const label = (method: string) =>
     protocolTestLabel(method, snapshot?.case_labels, caseLabels);
   function download() {
@@ -221,8 +224,10 @@ export default function ProtocolClientTests<C>({
         <div className="test-result" aria-live="polite">
           <div className="test-result-heading">
             <div>
-              <span className={`test-status test-status-${current.status}`}>
-                {statuses[current.status]}
+              <span
+                className={`test-status test-status-${resultProblem ? "error" : current.status}`}
+              >
+                {resultProblem ? "结果待核对" : statuses[current.status]}
               </span>
               <strong>
                 {reportLabel
@@ -274,6 +279,11 @@ export default function ProtocolClientTests<C>({
                 ? "客户端容器运行中，尚未清理"
                 : `客户端容器未清理，存在残留：${current.container_name}`}
           </div>
+          {resultProblem && (
+            <div className="test-error" role="alert">
+              {resultProblem}
+            </div>
+          )}
           {renderExtra?.(current)}
           {current.error && (
             <div className="test-error" role="alert">
