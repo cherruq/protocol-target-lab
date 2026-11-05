@@ -9,6 +9,9 @@ mod dns;
 mod docker;
 mod iec101;
 mod iec104;
+mod igmp;
+mod igmp_link;
+mod igmp_testing;
 mod l2;
 mod manager;
 mod model;
@@ -75,7 +78,9 @@ async fn stop_all(settings: &Settings) -> Result<()> {
     let _manager = settings.lock("manager.lock")?;
     let _control = settings.lock("control.lock")?;
     let Some(deployment) = cleanup_deployment(settings)? else {
-        println!("No initialized deployment; no owned resources to stop.");
+        // A host can be only a peer, with valid helper receipts but no manager document.
+        crate::igmp_link::cleanup_package(settings).await?;
+        println!("No initialized manager deployment; checked local owned IGMP helper resources.");
         return Ok(());
     };
     testing::cleanup_tests(&deployment, None).await?;
@@ -90,8 +95,23 @@ async fn stop_all(settings: &Settings) -> Result<()> {
     }
     crate::l2::cleanup_deployment(&deployment).await?;
     crate::custom_l2::cleanup_deployment(&deployment).await?;
+    crate::igmp_link::cleanup_deployment(settings, &deployment).await?;
+    crate::igmp_link::cleanup_package(settings).await?;
     println!("Stopped owned resources; configuration and enabled intent preserved.");
     Ok(())
+}
+fn igmp_helper_args(args: &[String], data: &Path) -> Vec<String> {
+    let mut result = args.to_vec();
+    if !args
+        .iter()
+        .any(|a| a == "--state-dir" || a.starts_with("--state-dir="))
+    {
+        result.extend([
+            "--state-dir".into(),
+            data.join("igmp-links").to_string_lossy().into_owned(),
+        ]);
+    }
+    result
 }
 async fn import_assets(directory: &Path) -> Result<()> {
     let directory = directory.canonicalize()?;
@@ -167,6 +187,26 @@ async fn main() -> Result<()> {
                 println!(
                     "{}",
                     json!({"schema_version":1,"ok":false,"command":"serial","error":{"code":"helper_unavailable","message":format!("Cannot execute installed serial helper: {e}")}})
+                );
+                std::process::exit(3);
+            }
+        }
+    }
+    if serial_args.len() >= 2 && serial_args[0] == "igmp" && serial_args[1] == "link" {
+        let settings = Settings::env()?;
+        let helper_args = igmp_helper_args(&serial_args[2..], &settings.data);
+        match tokio::process::Command::new("/usr/bin/python3")
+            .arg("-I")
+            .arg(&settings.igmp_link_helper)
+            .args(helper_args)
+            .status()
+            .await
+        {
+            Ok(status) => std::process::exit(status.code().unwrap_or(1)),
+            Err(e) => {
+                println!(
+                    "{}",
+                    json!({"schema_version":1,"ok":false,"command":"igmp.link","error":{"code":"helper_unavailable","message":format!("Cannot execute installed IGMP link helper: {e}")}})
                 );
                 std::process::exit(3);
             }
@@ -269,6 +309,8 @@ mod cleanup_tests {
             vxlan_image: "unused".into(),
             arp_client_image: "unused".into(),
             custom_ethernet_image: "unused".into(),
+            igmp_image: "unused".into(),
+            igmp_link_helper: "unused".into(),
         };
         struct Cleanup(std::path::PathBuf);
         impl Drop for Cleanup {
@@ -286,5 +328,24 @@ mod cleanup_tests {
         let id = uuid::Uuid::new_v4().to_string();
         std::fs::write(root.join("deployment-id"), &id).unwrap();
         assert_eq!(cleanup_deployment(&settings).unwrap(), Some(id));
+    }
+    #[test]
+    fn helper_default_tracks_configured_installation_and_explicit_state_wins() {
+        let data = std::path::Path::new("/var/lib/plab-test-installation");
+        let basic = vec!["status".into(), "--spec-json".into(), "{}".into()];
+        let actual = igmp_helper_args(&basic, data);
+        assert_eq!(&actual[..basic.len()], basic);
+        assert_eq!(
+            &actual[basic.len()..],
+            ["--state-dir", "/var/lib/plab-test-installation/igmp-links"]
+        );
+        for extra in [
+            vec!["--state-dir".into(), "/var/tmp/explicit-peer".into()],
+            vec!["--state-dir=/var/tmp/explicit-peer".into()],
+        ] {
+            let mut args = basic.clone();
+            args.extend(extra);
+            assert_eq!(igmp_helper_args(&args, data), args);
+        }
     }
 }

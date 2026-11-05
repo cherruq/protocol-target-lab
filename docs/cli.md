@@ -653,3 +653,63 @@ read-only evidence, while the disposable client sends real Ethernet frames.
 The private observer port is not a protocol service port; connection-info provides
 a manual host-interface counterpart template with explicit source image/identity
 placeholders and optional observer-only SSH forwarding.
+
+
+## IGMP native kernel member
+
+```sh
+plabctl schema igmp
+plabctl config get igmp
+plabctl config set igmp --groups-json '["239.192.19.1","239.192.19.2"]'
+plabctl start igmp
+plabctl runtime igmp
+plabctl --timeout 150 tests run igmp --method ALL --path membership
+plabctl logs igmp
+plabctl stop igmp
+```
+
+`--link-json` replaces the entire tagged link object; `--groups-json` preserves
+explicit group order. `--query-profile-json` must be the complete fixed
+`{"version":2,"max_response_code":100}` expectation. Saving does not restart or
+rejoin the running member. General Query covers every configured group in each
+of two rounds; Group Query covers the first configured group in two rounds.
+`ALL` has four check groups and four queries, with separate actual Report counts.
+Native startup warmup is a conservative upper bound, derived from observed
+kernel parameters and member age. Runtime other references or parameter changes
+can make testing unavailable while the worker continues to hold its own member
+references. No raw synthetic Report or generic ACK is generated.
+
+Tests expose optional `current.progress` samples from the actual same-run client
+stderr. These are last samples, not a countdown or a success prediction. The
+client has one90-second total deadline including warmup and12 seconds for each
+query window; the manager allows100 seconds for execution plus a5-second exact-owned peer cleanup reserve (105 seconds total). Unconfirmed cleanup remains an error and is retried by the owned-resource reaper. Prefer `--timeout 150`
+when automating, and inspect the exact accepted test ID after interruption.
+
+Owned kernel VXLAN uses the separately installed local administrative helper:
+
+```sh
+sudo plabctl igmp link start --spec-file peer-link.json
+sudo plabctl igmp link status --spec-file peer-link.json
+sudo plabctl igmp link stop --spec-file peer-link.json
+```
+
+The typed spec and explicit peer setup commands are shown by `connection-info
+igmp`. Replace the peer underlay interface explicitly; its name need not equal
+the target interface. The helper configures only newly created, durably owned
+devices and their automatic kernel routes. Existing physical interfaces,
+global/default sysctls and firewall rules remain read-only. Web does not execute
+SSH or commands on a counterpart. See [IGMP contract](igmp.md) for scope and
+ownership recovery. Local `--spec-file -` reads stdin; `--spec-json` supplies
+literal JSON. `--state-dir` selects a dedicated local helper state directory.
+
+
+The local IGMP helper defaults to `PLAB_DATA_DIR/igmp-links`, using the same
+installation settings as the manager; an explicit `--state-dir` takes priority.
+`stop-all` checks every trusted helper receipt in that installation's managed
+state directory, including peer receipts carrying a remote deployment UUID and
+hosts with no initialized manager document. Protected or active links retain
+metadata and return failure. Package removal also checks the fixed default helper
+state before removing its executable. Purge refuses remaining helper ownership
+metadata and preserves lock inodes and unknown recovery directories. Explicit
+custom state directories remain caller-managed: stop their links before removing
+the package; they are not discovered by a filesystem scan.

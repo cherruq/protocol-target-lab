@@ -20,6 +20,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
   config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
   config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
+  config set igmp [--wire-profile linux-kernel-igmp-v2] [--link-json JSON] [--groups-json JSON] [--query-profile-json JSON]
   config set custom-ethernet [--link-json JSON] [--local-mac MAC] [--peer-mac MAC] [--packet-filter TEXT] [--request-marker-json JSON] [--response-json JSON] [--promiscuous true|false] [--multicast-macs-json JSON] [--test-request-json JSON]
   config set arp-client [--link-json JSON] [--source-mac MAC] [--source-ip IP] [--server-mac MAC] [--server-ip IP] [--assigned-ip IP] [--mode whois|response-fuzz|rarp|inarp] [--request-scenario-json JSON] [--interval-ms N] [--timeout-ms N] [--retries N]
   config set vxlan [--bind-ip IP] [--port N] [--peer-ip IP] [--peer-port N] [--source-port N] [--vni N] [--inner-ip IP] [--inner-mac MAC] [--requester-ip IP] [--requester-mac MAC] [--reply-padding 0|18] [--scenario-json JSON]
@@ -32,7 +33,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set iec104 [--bind-ip IP] [--port N] [--max-connections N] [--points-json JSON]
   config set telnet [--bind-ip IP] [--port N] [--banner TEXT] [--max-connections N] [--max-line-bytes N]
   start PROTOCOL | stop PROTOCOL | restart PROTOCOL [--wait | --no-wait]
-  connection-info PROTOCOL | runtime bfd|vxlan|arp-client|custom-ethernet
+  connection-info PROTOCOL | runtime bfd|vxlan|arp-client|custom-ethernet|igmp
   logs PROTOCOL [--follow]
   tests list PROTOCOL
   tests run PROTOCOL [--method ALL] [--path /ok | --name DNS_NAME] (DNS defaults to ALL) [--wait | --no-wait]
@@ -50,10 +51,11 @@ Local administrative commands (retain existing behavior; may require root):
   plabctl start                 start the management service
   plabctl stop-all              stop manager and owned resources
   plabctl status | doctor       local persisted state and Docker diagnostics
+  plabctl igmp link start|status|stop --spec-file FILE|- | --spec-json JSON [--state-dir DIR]
   plabctl serial start --host IPv4 --single-port N --double-port N
   plabctl serial status | stop   local root-owned dual PTY helper
   plabctl assets import DIR     local image import from a checked manifest
-Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_IEC104_IMAGE, PLAB_MQTTSN_IMAGE, PLAB_RTP_IMAGE, PLAB_RTCP_IMAGE, PLAB_DLT645_IMAGE, PLAB_IEC101_IMAGE, PLAB_BFD_IMAGE, PLAB_VXLAN_IMAGE, PLAB_ARP_CLIENT_IMAGE, PLAB_CUSTOM_ETHERNET_IMAGE, PLAB_DOCKER_SOCKET
+Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_IEC104_IMAGE, PLAB_MQTTSN_IMAGE, PLAB_RTP_IMAGE, PLAB_RTCP_IMAGE, PLAB_DLT645_IMAGE, PLAB_IEC101_IMAGE, PLAB_BFD_IMAGE, PLAB_VXLAN_IMAGE, PLAB_ARP_CLIENT_IMAGE, PLAB_CUSTOM_ETHERNET_IMAGE, PLAB_IGMP_IMAGE, PLAB_IGMP_LINK_HELPER, PLAB_DOCKER_SOCKET
 "#;
 const LIMIT: usize = 8 * 1024 * 1024;
 type Result<T> = std::result::Result<T, Failure>;
@@ -166,6 +168,8 @@ const VALUE_OPTIONS: &[&str] = &[
     "--wire-profile",
     "--peer-ip",
     "--link-json",
+    "--groups-json",
+    "--query-profile-json",
     "--local-mac",
     "--peer-mac",
     "--packet-filter",
@@ -359,6 +363,8 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--wire-profile",
                 "--peer-ip",
                 "--link-json",
+                "--groups-json",
+                "--query-profile-json",
                 "--local-mac",
                 "--peer-mac",
                 "--packet-filter",
@@ -449,7 +455,9 @@ fn parse(args: &[String]) -> Result<Options> {
                     return Err(Failure::usage("--name applies to DNS tests"));
                 }
                 path.or(name).unwrap_or_else(|| {
-                    if *p == "custom-ethernet" {
+                    if *p == "igmp" {
+                        crate::igmp::PATH.into()
+                    } else if *p == "custom-ethernet" {
                         crate::custom_ethernet::PATH.into()
                     } else if *p == "arp-client" {
                         crate::arp_client::PATH.into()
@@ -820,7 +828,9 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
                         .map_err(|_| Failure::usage(format!("{key} must be true or false")))?,
                 )
             }
-            "--link-json"
+            "--groups-json"
+            | "--query-profile-json"
+            | "--link-json"
             | "--request-marker-json"
             | "--response-json"
             | "--multicast-macs-json"
@@ -842,7 +852,11 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
                 "request_marker_hex".into()
             } else if matches!(
                 key.as_str(),
-                "--response-json" | "--multicast-macs-json" | "--test-request-json"
+                "--response-json"
+                    | "--multicast-macs-json"
+                    | "--test-request-json"
+                    | "--groups-json"
+                    | "--query-profile-json"
             ) {
                 key.trim_start_matches("--")
                     .trim_end_matches("-json")
@@ -1683,5 +1697,28 @@ mod tests {
             .unwrap_err();
             assert_eq!(error.exit, 6);
         }
+    }
+    #[test]
+    fn igmp_cli_uses_membership_path_and_atomic_json_fields() {
+        let opts = parse(&args("tests run igmp")).unwrap();
+        assert!(
+            matches!(opts.command,Command::TestRun(p,m,path,true) if p=="igmp" && m=="ALL" && path==crate::igmp::PATH)
+        );
+        assert!(
+            matches!(parse(&args("runtime igmp")).unwrap().command,Command::Runtime(p) if p=="igmp")
+        );
+        let fields = BTreeMap::from([
+            (
+                "--groups-json".into(),
+                "[\"239.2.2.2\",\"239.1.1.1\"]".into(),
+            ),
+            (
+                "--query-profile-json".into(),
+                "{\"version\":2,\"max_response_code\":100}".into(),
+            ),
+        ]);
+        let patch = config_patch(fields).unwrap();
+        let config = crate::igmp::IgmpConfig::default().patch(patch).unwrap();
+        assert_eq!(config.groups, ["239.2.2.2", "239.1.1.1"]);
     }
 }
