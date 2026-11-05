@@ -66,6 +66,17 @@ pub async fn prepare_image(image: &str, config: &ProtocolConfig) -> Result<Strin
         {
             bail!("Protocol image is incompatible; import matching assets");
         }
+        if matches!(config, ProtocolConfig::ArpClient(_))
+            && ["request", "control", "observer", "client"]
+                .iter()
+                .any(|k| {
+                    metadata[0]["Config"]["Labels"]
+                        [format!("io.protocol-target-lab.arp-client-{k}-schema")]
+                        != "1"
+                })
+        {
+            bail!("ARP-client image lacks active requester/observer/inverse-peer capability");
+        }
         if matches!(config, ProtocolConfig::Bfd(_))
             && ["control", "observer", "client"].iter().any(|k| {
                 metadata[0]["Config"]["Labels"][format!("io.protocol-target-lab.bfd-{k}-schema")]
@@ -178,6 +189,11 @@ pub fn running(v: &Value) -> bool {
     v["State"]["Running"].as_bool() == Some(true)
 }
 pub fn matches(v: &Value, config: &ProtocolConfig) -> bool {
+    if let ProtocolConfig::ArpClient(c) = config
+        && !crate::l2::container_matches(v, c)
+    {
+        return false;
+    }
     if matches!(config, ProtocolConfig::Bfd(_)) && !crate::bfd::container_matches(v) {
         return false;
     }
@@ -200,6 +216,7 @@ pub fn matches(v: &Value, config: &ProtocolConfig) -> bool {
     }
 
     if matches!(config, ProtocolConfig::Rtp(_) | ProtocolConfig::Rtcp(_)) {
+        let endpoint = config.ip_endpoint().expect("IP receiver variant");
         let p = &v["HostConfig"]["PortBindings"];
         if v["HostConfig"]["NetworkMode"] != "bridge"
             || v["Config"]["Labels"][format!(
@@ -211,8 +228,8 @@ pub fn matches(v: &Value, config: &ProtocolConfig) -> bool {
                 config.protocol_id()
             )] != "1"
             || p.as_object().is_none_or(|p| p.len() != 1)
-            || p[format!("{}/udp", config.internal_port())]
-                != serde_json::json!([{"HostIp":config.bind_ip(),"HostPort":config.port().to_string()}])
+            || p[format!("{}/udp", endpoint.internal_port)]
+                != serde_json::json!([{"HostIp":endpoint.bind_ip,"HostPort":endpoint.port.to_string()}])
         {
             return false;
         }
@@ -256,13 +273,20 @@ pub async fn start(
     image: &str,
 ) -> Result<String> {
     let immutable_image = image_id(image).await?;
+    let arp_network = if let ProtocolConfig::ArpClient(c) = config {
+        Some(crate::l2::network_for_start(deployment, id, c).await?)
+    } else {
+        None
+    };
     let name = format!("plab-{}-{id}", &deployment[..8]);
     let mut args = vec![
         "create".into(),
         "--name".into(),
         name,
         "--network".into(),
-        if matches!(
+        if let Some(network) = arp_network {
+            network
+        } else if matches!(
             config,
             ProtocolConfig::Http(_)
                 | ProtocolConfig::MqttSn(_)
@@ -302,6 +326,31 @@ pub async fn start(
                 c.port.to_string(),
             ]);
             args.extend(worker_args(c));
+        }
+        ProtocolConfig::ArpClient(c) => {
+            let nonce = uuid::Uuid::new_v4().simple().to_string();
+            args.extend([
+                "--user".into(),
+                "0:0".into(),
+                "--cap-drop".into(),
+                "ALL".into(),
+                "--cap-add".into(),
+                "NET_RAW".into(),
+                "--ipc".into(),
+                "private".into(),
+                "--label".into(),
+                format!("{}={nonce}", crate::arp_client::RUNTIME_LABEL),
+                "--env".into(),
+                format!("PLAB_RUNTIME_ID={nonce}"),
+            ]);
+            if c.link.is_bridge() {
+                args.extend(["--mac-address".into(), c.source_mac.clone()]);
+            }
+            args.extend([
+                immutable_image,
+                "--config-json".into(),
+                serde_json::to_string(config)?,
+            ]);
         }
         ProtocolConfig::Bfd(_) => {
             let nonce = uuid::Uuid::new_v4().simple().to_string();
@@ -366,14 +415,17 @@ pub async fn start(
             ]);
         }
         _ => {
+            let endpoint = config
+                .ip_endpoint()
+                .context("config.transport: IP endpoint required")?;
             for transport in config.transports() {
                 args.extend([
                     "--publish".into(),
                     format!(
                         "{}:{}:{}/{}",
-                        config.bind_ip(),
-                        config.port(),
-                        config.internal_port(),
+                        endpoint.bind_ip,
+                        endpoint.port,
+                        endpoint.internal_port,
                         transport.to_ascii_lowercase()
                     ),
                 ]);
@@ -399,6 +451,10 @@ pub async fn probe_owned(
     source_id: &str,
     config: &ProtocolConfig,
 ) -> Result<()> {
+    if let ProtocolConfig::ArpClient(c) = config {
+        crate::l2::snapshot(deployment, instance, source_id, c).await?;
+        return Ok(());
+    }
     if let ProtocolConfig::Bfd(c) = config {
         crate::bfd::snapshot(deployment, instance, source_id, c).await?;
         return Ok(());
@@ -456,6 +512,9 @@ pub async fn probe_owned(
 }
 pub async fn probe(config: &ProtocolConfig) -> Result<()> {
     let config = match config {
+        ProtocolConfig::ArpClient(_) => {
+            bail!("ARP readiness requires exact owned source/network and private state")
+        }
         ProtocolConfig::Bfd(_) => {
             bail!("BFD readiness requires exact owned source and private state")
         }
@@ -570,7 +629,22 @@ pub async fn preflight_port(
     config: &ProtocolConfig,
     own: Option<&ProtocolConfig>,
     own_id: Option<&str>,
+    deployment: &str,
+    instance: &str,
 ) -> Result<()> {
+    if let ProtocolConfig::ArpClient(c) = config {
+        let old = own.and_then(|o| {
+            if let ProtocolConfig::ArpClient(c) = o {
+                Some(c)
+            } else {
+                None
+            }
+        });
+        return crate::l2::preflight(deployment, instance, c, old, own_id).await;
+    }
+    let endpoint = config
+        .ip_endpoint()
+        .context("config.transport: IP endpoint required")?;
     if let ProtocolConfig::Bfd(c) = config {
         let old = own.and_then(|o| {
             if let ProtocolConfig::Bfd(c) = o {
@@ -610,7 +684,7 @@ pub async fn preflight_port(
         config
             .transports()
             .into_iter()
-            .map(|t| (config.bind_ip().to_string(), config.port(), t))
+            .map(|t| (endpoint.bind_ip.to_string(), endpoint.port, t))
             .collect::<Vec<_>>()
     };
     let overlap = |a: &str, b: &str| a == b || a == "0.0.0.0" || b == "0.0.0.0";
@@ -662,36 +736,40 @@ pub async fn preflight_port(
         return crate::mqtt_sn::preflight(c, old, own_id).await;
     }
     let c = config;
-    let address_check = std::net::TcpListener::bind((c.bind_ip(), 0))
+    let address_check = std::net::TcpListener::bind((endpoint.bind_ip, 0))
         .context("config.bind_ip: address is not available on this host")?;
     drop(address_check);
     for transport in c.transports() {
         let own_endpoint = own.filter(|old| {
             old.protocol_id() == c.protocol_id()
-                && old.port() == c.port()
+                && old.ip_endpoint().is_some_and(|e| e.port == endpoint.port)
                 && old.transports().contains(&transport)
-                && overlap(old.bind_ip(), c.bind_ip())
+                && old
+                    .ip_endpoint()
+                    .is_some_and(|e| overlap(e.bind_ip, endpoint.bind_ip))
         });
         if own_endpoint.is_none() {
             if transport == "TCP" {
                 drop(
-                    std::net::TcpListener::bind((c.bind_ip(), c.port())).with_context(|| {
-                        format!(
-                            "config.port: TCP {}:{} is unavailable",
-                            c.bind_ip(),
-                            c.port()
-                        )
-                    })?,
+                    std::net::TcpListener::bind((endpoint.bind_ip, endpoint.port)).with_context(
+                        || {
+                            format!(
+                                "config.port: TCP {}:{} is unavailable",
+                                endpoint.bind_ip, endpoint.port
+                            )
+                        },
+                    )?,
                 );
             } else {
                 drop(
-                    std::net::UdpSocket::bind((c.bind_ip(), c.port())).with_context(|| {
-                        format!(
-                            "config.port: UDP {}:{} is unavailable",
-                            c.bind_ip(),
-                            c.port()
-                        )
-                    })?,
+                    std::net::UdpSocket::bind((endpoint.bind_ip, endpoint.port)).with_context(
+                        || {
+                            format!(
+                                "config.port: UDP {}:{} is unavailable",
+                                endpoint.bind_ip, endpoint.port
+                            )
+                        },
+                    )?,
                 );
             }
             continue;
@@ -712,7 +790,7 @@ pub async fn preflight_port(
                 let Some((address, port)) = fields[1].split_once(':') else {
                     continue;
                 };
-                if u16::from_str_radix(port, 16)? != c.port() {
+                if u16::from_str_radix(port, 16)? != endpoint.port {
                     continue;
                 }
                 if suffix == "6" {
@@ -723,10 +801,10 @@ pub async fn preflight_port(
                 }
                 let ip = std::net::Ipv4Addr::from(u32::from_str_radix(address, 16)?.to_le_bytes())
                     .to_string();
-                if ip == old.bind_ip() {
+                if old.ip_endpoint().is_some_and(|e| ip == e.bind_ip) {
                     continue;
                 }
-                if overlap(&ip, c.bind_ip()) {
+                if overlap(&ip, endpoint.bind_ip) {
                     bail!(
                         "config.port: another {transport} listener conflicts with requested endpoint"
                     );

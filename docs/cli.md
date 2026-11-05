@@ -4,7 +4,7 @@
 point to the same native binary, using the management HTTP API for workspace
 commands. It does not edit the server's files or invoke local Docker for these
 commands. The Web UI is for interactive use; the CLI exposes the same implemented
-HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD and VXLAN
+HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD, VXLAN and ARP-client
 workspaces to automation. Both control the same saved settings and resources.
 
 API commands default to `http://127.0.0.1:18000`. Set `PLAB_URL` or pass `--url`
@@ -591,3 +591,28 @@ causality and actual wire bytes or a bounded silent observation. Configure each
 of the eleven target modes explicitly for the full mode matrix. The disposable
 client must bind the configured counterpart IP and receive port on the manager
 host; a remote CLI invocation does not move that client to the CLI host.
+
+## ARP-client
+
+`plabctl config set arp-client` accepts `--link-json`, `--source-mac`,
+`--source-ip`, `--server-mac`, `--server-ip`, `--assigned-ip`, `--mode`,
+`--request-scenario-json`, `--interval-ms`, `--timeout-ms` and `--retries`.
+Link and scenario are complete tagged objects. Set related mode/scenario fields
+in one command when their combination changes. MACs are normalized to lowercase.
+Role IPs do not assign OS addresses; no application port or bind URL is invented.
+
+The default link is `{"mode":"docker-bridge"}`; explicit existing-NIC mode is
+`{"mode":"host-interface","interface":"eth0"}`. The actual NIC MAC must match
+source_mac. `runtime arp-client` reads passive readiness/pending/history, and
+`tests run arp-client --method ALL` launches an inverse peer for the applied pair.
+OBSERVE_REQUEST, MAPPING, REJECT_REPLY and TIMEOUT each run twice. Negative
+MAPPING injects a complete normal reply and proves it cannot resolve; TIMEOUT
+requires the actual pending deadline, with ordinary kernel ARP control traffic
+excluded from related unexpected-response accounting. No wire ACK is expected.
+
+A bridge peer uses its own actual virtual MAC and interface in the exact owned
+internal network. For host-interface tests the manager must find a unique different
+actual Ethernet NIC matching server_mac; otherwise use the external same-image
+peer with an explicit local interface. A remote API CLI still executes the
+builtin peer on the manager host. Test budgets use the applied configuration;
+legal very short/long runtime timers may be unavailable for a bounded test.

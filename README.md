@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation supports **twelve protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD and VXLAN**, with manager version **0.16.0**,
-HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, IEC101 dual-channel slave/client image **0.1.0**, BFD peer/client image **0.1.0**, and VXLAN ARP responder/client image **0.1.0**. Each protocol has one fixed workspace and
+The current implementation supports **thirteen protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD, VXLAN and ARP-client**, with manager version **0.17.0**,
+HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, IEC101 dual-channel slave/client image **0.1.0**, BFD peer/client image **0.1.0**, VXLAN ARP responder/client image **0.1.0**, and ARP-client requester/inverse-peer image **0.1.0**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -100,7 +100,7 @@ build image.
 
 The HTTP image is
 `protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
-The manager package is `dist/protocol-target-lab_0.16.0_amd64.deb`.
+The manager package is `dist/protocol-target-lab_0.17.0_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
 environment, package it without rebuilding on the current host:
@@ -134,7 +134,7 @@ Docker provider; a host with Docker CE can run development builds directly, whil
 the current deb installation baseline is `docker.io`.
 
 ```sh
-sudo apt install ./dist/protocol-target-lab_0.16.0_amd64.deb
+sudo apt install ./dist/protocol-target-lab_0.17.0_amd64.deb
 systemctl status protocol-target-lab.service
 plabctl status
 ```
@@ -171,7 +171,7 @@ There is one main configuration per protocol. Start, stop, restart, logs, and
 connection tests operate directly on that protocol's workspace. Internal runtime
 components do not create more workspaces: IEC101 keeps both independent
 address-width channels simultaneously in one workspace, while an MQTT-SN private broker is an internal dependency. Temporary
-test containers also remain internal resources. The twelve implemented protocols
+test containers also remain internal resources. The thirteen implemented protocols
 listed above each have one fixed workspace.
 
 Existing single-HTTP configurations retain their original ID, ownership hash,
@@ -651,3 +651,24 @@ clients execute on the manager host. Local readiness does not mean a connected
 tunnel. This profile provides ARP behavior rather than a general L2 bridge or
 IPv4/ICMP service. See [VXLAN details](docs/vxlan.md) and
 [acceptance scope](docs/vxlan-acceptance.md).
+
+## Active ARP, RARP and InARP target
+
+The ARP-client workspace continuously sends real Ethernet requests in four modes
+and fifteen legal mode/scenario combinations. Its disposable same-image test tool
+is the inverse responder. The default uses a deployment-owned internal Docker
+bridge with actual separate veth interfaces and configured actual NIC MACs.
+The host-interface mode uses an existing Ethernet NIC and its actual MAC.
+
+Role IP fields describe the experiment. They do not configure OS addresses, and
+this link-layer protocol has no application TCP/UDP port. Runtime readiness proves
+packet socket, interface/filter, source identity and main-loop health. A previous
+mapping is historical; it does not mean every subsequent query succeeds. There
+is no ARP wire transaction ID or response ACK.
+
+`plabctl tests run arp-client --method ALL` runs four cases twice for the current
+applied pair. It does not reconfigure the requester. Legal service timers that
+cannot fit the bounded test are rejected before creating the temporary peer.
+Builtin host-interface tests require a unique different real peer NIC on the
+manager host; an external peer must specify its own actual interface. See the
+[ARP-client guide](docs/arp-client.md) and [acceptance scope](docs/arp-client-acceptance.md).

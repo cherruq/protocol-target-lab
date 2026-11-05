@@ -1,0 +1,12 @@
+Protocol Target Lab active ARP/RARP/InARP worker and inverse peer use original
+MIT project code and the Python standard library. The project LICENSE applies.
+There is no RTP service dependency or copied third-party protocol stack.
+
+The digest-locked Python base retains the CPython license at
+/usr/local/lib/python3.12/LICENSE.txt and Debian package notices under
+/usr/share/doc. Wrapper MIT terms do not replace these upstream terms.
+
+Linux kernel and independent packet-oracle tools are separate validation
+infrastructure, not runtime dependencies or content of this source asset set.
+This is a finite Ethernet/IPv4 requester, not an OS address configurator,
+generic L2 carrier, Frame Relay stack or complete OS/kernel source bundle.

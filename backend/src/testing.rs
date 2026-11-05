@@ -51,6 +51,13 @@ impl TestRequest {
     pub fn validate_for(&self, config: &ProtocolConfig) -> Result<()> {
         match config {
             ProtocolConfig::Http(_) => self.validate(),
+            ProtocolConfig::ArpClient(c) => {
+                if self.path != crate::arp_client::PATH {
+                    bail!("config.test: choose inverse-peer path");
+                }
+                c.test_budget(&self.method)?;
+                Ok(())
+            }
             ProtocolConfig::Vxlan(_) => {
                 if !crate::vxlan::CASES.contains(&self.method.as_str())
                     || self.path != crate::vxlan::PATH
@@ -322,6 +329,16 @@ pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) ->
         crate::vxlan::snapshot(&deployment, instance_id, &source_id, c).await?;
         crate::vxlan::client_preflight(c).await?;
     }
+    if let ProtocolConfig::ArpClient(c) = &config {
+        if resources[0]["Image"] != image_id {
+            bail!(
+                "config.test: inverse peer image differs from actual source; restart explicitly to apply image"
+            );
+        }
+        crate::l2::snapshot(&deployment, instance_id, &source_id, c).await?;
+        crate::l2::client_preflight(&deployment, instance_id, &source_id, c, &request.method)
+            .await?;
+    }
     cleanup_tests(&deployment, None)
         .await
         .context("cannot clean previous client resources")?;
@@ -410,13 +427,41 @@ async fn run_client(
     image: &str,
     run: &TestRun,
 ) -> Result<Value> {
+    let arp_execution = if let ProtocolConfig::ArpClient(c) = &run.applied_config {
+        let before = docker::owned(deployment, Some(&run.instance_id)).await?;
+        if before.len() != 1 || before[0]["Image"] != image {
+            bail!("ARP source image changed before peer execution");
+        }
+        let state =
+            crate::l2::snapshot(deployment, &run.instance_id, &run.source_container_id, c).await?;
+        let (view, interface) = crate::l2::client_preflight(
+            deployment,
+            &run.instance_id,
+            &run.source_container_id,
+            c,
+            &run.method,
+        )
+        .await?;
+        Some((
+            view,
+            interface,
+            state,
+            before[0]["State"]["Pid"].clone(),
+            before[0]["State"]["StartedAt"].clone(),
+        ))
+    } else {
+        None
+    };
     let mut args = vec![
         "run".into(),
         "--rm".into(),
         "--name".into(),
         run.container_name.clone(),
         "--network".into(),
-        "host".into(),
+        arp_execution
+            .as_ref()
+            .and_then(|(view, _, _, _, _)| view.network_id.clone())
+            .unwrap_or_else(|| "host".into()),
         "--restart".into(),
         "no".into(),
         "--pull".into(),
@@ -442,15 +487,19 @@ async fn run_client(
         image.into(),
         "-u".into(),
         "/opt/protocol-target-lab/client.py".into(),
-        "--host".into(),
-        run.applied_config.probe_ip().into(),
-        "--port".into(),
-        run.applied_config.port().to_string(),
         "--method".into(),
         run.method.clone(),
         "--path".into(),
         run.path.clone(),
     ];
+    if let Some(endpoint) = run.applied_config.ip_endpoint() {
+        args.extend([
+            "--host".into(),
+            endpoint.probe_ip().into(),
+            "--port".into(),
+            endpoint.port.to_string(),
+        ]);
+    }
     match &run.applied_config {
         ProtocolConfig::Dns(_)
         | ProtocolConfig::Mqtt(_)
@@ -462,7 +511,8 @@ async fn run_client(
         | ProtocolConfig::Dlt645(_)
         | ProtocolConfig::Iec101(_)
         | ProtocolConfig::Bfd(_)
-        | ProtocolConfig::Vxlan(_) => args.extend([
+        | ProtocolConfig::Vxlan(_)
+        | ProtocolConfig::ArpClient(_) => args.extend([
             "--config-json".into(),
             serde_json::to_string(&run.applied_config)?,
         ]),
@@ -478,6 +528,56 @@ async fn run_client(
                 ]);
             }
         }
+    }
+    if let (ProtocolConfig::ArpClient(c), Some((view, interface, state, _, _))) =
+        (&run.applied_config, &arp_execution)
+    {
+        let index = args
+            .iter()
+            .position(|s| s == image)
+            .context("peer image argument missing")?;
+        let mut flags = vec![
+            "--user".into(),
+            "0:0".into(),
+            "--cap-drop".into(),
+            "ALL".into(),
+            "--cap-add".into(),
+            "NET_RAW".into(),
+            "--ipc".into(),
+            "private".into(),
+            "--label".into(),
+            format!("{}={}", crate::l2::TEST_SOURCE, run.source_container_id),
+            "--label".into(),
+            format!(
+                "{}={}",
+                crate::l2::PARENT_NONCE,
+                state["runtime_id"]
+                    .as_str()
+                    .context("ARP runtime missing")?
+            ),
+        ];
+        if c.link.is_bridge() {
+            flags.extend(["--mac-address".into(), c.server_mac.clone()]);
+        }
+        args.splice(index..index, flags);
+        args.extend([
+            "--interface".into(),
+            interface.clone(),
+            "--observer-host".into(),
+            view.observer_host.clone(),
+            "--observer-port".into(),
+            crate::arp_client::OBSERVER_PORT.to_string(),
+            "--expected-boot-id".into(),
+            state["boot_id"]
+                .as_str()
+                .context("ARP boot missing")?
+                .into(),
+            "--expected-runtime-id".into(),
+            state["runtime_id"]
+                .as_str()
+                .context("ARP runtime missing")?
+                .into(),
+        ]);
     }
     let mut bfd_identity = None;
     if let ProtocolConfig::Bfd(c) = &run.applied_config {
@@ -752,6 +852,27 @@ async fn run_client(
                     .err()
                     .map(|e| format!("{e:#}"))
                     .unwrap_or_else(|| "VXLAN source PID/boot changed during testing".into())
+            );
+        }
+    }
+    if let (ProtocolConfig::ArpClient(c), Some((_, _, state, pid, start))) =
+        (&run.applied_config, arp_execution)
+    {
+        let verification =
+            crate::l2::snapshot(deployment, &run.instance_id, &run.source_container_id, c).await;
+        if target.len() != 1
+            || target[0]["State"]["Pid"] != pid
+            || target[0]["State"]["StartedAt"] != start
+            || !verification.as_ref().is_ok_and(|s| {
+                s["boot_id"] == state["boot_id"] && s["runtime_id"] == state["runtime_id"]
+            })
+        {
+            report["passed"] = false.into();
+            report["source_verification_error"] = json!(
+                verification
+                    .err()
+                    .map(|e| format!("{e:#}"))
+                    .unwrap_or_else(|| "ARP source changed during inverse-peer test".into())
             );
         }
     }

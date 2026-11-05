@@ -484,3 +484,78 @@ test("VXLAN is a twelfth isolated normalized workspace draft without changing th
     assert.equal(sameWorkspaceConfig(vxlanDefaults, c), false);
   assert.equal(sameWorkspaceConfig(edited, canonical), true);
 });
+
+test("portless ARP-client adds a thirteenth draft without losing incompatible edits or prior workspace schemas", async () => {
+  const { arpClientDefaults, normalizeArpClientConfig } = await import(
+    "../src/arp-client-config.ts"
+  );
+  const { vxlanDefaults } = await import("../src/vxlan-config.ts");
+  const { bfdDefaults, changeBfdMode } = await import("../src/bfd-config.ts");
+  const { iec101Defaults, updateIec101Channel } = await import(
+    "../src/iec101-config.ts"
+  );
+  const { rtpDefaults } = await import("../src/rtp-config.ts");
+  const { rtcpDefaults } = await import("../src/rtcp-config.ts");
+  const { dlt645Defaults } = await import("../src/dlt645-config.ts");
+  const configs = [
+    defaults,
+    dnsDefaults,
+    mqttDefaults,
+    telnetDefaults,
+    iec104Defaults,
+    mqttSnDefaults,
+    rtpDefaults,
+    rtcpDefaults,
+    dlt645Defaults,
+    vxlanDefaults,
+  ];
+  let drafts = {};
+  for (const [index, c] of configs.entries())
+    drafts = updateWorkspaceDrafts(
+      drafts,
+      `old-${index}`,
+      { ...c, port: c.port + 2 },
+      c,
+    );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "iec101",
+    updateIec101Channel(iec101Defaults, "single", { point: { value: false } }),
+    iec101Defaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "bfd",
+    changeBfdMode(bfdDefaults, "quiet"),
+    bfdDefaults,
+  );
+  const edited = {
+    ...arpClientDefaults,
+    source_mac: "02:AA:00:00:01:10",
+    mode: "rarp" as const,
+  };
+  drafts = updateWorkspaceDrafts(drafts, "arp", edited, arpClientDefaults);
+  assert.equal(Object.keys(drafts).length, 13);
+  const before = drafts;
+  const incompatible = {
+    ...edited,
+    request_scenario: { mode: "wrong-target-ip" as const },
+  };
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "arp",
+    incompatible,
+    arpClientDefaults,
+  );
+  assert.deepEqual(drafts.arp, incompatible);
+  assert.deepEqual(before.arp, edited);
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "arp",
+    edited,
+    normalizeArpClientConfig(edited),
+  );
+  assert.equal(Object.keys(drafts).length, 12);
+  for (const c of [...configs, iec101Defaults, bfdDefaults])
+    assert.equal(sameWorkspaceConfig(arpClientDefaults, c), false);
+});
