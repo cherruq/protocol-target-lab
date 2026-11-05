@@ -20,6 +20,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
   config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
   config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
+  config set profinet [--wire-profile pnet-dcp-ptcp-lab-v1] [--link-json JSON] [--test-peer-mac MAC] [--dcp-json JSON] [--ptcp-n-json JSON] [--ptcp-f-json JSON]
   config set mpls [--wire-profile mpls-single-label-ipv4-icmp-echo] [--link-json JSON] [--source-mac MAC] [--source-ip IP] [--client-mac MAC] [--client-ip IP] [--label N] [--reply-ttl N] [--scenario-json JSON]
   config set igmp [--wire-profile linux-kernel-igmp-v2] [--link-json JSON] [--groups-json JSON] [--query-profile-json JSON]
   config set custom-ethernet [--link-json JSON] [--local-mac MAC] [--peer-mac MAC] [--packet-filter TEXT] [--request-marker-json JSON] [--response-json JSON] [--promiscuous true|false] [--multicast-macs-json JSON] [--test-request-json JSON]
@@ -34,7 +35,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   config set iec104 [--bind-ip IP] [--port N] [--max-connections N] [--points-json JSON]
   config set telnet [--bind-ip IP] [--port N] [--banner TEXT] [--max-connections N] [--max-line-bytes N]
   start PROTOCOL | stop PROTOCOL | restart PROTOCOL [--wait | --no-wait]
-  connection-info PROTOCOL | runtime bfd|vxlan|arp-client|custom-ethernet|igmp|mpls
+  connection-info PROTOCOL | runtime bfd|vxlan|arp-client|custom-ethernet|igmp|mpls|profinet
   logs PROTOCOL [--follow]
   tests list PROTOCOL
   tests run PROTOCOL [--method ALL] [--path /ok | --name DNS_NAME] (DNS defaults to ALL) [--wait | --no-wait]
@@ -56,7 +57,7 @@ Local administrative commands (retain existing behavior; may require root):
   plabctl serial start --host IPv4 --single-port N --double-port N
   plabctl serial status | stop   local root-owned dual PTY helper
   plabctl assets import DIR     local image import from a checked manifest
-Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_IEC104_IMAGE, PLAB_MQTTSN_IMAGE, PLAB_RTP_IMAGE, PLAB_RTCP_IMAGE, PLAB_DLT645_IMAGE, PLAB_IEC101_IMAGE, PLAB_BFD_IMAGE, PLAB_VXLAN_IMAGE, PLAB_ARP_CLIENT_IMAGE, PLAB_CUSTOM_ETHERNET_IMAGE, PLAB_IGMP_IMAGE, PLAB_MPLS_IMAGE, PLAB_IGMP_LINK_HELPER, PLAB_DOCKER_SOCKET
+Settings: PLAB_LISTEN, PLAB_CONFIG_FILE, PLAB_DATA_DIR, PLAB_HTTP_IMAGE, PLAB_DNS_IMAGE, PLAB_MQTT_IMAGE, PLAB_TELNET_IMAGE, PLAB_IEC104_IMAGE, PLAB_MQTTSN_IMAGE, PLAB_RTP_IMAGE, PLAB_RTCP_IMAGE, PLAB_DLT645_IMAGE, PLAB_IEC101_IMAGE, PLAB_BFD_IMAGE, PLAB_VXLAN_IMAGE, PLAB_ARP_CLIENT_IMAGE, PLAB_CUSTOM_ETHERNET_IMAGE, PLAB_IGMP_IMAGE, PLAB_MPLS_IMAGE, PLAB_PROFINET_IMAGE, PLAB_IGMP_LINK_HELPER, PLAB_DOCKER_SOCKET
 "#;
 const LIMIT: usize = 8 * 1024 * 1024;
 type Result<T> = std::result::Result<T, Failure>;
@@ -169,6 +170,10 @@ const VALUE_OPTIONS: &[&str] = &[
     "--wire-profile",
     "--peer-ip",
     "--link-json",
+    "--test-peer-mac",
+    "--dcp-json",
+    "--ptcp-n-json",
+    "--ptcp-f-json",
     "--groups-json",
     "--query-profile-json",
     "--local-mac",
@@ -368,6 +373,10 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--wire-profile",
                 "--peer-ip",
                 "--link-json",
+                "--test-peer-mac",
+                "--dcp-json",
+                "--ptcp-n-json",
+                "--ptcp-f-json",
                 "--groups-json",
                 "--query-profile-json",
                 "--local-mac",
@@ -464,7 +473,9 @@ fn parse(args: &[String]) -> Result<Options> {
                     return Err(Failure::usage("--name applies to DNS tests"));
                 }
                 path.or(name).unwrap_or_else(|| {
-                    if *p == "mpls" {
+                    if *p == "profinet" {
+                        crate::profinet::PATH.into()
+                    } else if *p == "mpls" {
                         crate::mpls::PATH.into()
                     } else if *p == "igmp" {
                         crate::igmp::PATH.into()
@@ -841,7 +852,10 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
                         .map_err(|_| Failure::usage(format!("{key} must be true or false")))?,
                 )
             }
-            "--groups-json"
+            "--dcp-json"
+            | "--ptcp-n-json"
+            | "--ptcp-f-json"
+            | "--groups-json"
             | "--query-profile-json"
             | "--link-json"
             | "--request-marker-json"
@@ -865,7 +879,10 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
                 "request_marker_hex".into()
             } else if matches!(
                 key.as_str(),
-                "--response-json"
+                "--dcp-json"
+                    | "--ptcp-n-json"
+                    | "--ptcp-f-json"
+                    | "--response-json"
                     | "--multicast-macs-json"
                     | "--test-request-json"
                     | "--groups-json"
@@ -1764,5 +1781,33 @@ mod tests {
         assert_eq!(c.label, 1048575);
         assert_eq!(c.scenario.mode(), "wrong-ip-src");
         assert_eq!(c.role_addresses().unwrap().len(), 3);
+    }
+    #[test]
+    fn profinet_cli_preserves_atomic_nodes_and_readonly_suite_default() {
+        let opts = parse(&args("tests run profinet")).unwrap();
+        assert!(
+            matches!(opts.command,Command::TestRun(p,m,path,true) if p=="profinet"&&m=="ALL"&&path==crate::profinet::PATH)
+        );
+        assert!(
+            matches!(parse(&args("runtime profinet")).unwrap().command,Command::Runtime(p) if p=="profinet")
+        );
+        let c = crate::profinet::ProfinetConfig::default();
+        let patch = config_patch(BTreeMap::from([
+            ("--dcp-json".into(), serde_json::to_string(&c.dcp).unwrap()),
+            (
+                "--ptcp-n-json".into(),
+                serde_json::to_string(&c.ptcp_n).unwrap(),
+            ),
+            (
+                "--ptcp-f-json".into(),
+                serde_json::to_string(&c.ptcp_f).unwrap(),
+            ),
+            ("--test-peer-mac".into(), "02:00:00:00:86:11".into()),
+        ]))
+        .unwrap();
+        let changed = c.patch(patch).unwrap();
+        assert_eq!(changed.test_peer_mac, "02:00:00:00:86:11");
+        assert_eq!(changed.dcp, c.dcp);
+        assert!(parse(&args("config set profinet --dcp-json {} --file a.json")).is_err());
     }
 }

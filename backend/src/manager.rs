@@ -200,6 +200,9 @@ impl Manager {
             if instance.protocol_id == "custom-ethernet" {
                 crate::custom_l2::cleanup_empty(&deployment, id, true).await?;
             }
+            if instance.protocol_id == "profinet" {
+                crate::profinet_link::cleanup_empty(&self.settings, &deployment, id, true).await?;
+            }
             if instance.protocol_id == "mpls" {
                 crate::mpls_l2::cleanup_empty(&deployment, id, true).await?;
             }
@@ -255,7 +258,25 @@ impl Manager {
             }
         });
         let igmp_restore_running = resources.first().is_some_and(docker::running);
-        let compilation = if let ProtocolConfig::Igmp(c) = &config {
+        let compilation = if let ProtocolConfig::Profinet(c) = &config {
+            let old = own_endpoint.and_then(|o| {
+                if let ProtocolConfig::Profinet(c) = o {
+                    Some(c)
+                } else {
+                    None
+                }
+            });
+            crate::profinet_link::preflight(
+                &self.settings,
+                &deployment,
+                id,
+                c,
+                old,
+                resources.first().and_then(|v| v["Id"].as_str()),
+            )
+            .await?;
+            None
+        } else if let ProtocolConfig::Igmp(c) = &config {
             crate::igmp_link::preflight(
                 &self.settings,
                 &deployment,
@@ -317,7 +338,9 @@ impl Manager {
         for v in &resources {
             docker::remove(v, &deployment, id).await?;
         }
-        let container = if let ProtocolConfig::Igmp(c) = &config {
+        let container = if let ProtocolConfig::Profinet(c) = &config {
+            crate::profinet_link::start(&self.settings, &deployment, id, c, &prepared_image).await?
+        } else if let ProtocolConfig::Igmp(c) = &config {
             let attempt = async {
                 if let Some(old) = igmp_old.filter(|old| old.link != c.link) {
                     crate::igmp_link::stop_link(&self.settings, &deployment, id, old).await?;
@@ -460,6 +483,11 @@ impl Manager {
                 .instances
                 .iter()
                 .any(|i| i.id == id && i.protocol_id == "custom-ethernet");
+            let profinet = d
+                .doc
+                .instances
+                .iter()
+                .any(|i| i.id == id && i.protocol_id == "profinet");
             let mpls = d
                 .doc
                 .instances
@@ -473,6 +501,16 @@ impl Manager {
                 let primary = result.as_ref().err().unwrap();
                 result = Err(anyhow::anyhow!(
                     "{primary:#}; owned custom dependency cleanup failed: {cleanup:#}"
+                ));
+            }
+            if profinet
+                && let Err(cleanup) =
+                    crate::profinet_link::cleanup_empty(&self.settings, &deployment, id, false)
+                        .await
+            {
+                let primary = result.as_ref().err().unwrap();
+                result = Err(anyhow::anyhow!(
+                    "{primary:#}; PROFINET dependency cleanup failed: {cleanup:#}"
                 ));
             }
             if mpls
@@ -618,6 +656,41 @@ impl Manager {
                 i.status = "error".into();
                 i.runtime_error = Some(format!(
                     "IGMP native membership/link verification failed: {e:#}"
+                ));
+            }
+            return Ok(());
+        }
+        let pn_sample = {
+            let d = self.data.lock().await;
+            d.doc
+                .instances
+                .iter()
+                .find(|i| i.id == id && i.current_operation.is_none() && i.enabled)
+                .and_then(|i| i.applied_config.as_ref())
+                .and_then(|c| {
+                    if let ProtocolConfig::Profinet(c) = c {
+                        Some(c.clone())
+                    } else {
+                        None
+                    }
+                })
+        };
+        if let (Some(c), Some(v)) = (pn_sample, resources.first().filter(|v| docker::running(v)))
+            && docker::matches(v, &c.clone().into())
+            && let Err(e) = crate::profinet_link::snapshot(
+                &self.settings,
+                deployment,
+                id,
+                &docker::container_id(v)?,
+                &c,
+            )
+            .await
+        {
+            let mut d = self.data.lock().await;
+            if let Some(i) = d.doc.instances.iter_mut().find(|i| i.id == id) {
+                i.status = "error".into();
+                i.runtime_error = Some(format!(
+                    "PROFINET native/node/network verification failed: {e:#}"
                 ));
             }
             return Ok(());

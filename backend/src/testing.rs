@@ -53,6 +53,13 @@ impl TestRequest {
     pub fn validate_for(&self, config: &ProtocolConfig) -> Result<()> {
         match config {
             ProtocolConfig::Http(_) => self.validate(),
+            ProtocolConfig::Profinet(c) => {
+                if self.path != crate::profinet::PATH {
+                    bail!("config.test: choose suite path");
+                }
+                c.test_budget(&self.method)?;
+                Ok(())
+            }
             ProtocolConfig::Mpls(c) => {
                 if self.path != crate::mpls::PATH {
                     bail!("config.test: choose echo path");
@@ -334,6 +341,24 @@ pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) ->
             "configured image has no built-in protocol client; import matching assets before testing"
         );
     }
+    if let ProtocolConfig::Profinet(c) = &config {
+        if resources[0]["Image"] != image_id {
+            bail!(
+                "config.test: PROFINET client image differs from actual source; restart explicitly"
+            );
+        }
+        crate::profinet_link::snapshot(&manager.settings, &deployment, instance_id, &source_id, c)
+            .await?;
+        crate::profinet_link::client_preflight(
+            &manager.settings,
+            &deployment,
+            instance_id,
+            &source_id,
+            c,
+            &request.method,
+        )
+        .await?;
+    }
     if let ProtocolConfig::Mpls(c) = &config {
         if resources[0]["Image"] != image_id {
             bail!("config.test: MPLS client image differs from actual source; restart explicitly");
@@ -442,10 +467,10 @@ pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) ->
         let outcome = run_client(&manager, &deployment, &image_id, &run).await;
         let cleanup = if matches!(
             run.applied_config,
-            ProtocolConfig::Igmp(_) | ProtocolConfig::Mpls(_)
+            ProtocolConfig::Igmp(_) | ProtocolConfig::Mpls(_) | ProtocolConfig::Profinet(_)
         ) {
             tokio::time::timeout(
-                Duration::from_millis(crate::igmp::CLEANUP_BUDGET_MS),
+                Duration::from_millis(if matches!(run.applied_config,ProtocolConfig::Profinet(_)){crate::profinet::CLEANUP_BUDGET_MS}else{crate::igmp::CLEANUP_BUDGET_MS}),
                 cleanup_run(&deployment, &run.id),
             ).await.unwrap_or_else(|_|Err(anyhow::anyhow!("exact-owned peer cleanup exceeded5-second reserve; completion is unconfirmed and retained for the owned-resource reaper")))
         } else {
@@ -501,6 +526,9 @@ async fn run_client(
     image: &str,
     run: &TestRun,
 ) -> Result<Value> {
+    if matches!(run.applied_config, ProtocolConfig::Profinet(_)) {
+        return crate::profinet_testing::run(manager, deployment, image, run).await;
+    }
     if matches!(run.applied_config, ProtocolConfig::Mpls(_)) {
         return crate::mpls_testing::run(manager, deployment, image, run).await;
     }
@@ -613,6 +641,7 @@ async fn run_client(
     }
     match &run.applied_config {
         ProtocolConfig::Igmp(_) => unreachable!("IGMP uses dedicated bounded progress runner"),
+        ProtocolConfig::Profinet(_) => unreachable!("PROFINET uses dedicated bounded peer runner"),
         ProtocolConfig::Mpls(c) => args.extend(crate::mpls::config_args(c)?),
         ProtocolConfig::CustomEthernet(c) => args.extend(crate::custom_ethernet::config_args(c)?),
         ProtocolConfig::Dns(_)

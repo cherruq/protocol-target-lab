@@ -66,6 +66,11 @@ pub async fn prepare_image(image: &str, config: &ProtocolConfig) -> Result<Strin
         {
             bail!("Protocol image is incompatible; import matching assets");
         }
+        if matches!(config, ProtocolConfig::Profinet(_))
+            && !crate::profinet::image_schemas_match(&metadata[0]["Config"]["Labels"])
+        {
+            bail!("PROFINET image lacks native/request/response/client/control/observer schemas");
+        }
         if matches!(config, ProtocolConfig::Mpls(_))
             && !crate::mpls::image_schemas_match(&metadata[0]["Config"]["Labels"])
         {
@@ -210,6 +215,11 @@ pub fn running(v: &Value) -> bool {
     v["State"]["Running"].as_bool() == Some(true)
 }
 pub fn matches(v: &Value, config: &ProtocolConfig) -> bool {
+    if let ProtocolConfig::Profinet(c) = config
+        && !crate::profinet_link::container_matches(v, c)
+    {
+        return false;
+    }
     if let ProtocolConfig::Igmp(c) = config
         && !crate::igmp_link::container_matches(v, c)
     {
@@ -310,6 +320,9 @@ pub async fn start(
     compilation: Option<&crate::custom_l2::Compilation>,
     igmp_context: Option<&crate::igmp_link::SourceContext>,
 ) -> Result<String> {
+    if matches!(config, ProtocolConfig::Profinet(_)) {
+        bail!("PROFINET start requires trusted private network/store preparation");
+    }
     let immutable_image = image_id(image).await?;
     let arp_network = if let ProtocolConfig::Mpls(c) = config {
         Some(crate::mpls_l2::network_for_start(deployment, id, c).await?)
@@ -606,6 +619,10 @@ pub async fn probe_owned(
     source_id: &str,
     config: &ProtocolConfig,
 ) -> Result<()> {
+    if let ProtocolConfig::Profinet(c) = config {
+        crate::profinet_link::snapshot(settings, deployment, instance, source_id, c).await?;
+        return Ok(());
+    }
     if let ProtocolConfig::Igmp(c) = config {
         crate::igmp_link::snapshot(settings, deployment, instance, source_id, c).await?;
         return Ok(());
@@ -684,6 +701,9 @@ pub async fn probe(config: &ProtocolConfig) -> Result<()> {
         ),
         ProtocolConfig::CustomEthernet(_) => {
             bail!("Custom Ethernet readiness requires exact source/network/filter identity")
+        }
+        ProtocolConfig::Profinet(_) => {
+            bail!("PROFINET readiness requires exact native child/store/three node bindings")
         }
         ProtocolConfig::Mpls(_) => {
             bail!("MPLS readiness requires exact owned source/network/filter identity")

@@ -728,3 +728,29 @@ plabctl stop mpls
 ```
 
 The fixed workspace is a finite single-label MPLS request/plain IPv4 ICMP response target. Role IPs are simulated packet fields, not assigned OS addresses. Configuration saves a draft; explicit restart applies it. Host mode requires existing UP Ethernet interfaces matching the configured MACs; the built-in client needs a different peer NIC, otherwise use the explicit external command in connection information. Client tests verify the current applied scenario. Short Ethernet output can produce a real TX error; it is never reported as successful silence. See [MPLS](mpls.md) for packet, ownership and validation boundaries.
+
+## PROFINET
+
+`plabctl config set profinet` accepts a full configuration using `--file`/`--data`,
+or atomic `--dcp-json`, `--ptcp-n-json`, `--ptcp-f-json`, `--link-json`,
+`--wire-profile` and `--test-peer-mac` fields. The three nodes run concurrently.
+
+```sh
+plabctl config get profinet
+plabctl start profinet
+plabctl runtime profinet
+plabctl connection-info profinet
+plabctl tests list profinet
+plabctl tests run profinet --method ALL
+plabctl logs profinet
+plabctl stop profinet
+```
+
+`ALL` is read-only: 24 checks and 26 transmitted request frames. The optional
+`DCP_WRITE_STATION_TEMP` and `DCP_WRITE_IP_TEMP` methods explicitly verify and
+restore native current, nonvolatile and actual OS state. They refuse an
+unrestorable or changed baseline. `DCP_SIGNAL` checks software LED callbacks.
+Initial station/IP fields only initialize new native storage. Stopping or
+restarting the source retains that storage. External tools may join the data
+network; the management network is reserved for the source and owned peers.
+See [PROFINET](profinet.md) for the native/software scope and external commands.

@@ -4,7 +4,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 pub const MAX_RESPONSE_LENGTH: u32 = 1024 * 1024;
-pub const PROTOCOLS: [&str; 16] = [
+pub const PROTOCOLS: [&str; 17] = [
     "http",
     "dns",
     "mqtt",
@@ -21,6 +21,7 @@ pub const PROTOCOLS: [&str; 16] = [
     "custom-ethernet",
     "igmp",
     "mpls",
+    "profinet",
 ];
 pub const HTTP_METHODS: [&str; 7] = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 pub const FIXED_PATTERN: &[u8] = b"0123456789abcdef";
@@ -251,6 +252,7 @@ pub enum ProtocolConfig {
     CustomEthernet(crate::custom_ethernet::CustomEthernetConfig),
     Igmp(crate::igmp::IgmpConfig),
     Mpls(crate::mpls::MplsConfig),
+    Profinet(crate::profinet::ProfinetConfig),
 }
 impl From<HttpConfig> for ProtocolConfig {
     fn from(c: HttpConfig) -> Self {
@@ -341,6 +343,11 @@ impl From<crate::igmp::IgmpConfig> for ProtocolConfig {
         Self::Igmp(c)
     }
 }
+impl From<crate::profinet::ProfinetConfig> for ProtocolConfig {
+    fn from(c: crate::profinet::ProfinetConfig) -> Self {
+        Self::Profinet(c)
+    }
+}
 impl From<crate::mpls::MplsConfig> for ProtocolConfig {
     fn from(c: crate::mpls::MplsConfig) -> Self {
         Self::Mpls(c)
@@ -365,6 +372,7 @@ impl ProtocolConfig {
             Self::CustomEthernet(c) => c.validate(),
             Self::Igmp(c) => c.validate(),
             Self::Mpls(c) => c.validate(),
+            Self::Profinet(c) => c.validate(),
         }
     }
     pub fn as_http(&self) -> Option<&HttpConfig> {
@@ -392,6 +400,7 @@ impl ProtocolConfig {
             Self::CustomEthernet(_) => "custom-ethernet",
             Self::Igmp(_) => "igmp",
             Self::Mpls(_) => "mpls",
+            Self::Profinet(_) => "profinet",
         }
     }
     /// A view of actual IP socket roles; link-layer protocols have no fabricated endpoint.
@@ -409,7 +418,11 @@ impl ProtocolConfig {
             Self::Iec101(c) => (c.bind_ip.as_str(), c.single.port, 24741),
             Self::Bfd(c) => (c.bind_ip.as_str(), crate::bfd::PORT, crate::bfd::PORT),
             Self::Vxlan(c) => (c.bind_ip.as_str(), c.port, c.port),
-            Self::ArpClient(_) | Self::CustomEthernet(_) | Self::Igmp(_) | Self::Mpls(_) => {
+            Self::ArpClient(_)
+            | Self::CustomEthernet(_)
+            | Self::Igmp(_)
+            | Self::Mpls(_)
+            | Self::Profinet(_) => {
                 return None;
             }
         };
@@ -421,7 +434,9 @@ impl ProtocolConfig {
     }
     pub fn transports(&self) -> Vec<&'static str> {
         match self {
-            Self::ArpClient(_) | Self::CustomEthernet(_) | Self::Mpls(_) => vec!["ETHERNET"],
+            Self::ArpClient(_) | Self::CustomEthernet(_) | Self::Mpls(_) | Self::Profinet(_) => {
+                vec!["ETHERNET"]
+            }
             Self::Igmp(_) => vec!["IGMP"],
             Self::Dns(c) => c.transports(),
             Self::MqttSn(_) | Self::Rtp(_) | Self::Rtcp(_) | Self::Bfd(_) | Self::Vxlan(_) => {
@@ -454,7 +469,8 @@ impl ProtocolConfig {
             | Self::ArpClient(_)
             | Self::CustomEthernet(_)
             | Self::Igmp(_)
-            | Self::Mpls(_) => {
+            | Self::Mpls(_)
+            | Self::Profinet(_) => {
                 format!(
                     "{:x}",
                     Sha256::digest(serde_json::to_vec(self).expect("serializable config"))
@@ -495,6 +511,7 @@ impl ProtocolConfig {
             Self::CustomEthernet(c) => Ok(c.patch(value)?.into()),
             Self::Igmp(c) => Ok(c.patch(value)?.into()),
             Self::Mpls(c) => Ok(c.patch(value)?.into()),
+            Self::Profinet(c) => Ok(c.patch(value)?.into()),
             Self::Dlt645(c) => {
                 let r: Self = typed_patch(
                     c,
@@ -718,6 +735,10 @@ impl Document {
                 ),
                 Instance::new("igmp-demo".into(), crate::igmp::IgmpConfig::default()),
                 Instance::new("mpls-demo".into(), crate::mpls::MplsConfig::default()),
+                Instance::new(
+                    "profinet-demo".into(),
+                    crate::profinet::ProfinetConfig::default(),
+                ),
             ],
         }
     }

@@ -158,3 +158,21 @@ BFD runtime image:
 This notice describes implemented HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP,
 RTCP, DL/T645, IEC101 and BFD components. Other protocol
 libraries and a complete offline distribution are not included or claimed here.
+
+PROFINET runtime image:
+  Native DCP responses come from official p-net 0.2.0, fixed upstream commit
+  3e650720850e1f31f8a419c8aa135a2e81b44ddb, distributed here under its GPLv3
+  option. The separate thin native application is GPL-3.0-only. OSAL commit
+  88784fcfff7a1b74e20bdeb71a55c2cdd22b4a59 and cmake-tools commit
+  45c751c60d75bbad5eb327624c259cc02b6564b2 retain their BSD-3-Clause licenses.
+  Complete pinned native sources, full license texts, wrapper source, offline
+  build recipes and compiler-input provenance accompany the exported assets
+  and are included under /usr/share/doc/protocol-target-lab-profinet in the
+  runtime image. Retain them when redistributing that native binary or image;
+  the MIT project license does not relicense the native GPL component.
+  The separate Python supervisor, disposable client and autonomous software
+  PTCP implementation use the MIT project license and Python standard library.
+  PTCP is not implemented by the p-net native stub and no native PTCP, cyclic
+  PLC IO, IRT, physical clock precision or certification is claimed. Base
+  CPython and OS components retain their own notices. The manager's Rust/Web
+  dependency index is separate from this native worker's dependency closure.

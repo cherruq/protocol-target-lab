@@ -1,0 +1,309 @@
+{
+  "schema_version": 1,
+  "protocol": "profinet",
+  "entrypoints": {
+    "source": [
+      "python3",
+      "-u",
+      "/opt/protocol-target-lab/server.py",
+      "--config-json",
+      "FULL_CONFIG_JSON"
+    ],
+    "client": [
+      "python3",
+      "-u",
+      "/opt/protocol-target-lab/client.py",
+      "--config-json",
+      "FULL_CONFIG_JSON",
+      "--interface",
+      "ACTUAL_DATA_INTERFACE",
+      "--observer-host",
+      "SOURCE_MANAGEMENT_IPV4",
+      "--observer-port",
+      "18092",
+      "--expected-boot-id",
+      "SOURCE_BOOT_UUID",
+      "--expected-runtime-id",
+      "SOURCE_RUNTIME_32HEX",
+      "--method",
+      "ALL",
+      "--path",
+      "suite"
+    ],
+    "client_optional_peer_mac": "--peer-mac ACTUAL_UNICAST_MAC (external tool endpoint only; actual interface MAC must match)",
+    "env_required": [
+      "PLAB_RUNTIME_ID",
+      "PLAB_DEPLOYMENT_ID",
+      "PLAB_INSTANCE_ID",
+      "PLAB_STORE_NONCE"
+    ],
+    "native_directory": "/opt/protocol-target-lab/native",
+    "store_mount": "/var/lib/protocol-target-lab/profinet-native",
+    "store_marker": ".plab-store.json",
+    "store_lock": ".writer.lock",
+    "store_initialized": ".initialized.json",
+    "store_abi": "pnet-v0.2.0-linux-x86_64-v1",
+    "private_context": "/run/protocol-target-lab/profinet-context.json",
+    "native_start_gate": "/run/protocol-target-lab/native-start-gate.json (PID1 releases only after binding actual child PID/start ticks/ELF hash in context)"
+  },
+  "status_example": {
+    "schema_version": 1,
+    "protocol": "profinet",
+    "boot_id": "UUID",
+    "runtime_id": "32lowerhex",
+    "config_sha256": "SHA256 sorted compact ensure_ascii=false JSON",
+    "worker_ready_after_bind": true,
+    "event_loop_age_ms": 0,
+    "uptime_ms": 0,
+    "interfaces": {
+      "management": {
+        "name": "ACTUAL",
+        "ifindex": 2,
+        "mac": "ACTUAL",
+        "hardware_type": 1,
+        "mtu": 1500,
+        "ipv4": [
+          {
+            "address": "172.20.0.2",
+            "prefixlen": 16
+          }
+        ],
+        "iflink": 123,
+        "namespace": "net:[123]"
+      },
+      "data": {
+        "name": "pn0",
+        "ifindex": 3,
+        "mac": "02:00:00:00:86:20",
+        "hardware_type": 1,
+        "mtu": 1500,
+        "ipv4": [],
+        "iflink": 124,
+        "namespace": "net:[123]"
+      },
+      "ptcp_n": {
+        "name": "pnptcpn",
+        "ifindex": 4,
+        "mac": "02:00:00:00:86:21",
+        "hardware_type": 1,
+        "mtu": 1500,
+        "ipv4": [],
+        "iflink": 3,
+        "namespace": "net:[123]"
+      },
+      "ptcp_f": {
+        "name": "pnptcpf",
+        "ifindex": 5,
+        "mac": "02:00:00:00:86:22",
+        "hardware_type": 1,
+        "mtu": 1500,
+        "ipv4": [],
+        "iflink": 3,
+        "namespace": "net:[123]"
+      }
+    },
+    "components": {
+      "dcp": {
+        "ready": true,
+        "pid": 12,
+        "start_ticks": 123,
+        "native_binary_sha256": "SHA256",
+        "version": "0.2.0",
+        "commit": "3e650720850e1f31f8a419c8aa135a2e81b44ddb",
+        "tick_sequence": 1,
+        "tick_age_ms": 0,
+        "snapshot_sequence": 1,
+        "snapshot_stable": true,
+        "current": {
+          "station_name": "runtime native value, possibly empty",
+          "ip_suite": {
+            "ip": "0.0.0.0",
+            "netmask": "0.0.0.0",
+            "gateway": "0.0.0.0"
+          }
+        },
+        "nonvolatile": {
+          "station_name": "native memory value",
+          "ip_suite": {
+            "ip": "0.0.0.0",
+            "netmask": "0.0.0.0",
+            "gateway": "0.0.0.0"
+          }
+        },
+        "factory": {
+          "vendor_id": 1171,
+          "device_id": 2,
+          "device_role": 1,
+          "device_options_hex": "0102010102010202020302040205020605010502050305050506ffff",
+          "product_name": "P-Net Sample Application"
+        },
+        "active_ar": 0,
+        "signal_active": false,
+        "sam_mac": null
+      },
+      "ptcp_n": {
+        "ready": true,
+        "mode": "without-follow-up",
+        "scenario": "good",
+        "packet_socket_inode": 1234,
+        "packet_filter": {
+          "ethertype": 34962,
+          "protocol": "ETH_P_PROFINET"
+        },
+        "counters": {
+          "received": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "ignored": 0,
+          "tx_submitted": 0,
+          "tx_errors": 0,
+          "pending_expired": 0
+        },
+        "pending": 0,
+        "last_request": null,
+        "last_output": null
+      },
+      "ptcp_f": {
+        "ready": true,
+        "mode": "with-follow-up",
+        "scenario": "good",
+        "packet_socket_inode": 1235,
+        "packet_filter": {
+          "ethertype": 34962,
+          "protocol": "ETH_P_PROFINET"
+        },
+        "counters": {
+          "received": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "ignored": 0,
+          "tx_submitted": 0,
+          "tx_errors": 0,
+          "pending_expired": 0
+        },
+        "pending": 0,
+        "last_request": null,
+        "last_output": null
+      }
+    },
+    "network_apply": {
+      "phase": "confirmed",
+      "sequence": 1,
+      "requested": {
+        "station_name": "native value",
+        "ip_suite": {
+          "ip": "0.0.0.0",
+          "netmask": "0.0.0.0",
+          "gateway": "0.0.0.0"
+        },
+        "permanent": true
+      },
+      "actual_ipv4": [],
+      "actual_routes": [],
+      "management_unchanged": true,
+      "confirmed": true,
+      "error": null,
+      "native_current_matches_os": true,
+      "native_callback_observed": true
+    },
+    "storage": {
+      "path": "/var/lib/protocol-target-lab/profinet-native",
+      "abi": "pnet-v0.2.0-linux-x86_64-v1",
+      "owner_nonce": "32lowerhex",
+      "writer_locked": true,
+      "initialized": true,
+      "validation": "valid",
+      "durability": "native-save-observed-not-fsync-certified",
+      "files": [
+        {
+          "name": "pnet_data_ip.bin",
+          "bytes": 0,
+          "sha256": "SHA256"
+        }
+      ],
+      "native_nonvolatile_matches_saved": true,
+      "error": null
+    },
+    "signal": {
+      "software_only": true,
+      "state": false,
+      "transitions": 0,
+      "last_transition_ms": null,
+      "history": []
+    },
+    "capture": {
+      "packet_socket_inode": 1236,
+      "received": 0,
+      "outgoing": 0,
+      "errors": 0,
+      "native_packet_pid_attribution": false
+    },
+    "next_event_id": 0,
+    "cache_evictions": 0
+  },
+  "unknown_policy": "Unobserved snapshot/apply/storage is null or ready=false, never fake zero/current from files. Native snapshots are repeated-stable sampled views, not synchronization with third-party RX threads.",
+  "events": {
+    "route": "GET /v1/events?after=CURSOR&limit=1..16&node=dcp|ptcp_n|ptcp_f&query_sha256=SHA256",
+    "response": {
+      "schema_version": 1,
+      "boot_id": "UUID",
+      "runtime_id": "32hex",
+      "events": [],
+      "matched": 0,
+      "returned": 0,
+      "truncated": false,
+      "next_event_id": 0,
+      "cache_evictions": 0
+    },
+    "event": {
+      "event_id": 1,
+      "boot_id": "UUID",
+      "runtime_id": "32hex",
+      "uptime_ms": 0,
+      "node": "ptcp_n",
+      "kind": "accepted|rejected|ignored|tx_submitted|tx_error|native_tap_in|native_tap_out|signal_transition",
+      "query_sha256": "actual triggering request hash when known, otherwise null",
+      "status": "actual process result or reason",
+      "frame": {
+        "length": 60,
+        "sha256": "SHA256",
+        "preview_hex": "at most128bytes",
+        "truncated": false
+      },
+      "metadata": {
+        "interface": "actual",
+        "ifindex": 3,
+        "packet_type": 0,
+        "source_mac": "actual",
+        "destination_mac": "actual",
+        "frame_id": 65344,
+        "sequence": 1,
+        "xid": null
+      }
+    }
+  },
+  "client_report": {
+    "protocol": "profinet",
+    "wire_profile": "pnet-dcp-ptcp-lab-v1",
+    "passed": true,
+    "checks": [],
+    "summary": {
+      "total": 24,
+      "passed": 24,
+      "failed": 0,
+      "planned_requests": 26,
+      "actual_requests": 26,
+      "actual_responses": 26,
+      "matched_responses": 20,
+      "other_node_responses": 6,
+      "unexpected_responses": 0
+    },
+    "write_fields": {
+      "cleanup_complete": true,
+      "restoration_complete": true,
+      "crypto_verified": false
+    },
+    "notes": "ALL baseline counts shown; faults change actual expected response counts. Sync/Announce passing checks rely on fresh acceptance events from both nodes, not ACK. Restore fields occur only optional write checks. Peer AF_PACKET ETH_P_ALL with narrow8892 kernel filter supports actual host-side bridge-veth receive. Native SAM single-actor window is observed and bounded-waited, not bypassed."
+  },
+  "readiness_policy": "worker_ready_after_bind means native and both PTCP processors are bound/live with fresh sampled native heartbeat. OS apply confirmation is independent; bad external Set never forces a native restart/store reset. Optional writes require confirmed baseline."
+}

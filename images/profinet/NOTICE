@@ -1,0 +1,5 @@
+Python management/transport/PTCP/client wrappers: project MIT license.
+Native thin application and fixed p-net 0.2.0: GPL-3.0-only option; complete original corresponding archives, thin app, build recipe and notices are included under /usr/share/doc/protocol-target-lab-profinet.
+OSAL and cmake-tools: BSD-3-Clause, original notices included.
+CPython: Python-2.0; retained base /usr/local/lib/python3.12/LICENSE.txt.
+Base OS components retain their /usr/share/doc copyright notices. No physical-clock, IRT, cyclic IO or certification claim.

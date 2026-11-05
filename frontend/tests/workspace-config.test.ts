@@ -829,3 +829,118 @@ test("MPLS joins sixteen isolated drafts and clearing its explicit save preserve
   ])
     assert.equal(sameWorkspaceConfig(mplsDefaults, c), false);
 });
+
+test("PROFINET joins seventeen isolated drafts and saving preserves all sixteen including invalid inactive custom bank", async () => {
+  const { igmpDefaults, normalizeIgmpConfig } =
+    await import("../src/igmp-config.ts");
+  const { customEthernetDefaults } =
+    await import("../src/custom-ethernet-config.ts");
+  const { rtpDefaults } = await import("../src/rtp-config.ts");
+  const { rtcpDefaults } = await import("../src/rtcp-config.ts");
+  const { dlt645Defaults } = await import("../src/dlt645-config.ts");
+  const { iec101Defaults, updateIec101Channel } =
+    await import("../src/iec101-config.ts");
+  const { bfdDefaults, changeBfdMode } = await import("../src/bfd-config.ts");
+  const { vxlanDefaults } = await import("../src/vxlan-config.ts");
+  const { arpClientDefaults } = await import("../src/arp-client-config.ts");
+  const prior = [
+    dnsDefaults,
+    mqttDefaults,
+    telnetDefaults,
+    iec104Defaults,
+    mqttSnDefaults,
+    rtpDefaults,
+    rtcpDefaults,
+    dlt645Defaults,
+    vxlanDefaults,
+  ];
+  let drafts = {};
+  for (const [i, c] of prior.entries())
+    drafts = updateWorkspaceDrafts(
+      drafts,
+      `old-${i}`,
+      { ...c, port: c.port + 2 },
+      c,
+    );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "http",
+    { ...defaults, response_length: 128 },
+    defaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "iec101",
+    updateIec101Channel(iec101Defaults, "single", { point: { value: false } }),
+    iec101Defaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "bfd",
+    changeBfdMode(bfdDefaults, "quiet"),
+    bfdDefaults,
+  );
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "arp",
+    { ...arpClientDefaults, interval_ms: 600 },
+    arpClientDefaults,
+  );
+  const custom = structuredClone(customEthernetDefaults);
+  custom.response.frame_hex = "abc";
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "custom",
+    custom,
+    customEthernetDefaults,
+  );
+  const { mplsDefaults, normalizeMplsConfig } =
+    await import("../src/mpls-config.ts");
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "igmp",
+    { ...igmpDefaults, groups: ["239.64.19.1", "239.192.19.1"] },
+    igmpDefaults,
+  );
+  const old = structuredClone(drafts);
+  const mpls = {
+    ...mplsDefaults,
+    label: 1048575,
+    scenario: { mode: "short-ethernet" as const },
+  };
+  drafts = updateWorkspaceDrafts(drafts, "mpls", mpls, mplsDefaults);
+  assert.equal(Object.keys(drafts).length, 16);
+  const { profinetDefaults, normalizeProfinetConfig } =
+    await import("../src/profinet-config.ts");
+  const sixteen = structuredClone(drafts);
+  const profinet = structuredClone(profinetDefaults);
+  profinet.dcp.initial_station_name = "seventeen-draft";
+  profinet.ptcp_f.truncated_follow_up_size = 16;
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "profinet",
+    profinet,
+    profinetDefaults,
+  );
+  assert.equal(Object.keys(drafts).length, 17);
+  drafts = updateWorkspaceDrafts(
+    drafts,
+    "profinet",
+    profinet,
+    normalizeProfinetConfig(profinet),
+  );
+  assert.deepEqual(drafts, sixteen);
+  assert.equal(drafts.custom.response.frame_hex, "abc");
+  assert.equal(drafts.mpls.scenario.mode, "short-ethernet");
+  for (const c of [
+    ...prior,
+    defaults,
+    iec101Defaults,
+    bfdDefaults,
+    arpClientDefaults,
+    customEthernetDefaults,
+    igmpDefaults,
+    mplsDefaults,
+  ])
+    assert.equal(sameWorkspaceConfig(profinetDefaults, c), false);
+});

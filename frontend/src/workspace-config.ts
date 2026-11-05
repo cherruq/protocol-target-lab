@@ -1,4 +1,9 @@
 import {
+  isProfinetConfig,
+  sameProfinetConfig,
+  type ProfinetConfig,
+} from "./profinet-config.ts";
+import {
   isMplsConfig,
   sameMplsConfig,
   type MplsConfig,
@@ -88,7 +93,8 @@ export type WorkspaceConfig =
   | ArpClientConfig
   | CustomEthernetConfig
   | IgmpConfig
-  | MplsConfig;
+  | MplsConfig
+  | ProfinetConfig;
 export type DraftConfig =
   | Config
   | DnsConfig
@@ -105,13 +111,18 @@ export type DraftConfig =
   | ArpClientConfig
   | CustomEthernetDraft
   | IgmpConfig
-  | MplsConfig;
+  | MplsConfig
+  | ProfinetConfig;
 export type WorkspaceDrafts = Record<string, DraftConfig>;
 
 export function sameWorkspaceConfig(
   a: WorkspaceConfig,
   b: WorkspaceConfig,
 ): boolean {
+  if (isProfinetConfig(a) || isProfinetConfig(b))
+    return (
+      isProfinetConfig(a) && isProfinetConfig(b) && sameProfinetConfig(a, b)
+    );
   if (isMplsConfig(a) || isMplsConfig(b))
     return isMplsConfig(a) && isMplsConfig(b) && sameMplsConfig(a, b);
   if (isIgmpConfig(a) || isIgmpConfig(b))
@@ -156,47 +167,51 @@ export function updateWorkspaceDrafts(
   edited: DraftConfig,
   saved: WorkspaceConfig,
 ): WorkspaceDrafts {
-  const changed = isMplsConfig(edited)
-    ? !isMplsConfig(saved) || !sameMplsConfig(edited, saved)
-    : isIgmpConfig(edited)
-      ? !isIgmpConfig(saved) || !sameIgmpConfig(edited, saved)
-      : isCustomEthernetDraft(edited)
-        ? !isCustomEthernetConfig(saved) ||
-          !sameCustomEthernetDraft(edited, saved)
-        : isArpClientConfig(edited)
-          ? !isArpClientConfig(saved) || !sameArpClientConfig(edited, saved)
-          : isVxlanConfig(edited)
-            ? !isVxlanConfig(saved) || !sameVxlanConfig(edited, saved)
-            : isBfdConfig(edited)
-              ? !isBfdConfig(saved) || !sameBfdConfig(edited, saved)
-              : isDnsConfig(edited)
-                ? !isDnsConfig(saved) || !sameDnsConfig(edited, saved)
-                : isMqttConfig(edited)
-                  ? !isMqttConfig(saved) || !sameMqttConfig(edited, saved)
-                  : isTelnetConfig(edited)
-                    ? !isTelnetConfig(saved) || !sameTelnetConfig(edited, saved)
-                    : isIec104Config(edited)
-                      ? !isIec104Config(saved) ||
-                        !sameIec104Config(edited, saved)
-                      : isMqttSnConfig(edited)
-                        ? !isMqttSnConfig(saved) ||
-                          !sameMqttSnConfig(edited, saved)
-                        : isRtpConfig(edited)
-                          ? !isRtpConfig(saved) || !sameRtpConfig(edited, saved)
-                          : isRtcpConfig(edited)
-                            ? !isRtcpConfig(saved) ||
-                              !sameRtcpConfig(edited, saved)
-                            : isDlt645Config(edited)
-                              ? !isDlt645Config(saved) ||
-                                !sameDlt645Config(edited, saved)
-                              : isIec101Config(edited)
-                                ? !isIec101Config(saved) ||
-                                  !sameIec101Config(edited, saved)
-                                : !isHttpConfig(saved) ||
-                                  !sameGeneratedConfig(
-                                    edited,
-                                    normalizeConfig(saved),
-                                  );
+  const changed = isProfinetConfig(edited)
+    ? !isProfinetConfig(saved) || !sameProfinetConfig(edited, saved)
+    : isMplsConfig(edited)
+      ? !isMplsConfig(saved) || !sameMplsConfig(edited, saved)
+      : isIgmpConfig(edited)
+        ? !isIgmpConfig(saved) || !sameIgmpConfig(edited, saved)
+        : isCustomEthernetDraft(edited)
+          ? !isCustomEthernetConfig(saved) ||
+            !sameCustomEthernetDraft(edited, saved)
+          : isArpClientConfig(edited)
+            ? !isArpClientConfig(saved) || !sameArpClientConfig(edited, saved)
+            : isVxlanConfig(edited)
+              ? !isVxlanConfig(saved) || !sameVxlanConfig(edited, saved)
+              : isBfdConfig(edited)
+                ? !isBfdConfig(saved) || !sameBfdConfig(edited, saved)
+                : isDnsConfig(edited)
+                  ? !isDnsConfig(saved) || !sameDnsConfig(edited, saved)
+                  : isMqttConfig(edited)
+                    ? !isMqttConfig(saved) || !sameMqttConfig(edited, saved)
+                    : isTelnetConfig(edited)
+                      ? !isTelnetConfig(saved) ||
+                        !sameTelnetConfig(edited, saved)
+                      : isIec104Config(edited)
+                        ? !isIec104Config(saved) ||
+                          !sameIec104Config(edited, saved)
+                        : isMqttSnConfig(edited)
+                          ? !isMqttSnConfig(saved) ||
+                            !sameMqttSnConfig(edited, saved)
+                          : isRtpConfig(edited)
+                            ? !isRtpConfig(saved) ||
+                              !sameRtpConfig(edited, saved)
+                            : isRtcpConfig(edited)
+                              ? !isRtcpConfig(saved) ||
+                                !sameRtcpConfig(edited, saved)
+                              : isDlt645Config(edited)
+                                ? !isDlt645Config(saved) ||
+                                  !sameDlt645Config(edited, saved)
+                                : isIec101Config(edited)
+                                  ? !isIec101Config(saved) ||
+                                    !sameIec101Config(edited, saved)
+                                  : !isHttpConfig(saved) ||
+                                    !sameGeneratedConfig(
+                                      edited,
+                                      normalizeConfig(saved),
+                                    );
   const next = { ...drafts };
   if (changed) next[id] = edited;
   else delete next[id];
@@ -220,7 +235,8 @@ export function workspaceIpEndpoint(
     isArpClientConfig(config) ||
     isCustomEthernetConfig(config) ||
     isIgmpConfig(config) ||
-    isMplsConfig(config)
+    isMplsConfig(config) ||
+    isProfinetConfig(config)
   )
     return null;
   if (isIec101Config(config))
