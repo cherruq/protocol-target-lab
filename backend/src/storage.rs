@@ -30,61 +30,64 @@ pub struct Settings {
     pub mpls_image: String,
     pub igmp_link_helper: PathBuf,
 }
+fn parse_defaults(text: &str) -> Result<std::collections::HashMap<String, String>> {
+    let mut defaults = std::collections::HashMap::new();
+    for line in text
+        .lines()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && !s.starts_with('#'))
+    {
+        let (key, value) = line
+            .split_once('=')
+            .context("invalid manager defaults; expected KEY=VALUE")?;
+        if ![
+            "PLAB_CONFIG_FILE",
+            "PLAB_DATA_DIR",
+            "PLAB_LISTEN",
+            "PLAB_HTTP_IMAGE",
+            "PLAB_DNS_IMAGE",
+            "PLAB_MQTT_IMAGE",
+            "PLAB_TELNET_IMAGE",
+            "PLAB_IEC104_IMAGE",
+            "PLAB_MQTTSN_IMAGE",
+            "PLAB_RTP_IMAGE",
+            "PLAB_RTCP_IMAGE",
+            "PLAB_DLT645_IMAGE",
+            "PLAB_IEC101_IMAGE",
+            "PLAB_BFD_IMAGE",
+            "PLAB_VXLAN_IMAGE",
+            "PLAB_ARP_CLIENT_IMAGE",
+            "PLAB_CUSTOM_ETHERNET_IMAGE",
+            "PLAB_IGMP_IMAGE",
+            "PLAB_MPLS_IMAGE",
+            "PLAB_IGMP_LINK_HELPER",
+        ]
+        .contains(&key)
+        {
+            anyhow::bail!("unsupported key in manager defaults: {key}");
+        }
+        let value = value.trim();
+        let value = if value.len() >= 2
+            && ((value.starts_with('\'') && value.ends_with('\''))
+                || (value.starts_with('"') && value.ends_with('"')))
+        {
+            &value[1..value.len() - 1]
+        } else {
+            value
+        };
+        defaults.insert(key.to_owned(), value.to_owned());
+    }
+    Ok(defaults)
+}
 impl Settings {
     pub fn env() -> Result<Self> {
-        let mut defaults = std::collections::HashMap::new();
         let env_path = std::env::var("PLAB_ENV_FILE")
             .unwrap_or_else(|_| "/etc/default/protocol-target-lab".into());
-        match std::fs::read_to_string(&env_path) {
-            Ok(text) => {
-                for line in text
-                    .lines()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty() && !s.starts_with('#'))
-                {
-                    let (key, value) = line
-                        .split_once('=')
-                        .context("invalid manager defaults; expected KEY=VALUE")?;
-                    if ![
-                        "PLAB_CONFIG_FILE",
-                        "PLAB_DATA_DIR",
-                        "PLAB_LISTEN",
-                        "PLAB_HTTP_IMAGE",
-                        "PLAB_DNS_IMAGE",
-                        "PLAB_MQTT_IMAGE",
-                        "PLAB_TELNET_IMAGE",
-                        "PLAB_IEC104_IMAGE",
-                        "PLAB_MQTTSN_IMAGE",
-                        "PLAB_RTP_IMAGE",
-                        "PLAB_RTCP_IMAGE",
-                        "PLAB_DLT645_IMAGE",
-                        "PLAB_IEC101_IMAGE",
-                        "PLAB_BFD_IMAGE",
-                        "PLAB_VXLAN_IMAGE",
-                        "PLAB_ARP_CLIENT_IMAGE",
-                        "PLAB_CUSTOM_ETHERNET_IMAGE",
-                        "PLAB_IGMP_IMAGE",
-                        "PLAB_IGMP_LINK_HELPER",
-                    ]
-                    .contains(&key)
-                    {
-                        anyhow::bail!("unsupported key in manager defaults: {key}");
-                    }
-                    let value = value.trim();
-                    let value = if value.len() >= 2
-                        && ((value.starts_with('\'') && value.ends_with('\''))
-                            || (value.starts_with('"') && value.ends_with('"')))
-                    {
-                        &value[1..value.len() - 1]
-                    } else {
-                        value
-                    };
-                    defaults.insert(key.to_owned(), value.to_owned());
-                }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        let defaults = match std::fs::read_to_string(&env_path) {
+            Ok(text) => parse_defaults(&text)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => std::collections::HashMap::new(),
             Err(e) => return Err(e).context("cannot read manager defaults"),
-        }
+        };
         let value = |key: &str, fallback: &str| {
             std::env::var(key)
                 .ok()
@@ -1081,5 +1084,23 @@ mod tests {
         let bytes = std::fs::read(&settings.config).unwrap();
         load(&settings).unwrap();
         assert_eq!(std::fs::read(&settings.config).unwrap(), bytes);
+    }
+    #[test]
+    fn actual_packaged_defaults_are_accepted_for_every_registered_image() {
+        let packaged = parse_defaults(include_str!("../../packaging/debian/default")).unwrap();
+        assert_eq!(
+            packaged.keys().filter(|k| k.ends_with("_IMAGE")).count(),
+            crate::model::PROTOCOLS.len()
+        );
+        assert_eq!(
+            packaged["PLAB_MPLS_IMAGE"],
+            "protocol-target-lab/mpls:0.1.0"
+        );
+        assert_eq!(
+            parse_defaults("PLAB_MPLS_IMAGE='local/mpls:test'\n").unwrap()["PLAB_MPLS_IMAGE"],
+            "local/mpls:test"
+        );
+        assert!(parse_defaults("PLAB_UNSUPPORTED_IMAGE=value\n").is_err());
+        assert!(parse_defaults("PLAB_MPLS_IMAGE\n").is_err());
     }
 }
