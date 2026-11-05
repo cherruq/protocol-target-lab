@@ -25,6 +25,7 @@ export type ProtocolTestRun<C> = {
     error?: string;
     exit_code?: number | null;
     trace?: unknown;
+    summary?: { actual_exchanges?: number; [key: string]: unknown };
   } | null;
   error: string | null;
   cleanup_complete: boolean;
@@ -65,4 +66,12 @@ export function ownProtocolTest<C>(
     (!waitingId || run.id === waitingId)
     ? run
     : null;
+}
+
+/** Completed exchanges are explicit proof counts, never inferred from planned methods or check groups. */
+export function actualProtocolExchanges(summary: unknown): number | null {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary))
+    return null;
+  const n = (summary as Record<string, unknown>).actual_exchanges;
+  return typeof n === "number" && Number.isSafeInteger(n) && n >= 0 ? n : null;
 }

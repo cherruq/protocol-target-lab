@@ -191,6 +191,9 @@ impl Manager {
             for v in resources {
                 docker::remove(&v, &deployment, id).await?;
             }
+            if instance.protocol_id == "custom-ethernet" {
+                crate::custom_l2::cleanup_empty(&deployment, id, true).await?;
+            }
             if instance.protocol_id == "arp-client" {
                 crate::l2::cleanup_empty(&deployment, id, true).await?;
             }
@@ -229,18 +232,48 @@ impl Manager {
             .first()
             .filter(|v| docker::running(v))
             .and(instance.applied_config.as_ref());
-        docker::preflight_port(
-            &config,
-            own_endpoint,
-            resources.first().and_then(|v| v["Id"].as_str()),
-            &deployment,
-            id,
-        )
-        .await?;
+        let compilation = if let ProtocolConfig::CustomEthernet(c) = &config {
+            let old = own_endpoint.and_then(|o| {
+                if let ProtocolConfig::CustomEthernet(c) = o {
+                    Some(c)
+                } else {
+                    None
+                }
+            });
+            Some(
+                crate::custom_l2::preflight(
+                    &deployment,
+                    id,
+                    c,
+                    old,
+                    resources.first().and_then(|v| v["Id"].as_str()),
+                    &prepared_image,
+                    &self.session_id,
+                )
+                .await?,
+            )
+        } else {
+            docker::preflight_port(
+                &config,
+                own_endpoint,
+                resources.first().and_then(|v| v["Id"].as_str()),
+                &deployment,
+                id,
+            )
+            .await?;
+            None
+        };
         for v in &resources {
             docker::remove(v, &deployment, id).await?;
         }
-        let container = docker::start(&deployment, id, &config, &prepared_image).await?;
+        let container = docker::start(
+            &deployment,
+            id,
+            &config,
+            &prepared_image,
+            compilation.as_ref(),
+        )
+        .await?;
         let mut ready_error = "Protocol worker did not become ready".to_owned();
         for _ in 0..40 {
             match docker::probe_owned(&deployment, id, &container, &config).await {
@@ -250,6 +283,9 @@ impl Manager {
                         && docker::running(&owned[0])
                         && docker::container_id(&owned[0])? == container
                     {
+                        if instance.protocol_id == "custom-ethernet" {
+                            crate::custom_l2::cleanup_empty(&deployment, id, false).await?;
+                        }
                         if instance.protocol_id == "arp-client" {
                             crate::l2::cleanup_empty(&deployment, id, false).await?;
                         }
@@ -285,8 +321,21 @@ impl Manager {
                 .instances
                 .iter()
                 .any(|i| i.id == id && i.protocol_id == "arp-client");
+            let custom = d
+                .doc
+                .instances
+                .iter()
+                .any(|i| i.id == id && i.protocol_id == "custom-ethernet");
             let deployment = d.doc.deployment_id.clone();
             drop(d);
+            if custom
+                && let Err(cleanup) = crate::custom_l2::cleanup_empty(&deployment, id, false).await
+            {
+                let primary = result.as_ref().err().unwrap();
+                result = Err(anyhow::anyhow!(
+                    "{primary:#}; owned custom dependency cleanup failed: {cleanup:#}"
+                ));
+            }
             if raw && let Err(cleanup) = crate::l2::cleanup_empty(&deployment, id, false).await {
                 let primary = result.as_ref().err().unwrap();
                 result = Err(anyhow::anyhow!(

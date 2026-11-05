@@ -66,6 +66,17 @@ pub async fn prepare_image(image: &str, config: &ProtocolConfig) -> Result<Strin
         {
             bail!("Protocol image is incompatible; import matching assets");
         }
+        if matches!(config, ProtocolConfig::CustomEthernet(_))
+            && ["request", "client", "control", "observer", "compiler"]
+                .iter()
+                .any(|k| {
+                    metadata[0]["Config"]["Labels"]
+                        [format!("io.protocol-target-lab.custom-ethernet-{k}-schema")]
+                        != "1"
+                })
+        {
+            bail!("Custom Ethernet image lacks required live compiler/observer/client schemas")
+        }
         if matches!(config, ProtocolConfig::ArpClient(_))
             && ["request", "control", "observer", "client"]
                 .iter()
@@ -189,6 +200,11 @@ pub fn running(v: &Value) -> bool {
     v["State"]["Running"].as_bool() == Some(true)
 }
 pub fn matches(v: &Value, config: &ProtocolConfig) -> bool {
+    if let ProtocolConfig::CustomEthernet(c) = config
+        && !crate::custom_l2::container_matches(v, c)
+    {
+        return false;
+    }
     if let ProtocolConfig::ArpClient(c) = config
         && !crate::l2::container_matches(v, c)
     {
@@ -271,9 +287,12 @@ pub async fn start(
     id: &str,
     config: &ProtocolConfig,
     image: &str,
+    compilation: Option<&crate::custom_l2::Compilation>,
 ) -> Result<String> {
     let immutable_image = image_id(image).await?;
-    let arp_network = if let ProtocolConfig::ArpClient(c) = config {
+    let arp_network = if let ProtocolConfig::CustomEthernet(c) = config {
+        Some(crate::custom_l2::network_for_start(deployment, id, c).await?)
+    } else if let ProtocolConfig::ArpClient(c) = config {
         Some(crate::l2::network_for_start(deployment, id, c).await?)
     } else {
         None
@@ -326,6 +345,55 @@ pub async fn start(
                 c.port.to_string(),
             ]);
             args.extend(worker_args(c));
+        }
+        ProtocolConfig::CustomEthernet(c) => {
+            let prepared = compilation.context(
+                "custom Ethernet start requires successful before-stop compiler preflight",
+            )?;
+            if prepared.image != immutable_image {
+                bail!("candidate immutable image changed after compile preflight")
+            }
+            let nonce = uuid::Uuid::new_v4().simple().to_string();
+            args.extend([
+                "--user".into(),
+                "0:0".into(),
+                "--cap-drop".into(),
+                "ALL".into(),
+                "--cap-add".into(),
+                "NET_RAW".into(),
+                "--ipc".into(),
+                "private".into(),
+                "--label".into(),
+                format!("{}={nonce}", crate::custom_ethernet::RUNTIME_LABEL),
+                "--label".into(),
+                format!(
+                    "{}={}",
+                    crate::custom_ethernet::FILTER_LABEL,
+                    prepared.filter_hash
+                ),
+                "--label".into(),
+                format!(
+                    "{}={}",
+                    crate::custom_ethernet::LIBRARY_LABEL,
+                    prepared.library_hash
+                ),
+                "--label".into(),
+                format!(
+                    "io.protocol-target-lab.custom-ethernet-library-version={}",
+                    prepared.library_version
+                ),
+                "--env".into(),
+                format!("PLAB_RUNTIME_ID={nonce}"),
+            ]);
+            if c.link.is_bridge() {
+                args.extend(["--mac-address".into(), c.local_mac.clone()]);
+            }
+            args.push(immutable_image);
+            args.extend(crate::custom_ethernet::config_args(c)?);
+            args.extend([
+                "--expected-filter-sha256".into(),
+                prepared.filter_hash.clone(),
+            ]);
         }
         ProtocolConfig::ArpClient(c) => {
             let nonce = uuid::Uuid::new_v4().simple().to_string();
@@ -451,6 +519,10 @@ pub async fn probe_owned(
     source_id: &str,
     config: &ProtocolConfig,
 ) -> Result<()> {
+    if let ProtocolConfig::CustomEthernet(c) = config {
+        crate::custom_l2::snapshot(deployment, instance, source_id, c).await?;
+        return Ok(());
+    }
     if let ProtocolConfig::ArpClient(c) = config {
         crate::l2::snapshot(deployment, instance, source_id, c).await?;
         return Ok(());
@@ -512,6 +584,9 @@ pub async fn probe_owned(
 }
 pub async fn probe(config: &ProtocolConfig) -> Result<()> {
     let config = match config {
+        ProtocolConfig::CustomEthernet(_) => {
+            bail!("Custom Ethernet readiness requires exact source/network/filter identity")
+        }
         ProtocolConfig::ArpClient(_) => {
             bail!("ARP readiness requires exact owned source/network and private state")
         }

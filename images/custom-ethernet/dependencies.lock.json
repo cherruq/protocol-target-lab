@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "image": "protocol-target-lab/custom-ethernet:0.1.0",
+  "base_image": "python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337",
+  "build_image": "protocol-target-lab/custom-ethernet-build:1.10.5",
+  "libpcap": {
+    "version": "1.10.5",
+    "url": "https://www.tcpdump.org/release/libpcap-1.10.5.tar.xz",
+    "file": "images/custom-ethernet/vendor/libpcap-1.10.5.tar.xz",
+    "sha256": "84fa89ac6d303028c1c5b754abff77224f45eca0a94eb1a34ff0aa9ceece3925"
+  },
+  "wrapper_license": "MIT",
+  "native_license": "BSD-3-Clause; complete upstream file-specific copyright notices retained in archive",
+  "implementation": "Autonomous passive fixed Ethernet responder using live libpcap classic BPF kernel filter; no protocol ACK"
+}

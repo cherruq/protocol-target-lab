@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation supports **thirteen protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD, VXLAN and ARP-client**, with manager version **0.17.0**,
-HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, IEC101 dual-channel slave/client image **0.1.0**, BFD peer/client image **0.1.0**, VXLAN ARP responder/client image **0.1.0**, and ARP-client requester/inverse-peer image **0.1.0**. Each protocol has one fixed workspace and
+The current implementation supports **fourteen protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD, VXLAN, ARP-client and Custom Ethernet**, with manager version **0.18.0**,
+HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, IEC101 dual-channel slave/client image **0.1.0**, BFD peer/client image **0.1.0**, VXLAN ARP responder/client image **0.1.0**, ARP-client requester/inverse-peer image **0.1.0**, and Custom Ethernet fixed-responder/client image **0.1.0**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -672,3 +672,20 @@ cannot fit the bounded test are rejected before creating the temporary peer.
 Builtin host-interface tests require a unique different real peer NIC on the
 manager host; an external peer must specify its own actual interface. See the
 [ARP-client guide](docs/arp-client.md) and [acceptance scope](docs/arp-client-acceptance.md).
+
+## Custom Ethernet fixed response
+
+The custom-ethernet workspace uses public libpcap1.10.5 to compile the independent
+receive expression on the actual Linux Ethernet interface, then installs and reads
+back kernel classic BPF. It persistently sends one configured response per matching
+incoming frame and optional exact payload prefix. Choose a constructed Ethernet
+header plus fixed payload or an opaque complete raw frame. Both response banks,
+disabled VLAN values and source override values remain saved when switching modes.
+
+The default isolated software link uses an owned internal Docker network and a
+disposable same-image sender/receiver on a separate actual veth. Existing host
+interfaces are an explicit alternative. Request fixtures, filters and TX fields are
+independent; a nonmatching user fixture fails honestly. ALL checks the current
+fixture with four check groups and eight actual exchanges. There is no application
+TCP/UDP port or protocol ACK. See [configuration, limits and offline build](docs/custom-ethernet.md) and
+[CLI](docs/cli.md).

@@ -616,3 +616,40 @@ actual Ethernet NIC matching server_mac; otherwise use the external same-image
 peer with an explicit local interface. A remote API CLI still executes the
 builtin peer on the manager host. Test budgets use the applied configuration;
 legal very short/long runtime timers may be unavailable for a bounded test.
+
+## Custom Ethernet
+
+```sh
+plabctl schema custom-ethernet
+plabctl config get custom-ethernet
+plabctl config set custom-ethernet --packet-filter 'ether proto 0x88b5 and ether src 02:00:00:00:02:10'
+plabctl config set custom-ethernet --response-json '{"mode":"frame"}'
+plabctl config set custom-ethernet --response-json '{"mode":"payload","payload":{"vlan":{"enabled":true,"vid":7,"pcp":0,"dei":false}}}'
+plabctl config set custom-ethernet --request-marker-json null
+plabctl config set custom-ethernet --file custom-ethernet.json
+plabctl start custom-ethernet
+plabctl runtime custom-ethernet
+plabctl tests run custom-ethernet --method ALL
+plabctl tests run custom-ethernet --method REPEAT --path frame
+plabctl logs custom-ethernet
+plabctl stop custom-ethernet
+```
+
+Save only changes the draft; start/restart applies it after live kernel-filter
+preflight. Invalid expressions leave an existing applied source running. Responses
+keep both payload and frame banks. Partial response JSON merges recursively; a
+link JSON change replaces its complete tagged object. Use --file for large configs.
+Local/server process JSON arguments are chunked below the operating system's
+single-argument limit, without changing config values or hashes.
+
+The optional flags --local-mac, --peer-mac, --link-json, --response-json,
+--promiscuous true|false, --multicast-macs-json, --test-request-json and
+--request-marker-json map directly to the strict configuration schema. The optional
+marker is a JSON hex string or null. Filter, explicit test fixture and response
+are independent: changing a TX header does not rewrite BPF or the fixture.
+ALL has four check groups and eight actual exchanges; a failed check can stop
+later exchanges, so report executed counts separately. Source runtime is passive
+read-only evidence, while the disposable client sends real Ethernet frames.
+The private observer port is not a protocol service port; connection-info provides
+a manual host-interface counterpart template with explicit source image/identity
+placeholders and optional observer-only SSH forwarding.
