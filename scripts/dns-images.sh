@@ -11,12 +11,14 @@ printf '%s  %s\n' "${inputs[4]}" "${inputs[3]}" | sha256sum -c -
 mkdir -p build dist
 context=$(mktemp -d "$project_root/build/dns-image.XXXXXX")
 trap 'rm -rf -- "$context"' EXIT
-mkdir -p "$context/workers/dns" "$context/images/dns" "$context/third-party/dnsmasq"
+mkdir -p "$context/workers/dns" "$context/workers/tls" "$context/images/dns" "$context/third-party/dnsmasq"
 install -m 0644 LICENSE "$context/LICENSE"
-for file in server.py client.py dns_wire.py; do install -m 0644 "workers/dns/$file" "$context/workers/dns/$file"; done
+for file in workers/dns/*.py; do install -m 0644 "$file" "$context/workers/dns/"; done
+cp -R workers/dns/fixtures "$context/workers/dns/fixtures"
+install -m 0644 workers/tls/lab.crt workers/tls/lab.key workers/tls/README.md "$context/workers/tls/"
 for file in Dockerfile build.Dockerfile dependencies.lock.json; do install -m 0644 "images/dns/$file" "$context/images/dns/$file"; done
 for file in dnsmasq-2.90.tar.xz COPYING COPYING-v3 README.md; do install -m 0644 "third-party/dnsmasq/$file" "$context/third-party/dnsmasq/$file"; done
 docker build --network=none --pull=false --build-arg "BASE_IMAGE=$base_image" --build-arg "BUILD_IMAGE=$build_image" \
-    --label org.opencontainers.image.title=protocol-target-lab-dns --label org.opencontainers.image.version=0.1.1 \
+    --label org.opencontainers.image.title=protocol-target-lab-dns --label org.opencontainers.image.version=0.2.1 \
     -f "$context/images/dns/Dockerfile" --tag "$image" "$context"
 docker image inspect "$image" > dist/dns-image-inspect.json

@@ -1,5 +1,7 @@
 # DNS workspace
 
+HTTPS/DNS TLS and the migrated reference scenarios are documented in [the TLS and scenario guide](http-dns-tls.md).
+
 DNS uses the real, unmodified dnsmasq 2.90 resolver engine with an original
 Python configuration wrapper and independent standard-library DNS client.
 This workspace implements a local static DNS target: configured A/AAAA answers,
@@ -91,7 +93,7 @@ stdout contains one JSON result with `passed`, `checks`, `summary`, and elapsed
 `seconds`; exit status is 0 for pass and 1 for failure. Every check records a
 structured request, response, bounded 128-byte wire preview and error when
 applicable. No packet dump grows with record payload size. The report has a
-512 KiB cap; supplementary wire hex is omitted if necessary while all semantic
+768 KiB cap; supplementary wire hex is omitted if necessary while all semantic
 checks, original lengths and hashes are retained. Each socket has a three-second timeout, and the whole run a 30-second
 deadline. The client reports unreachable targets, malformed packets, incorrect
 records, and invalid configuration as JSON failures.

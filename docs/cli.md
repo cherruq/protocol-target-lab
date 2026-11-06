@@ -1,5 +1,7 @@
 # Agent CLI
 
+HTTPS/DNS TLS and the migrated reference scenarios are documented in [the TLS and scenario guide](http-dns-tls.md).
+
 `plabctl` is installed by the same deb as the manager. It is a lightweight entry
 point to the same native binary, using the management HTTP API for workspace
 commands. It does not edit the server's files or invoke local Docker for these

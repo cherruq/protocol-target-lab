@@ -1,6 +1,7 @@
 export type Config = {
   bind_ip: string;
   port: number;
+  tls_enabled?: boolean;
   response_length: number;
   response_mode: "fixed" | "random";
 };
@@ -8,6 +9,7 @@ export type Config = {
 export type LegacyConfig = {
   bind_ip: string;
   port: number;
+  tls_enabled?: boolean;
   response_body: string;
 };
 
@@ -59,6 +61,7 @@ export function normalizeConfig(config: StoredConfig): Config {
       ? new TextEncoder().encode(config.response_body).length
       : config.response_length,
     response_mode: isLegacyConfig(config) ? "fixed" : config.response_mode,
+    ...(config.tls_enabled ? { tls_enabled: true } : {}),
   };
 }
 
@@ -66,6 +69,7 @@ export function sameGeneratedConfig(a: Config, b: Config): boolean {
   return (
     a.bind_ip === b.bind_ip &&
     a.port === b.port &&
+    Boolean(a.tls_enabled) === Boolean(b.tls_enabled) &&
     a.response_length === b.response_length &&
     a.response_mode === b.response_mode
   );
@@ -78,6 +82,7 @@ export function sameStoredConfig(a: StoredConfig, b: StoredConfig): boolean {
       isLegacyConfig(b) &&
       a.bind_ip === b.bind_ip &&
       a.port === b.port &&
+      Boolean(a.tls_enabled) === Boolean(b.tls_enabled) &&
       a.response_body === b.response_body
     );
   }
@@ -85,6 +90,8 @@ export function sameStoredConfig(a: StoredConfig, b: StoredConfig): boolean {
 }
 
 export function validateConfig(config: Config): void {
+  if (config.tls_enabled !== undefined && typeof config.tls_enabled !== "boolean")
+    throw new Error("HTTPS 开关必须是布尔值。");
   if (
     !Number.isInteger(config.response_length) ||
     config.response_length < 0 ||

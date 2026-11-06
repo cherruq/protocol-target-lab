@@ -2,9 +2,9 @@
 PLAB_LISTEN=0.0.0.0:18000
 PLAB_CONFIG_FILE=/etc/protocol-target-lab/instances.json
 PLAB_DATA_DIR=/var/lib/protocol-target-lab
-PLAB_HTTP_IMAGE=protocol-target-lab/http:0.3.0
+PLAB_HTTP_IMAGE=protocol-target-lab/http:0.4.0
 
-PLAB_DNS_IMAGE=protocol-target-lab/dns:0.1.1
+PLAB_DNS_IMAGE=protocol-target-lab/dns:0.2.1
 
 PLAB_MQTT_IMAGE=protocol-target-lab/mqtt:0.1.1
 

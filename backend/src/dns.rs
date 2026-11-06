@@ -19,6 +19,54 @@ pub struct DnsConfig {
     pub udp_enabled: bool,
     pub tcp_enabled: bool,
     pub records: Vec<Record>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub tls_enabled: bool,
+    #[serde(
+        default = "default_tls_port",
+        skip_serializing_if = "is_default_tls_port"
+    )]
+    pub tls_port: u16,
+    #[serde(default = "default_profile", skip_serializing_if = "is_standard")]
+    pub response_profile: String,
+    #[serde(default = "default_fixture_set", skip_serializing_if = "is_final")]
+    pub fixture_set: String,
+}
+fn is_false(v: &bool) -> bool {
+    !*v
+}
+fn default_tls_port() -> u16 {
+    1853
+}
+fn is_default_tls_port(v: &u16) -> bool {
+    *v == 1853
+}
+fn default_profile() -> String {
+    "standard".into()
+}
+fn is_standard(v: &String) -> bool {
+    v == "standard"
+}
+fn default_fixture_set() -> String {
+    "final".into()
+}
+fn is_final(v: &String) -> bool {
+    v == "final"
+}
+pub fn fixture_paths(config: &DnsConfig) -> Vec<String> {
+    let catalog: serde_json::Value =
+        serde_json::from_str(include_str!("../../workers/dns/fixtures/catalog.json"))
+            .expect("bundled fixture catalog");
+    catalog["scenarios"]
+        .as_array()
+        .expect("fixture list")
+        .iter()
+        .filter(|f| f["fixture_set"] == config.fixture_set)
+        .filter(|f| match f["transport"].as_str() {
+            Some("UDP") => config.udp_enabled,
+            _ => config.tcp_enabled || config.tls_enabled,
+        })
+        .map(|f| f["id"].as_str().expect("fixture id").to_owned())
+        .collect()
 }
 pub fn canonical_name(name: &str) -> String {
     name.trim_end_matches('.').to_ascii_lowercase()
@@ -30,6 +78,10 @@ impl Default for DnsConfig {
             port: 15353,
             udp_enabled: true,
             tcp_enabled: true,
+            tls_enabled: false,
+            tls_port: default_tls_port(),
+            response_profile: default_profile(),
+            fixture_set: default_fixture_set(),
             records: vec![Record {
                 name: "device.test".into(),
                 record_type: "A".into(),
@@ -40,6 +92,12 @@ impl Default for DnsConfig {
     }
 }
 impl DnsConfig {
+    pub fn requires_extensions(&self) -> bool {
+        self.tls_enabled
+            || self.response_profile != "standard"
+            || self.tls_port != 1853
+            || self.fixture_set != "final"
+    }
     pub fn validate(&self) -> Result<()> {
         let ip: std::net::Ipv4Addr = self
             .bind_ip
@@ -48,8 +106,24 @@ impl DnsConfig {
         if ip.is_multicast() || ip.is_broadcast() || self.port == 0 {
             bail!("config.bind_ip/config.port: expected unicast/wildcard IPv4 and port 1..65535");
         }
-        if !self.udp_enabled && !self.tcp_enabled {
-            bail!("config.transports: enable UDP or TCP");
+        if self.tls_port == 0
+            || (self.tls_enabled && self.tcp_enabled && self.port == self.tls_port)
+        {
+            bail!("config.tls_port: expected 1..65535, distinct from enabled TCP port");
+        }
+        if !["standard", "legacy-fixtures"].contains(&self.response_profile.as_str())
+            || !["final", "short", "wrong-id"].contains(&self.fixture_set.as_str())
+        {
+            bail!("config.response_profile/config.fixture_set: unsupported profile or fixture set");
+        }
+        if self.response_profile == "legacy-fixtures"
+            && self.fixture_set != "final"
+            && (!self.udp_enabled || self.tcp_enabled || self.tls_enabled)
+        {
+            bail!("config.fixture_set: short/wrong-id support UDP only");
+        }
+        if !self.udp_enabled && !self.tcp_enabled && !self.tls_enabled {
+            bail!("config.transports: enable UDP, TCP or TLS");
         }
         if self.records.is_empty() || self.records.len() > 32 {
             bail!("config.records: expected 1..32 records");
@@ -105,10 +179,14 @@ impl DnsConfig {
         Ok(())
     }
     pub fn transports(&self) -> Vec<&'static str> {
-        [(self.udp_enabled, "UDP"), (self.tcp_enabled, "TCP")]
-            .into_iter()
-            .filter_map(|(on, name)| on.then_some(name))
-            .collect()
+        [
+            (self.udp_enabled, "UDP"),
+            (self.tcp_enabled, "TCP"),
+            (self.tls_enabled, "TLS"),
+        ]
+        .into_iter()
+        .filter_map(|(on, name)| on.then_some(name))
+        .collect()
     }
     pub fn names(&self) -> Vec<String> {
         self.records

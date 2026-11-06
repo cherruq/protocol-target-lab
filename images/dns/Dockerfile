@@ -8,6 +8,7 @@ RUN echo '8e50309bd837bfec9649a812e066c09b6988b73d749b7d293c06c57d46a109e4  dnsm
     && make -C dnsmasq-2.90 COPTS='-DNO_DHCP -DNO_TFTP -DNO_SCRIPT -DNO_AUTH -DNO_IPSET -DNO_LOOP -DNO_DUMPFILE -DNO_INOTIFY' \
     && install -D -m 0755 dnsmasq-2.90/src/dnsmasq /out/dnsmasq
 FROM ${BASE_IMAGE}
+LABEL io.protocol-target-lab.tls-scenarios="1"
 LABEL io.protocol-target-lab.dns-response-schema="1" \
       io.protocol-target-lab.dns-client-schema="1" \
       io.protocol-target-lab.dnsmasq-version="2.90" \
@@ -15,7 +16,9 @@ LABEL io.protocol-target-lab.dns-response-schema="1" \
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /opt/protocol-target-lab
 COPY --from=build /out/dnsmasq /usr/local/sbin/dnsmasq
-COPY workers/dns/server.py workers/dns/client.py workers/dns/dns_wire.py ./
+COPY workers/dns/*.py ./
+COPY workers/dns/fixtures/ ./fixtures/
+COPY workers/tls/ ./tls/
 COPY third-party/dnsmasq/ /usr/share/doc/protocol-target-lab-dns/dnsmasq/
 COPY images/dns/Dockerfile images/dns/build.Dockerfile images/dns/dependencies.lock.json /usr/share/doc/protocol-target-lab-dns/build/
 COPY LICENSE /usr/share/doc/protocol-target-lab-dns/LICENSE-wrapper

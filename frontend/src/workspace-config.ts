@@ -242,5 +242,7 @@ export function workspaceIpEndpoint(
   if (isIec101Config(config))
     return { bind_ip: config.bind_ip, port: config.single.port };
   if (isBfdConfig(config)) return { bind_ip: config.bind_ip, port: 3784 };
+  if (isDnsConfig(config) && config.tls_enabled && !config.udp_enabled && !config.tcp_enabled)
+    return { bind_ip: config.bind_ip, port: config.tls_port ?? 1853 };
   return { bind_ip: config.bind_ip, port: config.port };
 }

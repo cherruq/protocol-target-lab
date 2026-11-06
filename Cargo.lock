@@ -608,7 +608,7 @@ dependencies = [
 
 [[package]]
 name = "protocol-target-lab"
-version = "0.21.2"
+version = "0.22.1"
 dependencies = [
  "anyhow",
  "axum",

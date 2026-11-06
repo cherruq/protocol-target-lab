@@ -70,7 +70,80 @@ export default function DnsConfigForm({
           />{" "}
           TCP
         </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={Boolean(config.tls_enabled)}
+            onChange={(e) => {
+              const next = { ...config };
+              if (e.target.checked) next.tls_enabled = true;
+              else delete next.tls_enabled;
+              onChange(next);
+            }}
+          /> TLS（DNS over TLS）
+        </label>
       </fieldset>
+      <label htmlFor="dns-tls-port">
+        TLS 端口
+        <input
+          id="dns-tls-port"
+          type="number"
+          min="1"
+          max="65535"
+          value={Number.isFinite(config.tls_port ?? 1853) ? config.tls_port ?? 1853 : ""}
+          disabled={disabled || !config.tls_enabled}
+          onChange={(e) => onChange({ ...config, tls_port: e.currentTarget.valueAsNumber })}
+          required={Boolean(config.tls_enabled)}
+        />
+        <span className="field-help">
+          默认 1853；使用内置公开实验室证书。启用 TCP 时两者端口必须不同。
+          {" "}<a href="/api/tls/lab.crt" download="lab.crt">下载实验室证书 lab.crt</a>
+        </span>
+      </label>
+      <label htmlFor="dns-response-profile">
+        应答模式
+        <select
+          id="dns-response-profile"
+          value={config.response_profile ?? "standard"}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = { ...config };
+            if (e.target.value === "standard") delete next.response_profile;
+            else next.response_profile = "legacy-fixtures";
+            onChange(next);
+          }}
+        >
+          <option value="standard">标准 DNS（dnsmasq 静态记录）</option>
+          <option value="legacy-fixtures">旧脚本固定场景</option>
+        </select>
+      </label>
+      {config.response_profile === "legacy-fixtures" && (
+        <>
+          <label htmlFor="dns-fixture-set">
+            场景集
+            <select
+              id="dns-fixture-set"
+              value={config.fixture_set ?? "final"}
+              disabled={disabled}
+              onChange={(e) => {
+                const next = { ...config };
+                if (e.target.value === "final") delete next.fixture_set;
+                else next.fixture_set = e.target.value as "short" | "wrong-id";
+                onChange(next);
+              }}
+            >
+              <option value="final">final（UDP / TCP / TLS）</option>
+              <option value="short">short（仅 UDP）</option>
+              <option value="wrong-id">wrong-id（仅 UDP）</option>
+            </select>
+          </label>
+          <p className="field-help">
+            精确匹配旧脚本请求字节并输出预设报文，包括畸形、截断和受控 NOTIFY / UPDATE / DSO 响应。
+            这不代表真实区域更新或 DSO 订阅；下方记录保留给标准模式，固定场景不使用这些记录。
+            short / wrong-id 场景集仅支持 UDP，切换场景不会自动关闭其他传输。
+          </p>
+        </>
+      )}
       <div className="dns-record-heading">
         <h3>应答记录</h3>
         <span>{config.records.length} / 32 条</span>

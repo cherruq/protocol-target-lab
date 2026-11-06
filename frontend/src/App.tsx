@@ -194,6 +194,7 @@ import {
   dnsDefaults,
   isDnsConfig,
   normalizeDnsConfig,
+  dnsConnectionCommands,
   type DnsConfig,
 } from "./dns-config";
 import {
@@ -503,6 +504,26 @@ function ConfigFields({
           />
         </label>
       </div>
+      <fieldset className="dns-transports" disabled={disabled}>
+        <legend>HTTP 传输</legend>
+        <label>
+          <input
+            id={`${prefix}-tls`}
+            type="checkbox"
+            checked={Boolean(config.tls_enabled)}
+            onChange={(event) => {
+              const next = { ...config };
+              if (event.target.checked) next.tls_enabled = true;
+              else delete next.tls_enabled;
+              onChange(next);
+            }}
+          /> HTTPS（TLS）
+        </label>
+        <p className="field-help">
+          启用后同一端口改为 HTTPS，使用内置公开实验室证书；保存后重启才生效。
+          {" "}<a href="/api/tls/lab.crt" download="lab.crt">下载实验室证书 lab.crt</a>
+        </p>
+      </fieldset>
       <div className="field-row response-fields">
         <label htmlFor={`${prefix}-length`}>
           响应长度（字节）
@@ -556,7 +577,7 @@ function ConfigFields({
         )}
         <p>
           HEAD 只返回响应头；其他支持的方法均按此配置生成正文，POST
-          不回显请求正文。
+          不回显请求正文。上述生成设置用于 /ok、/chunked 和 /close；其他旧脚本路径使用各自固定实验响应。
         </p>
       </div>
     </>
@@ -829,6 +850,10 @@ export default function App() {
   const effectiveConfig = selected?.applied_config || selected?.config;
   const effectiveIp = workspaceIpEndpoint(effectiveConfig);
   const effectivePort = effectiveIp?.port;
+  const httpTls = Boolean(effectiveConfig && isHttpConfig(effectiveConfig) && effectiveConfig.tls_enabled);
+  const httpCurlPrefix = httpTls
+    ? `curl --cacert lab.crt --connect-to protocol-target-lab.test:${effectivePort}:<目标IP>:${effectivePort} -i https://protocol-target-lab.test:${effectivePort}`
+    : `curl -i http://<目标IP>:${effectivePort}`;
   const effectiveSecondPort =
     effectiveConfig && isIec101Config(effectiveConfig)
       ? effectiveConfig.double.port
@@ -1322,10 +1347,10 @@ export default function App() {
                                             : isTelnet
                                               ? `${selectedProtocol?.implementation || "TELNET"} · TCP`
                                               : isDns
-                                                ? "UDP / TCP"
+                                                ? "UDP / TCP / TLS"
                                                 : isMqtt
                                                   ? `${selectedProtocol?.implementation || "MQTT"} · 匿名 TCP`
-                                                  : "HTTP/1.1"}
+                                                  : httpTls ? "HTTPS · HTTP/1.1 / TLS" : "HTTP/1.1"}
                 </p>
                 <div className="method-support">
                   <span>
@@ -1475,6 +1500,7 @@ export default function App() {
                                                     ? selectedProtocol?.supported_transports || [
                                                         "UDP",
                                                         "TCP",
+                                                        "TLS",
                                                       ]
                                                     : methods
                     ).map((method) => (
@@ -1513,10 +1539,10 @@ export default function App() {
                                                 : isMqtt
                                                   ? "支持发布 / 订阅与 QoS 0、1、2。当前使用匿名 TCP，不提供 TLS、密码认证、WebSocket 或 SCRAM。"
                                                   : isDns
-                                                    ? "按配置记录回答 A / AAAA 查询。UDP 和 TCP 可分别启用，使用同一组记录与端口。"
+                                                    ? "标准模式按配置记录回答 A / AAAA；UDP / TCP 共用 DNS 端口，TLS 使用独立端口。固定场景模式精确回放预设报文。"
                                                     : legacyApplied
                                                       ? "旧生效配置保留旧版能力；保存新配置并重启后，切换到上述方法和响应生成规则。"
-                                                      : "HEAD 无正文；GET、POST、PUT、PATCH、DELETE、OPTIONS 均按配置生成响应正文。"}
+                                                      : "/ok、/chunked、/close 按响应设置生成正文，HEAD 无正文；其他固定场景按预设字节和时序响应。"}
                   </p>
                 </div>
                 <div className="instance-actions">
@@ -1970,6 +1996,7 @@ export default function App() {
                                                                   .applied_config
                                                                   .tcp_enabled &&
                                                                   "TCP",
+                                                                selected.applied_config.tls_enabled && `TLS:${selected.applied_config.tls_port ?? 1853}`,
                                                               ]
                                                                 .filter(Boolean)
                                                                 .join(" / ")
@@ -2527,7 +2554,7 @@ export default function App() {
                                       : null) ||
                                     connection?.base_url ||
                                     connection?.endpoint ||
-                                    `${isIec101 || isDlt645 ? "tcp://" : isVxlan || isBfd || isRtp || isRtcp || isMqttSn ? "udp://" : isIec104 ? "iec104://" : isTelnet ? "telnet://" : isDns ? "" : isMqtt ? "mqtt://" : "http://"}${effectiveIp?.bind_ip}:${effectivePort}`}
+                                    `${isIec101 || isDlt645 ? "tcp://" : isVxlan || isBfd || isRtp || isRtcp || isMqttSn ? "udp://" : isIec104 ? "iec104://" : isTelnet ? "telnet://" : isDns ? "" : isMqtt ? "mqtt://" : httpTls ? "https://" : "http://"}${effectiveIp?.bind_ip}:${effectivePort}`}
                       </code>
                       <p>
                         {isProfinet
@@ -2547,6 +2574,13 @@ export default function App() {
                                       : "绑定 0.0.0.0 时，请使用目标设备实际可达的 IP。"}
                       </p>
                     </div>
+                    {isDns && effectiveConfig && isDnsConfig(effectiveConfig) && effectiveConfig.tls_enabled && (
+                      <div className="endpoint">
+                        <span>DNS over TLS 入口</span>
+                        <code>{effectiveConfig.bind_ip}:{effectiveConfig.tls_port ?? 1853}</code>
+                        <p>客户端使用实验室证书 lab.crt 校验服务端，证书名称为 protocol-target-lab.test。</p>
+                      </div>
+                    )}
                     {isIec101 && (
                       <div className="endpoint">
                         <span>double 入口 · 2/2/2/3</span>
@@ -2622,14 +2656,11 @@ export default function App() {
                                                           "等待管理服务提供 MQTT 接入命令。",
                                                         ]
                                                       : isDns
-                                                        ? [
-                                                            `dig @<目标IP> -p ${effectivePort} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
-                                                            `dig +tcp @<目标IP> -p ${effectivePort} ${dnsSelected?.applied_config?.records[0]?.name || dnsSelected?.config.records[0]?.name || "device.test"} A`,
-                                                          ]
+                                                        ? dnsConnectionCommands(dnsSelected?.applied_config || dnsSelected?.config || dnsDefaults)
                                                         : [
-                                                            `curl -i http://<目标IP>:${effectivePort}/ok`,
-                                                            `curl -i http://<目标IP>:${effectivePort}/chunked`,
-                                                            `curl -i http://<目标IP>:${effectivePort}/close`,
+                                                            `${httpCurlPrefix}/ok`,
+                                                            `${httpCurlPrefix}/chunked`,
+                                                            `${httpCurlPrefix}/close`,
                                                           ])
                       ).map((command, index) => (
                         <div className="command" key={index}>
@@ -2792,14 +2823,14 @@ export default function App() {
                   <>
                     <code>A</code>
                     <code>AAAA</code>
-                    <span>UDP · TCP</span>
+                    <span>UDP · TCP · TLS</span>
                   </>
                 ) : selectedProtocol?.id === "http" ? (
                   <>
                     <code>/ok</code>
                     <code>/chunked</code>
                     <code>/close</code>
-                    <span>{methods.join(" · ")}</span>
+                    <span>{methods.join(" · ")} · HTTPS · 固定场景</span>
                   </>
                 ) : null}
               </div>

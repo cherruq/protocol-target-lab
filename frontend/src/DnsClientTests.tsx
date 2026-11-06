@@ -364,8 +364,8 @@ export default function DnsClientTests({
         <div>
           <h3 id={`dns-tests-${instance.id}`}>DNS 内置客户端测试</h3>
           <p>
-            使用当前生效记录，在目标宿主机运行一次性客户端容器，验证已启用的 UDP
-            / TCP 收发。不能替代跨节点验收。
+            使用当前生效配置，在目标宿主机运行一次性客户端容器，验证已启用的 UDP / TCP / TLS 收发。
+            固定场景核对预设字节与时序；通过不代表真实区域更新或 DSO 订阅。不能替代跨节点验收。
           </p>
         </div>
       </div>
@@ -376,7 +376,7 @@ export default function DnsClientTests({
       )}
       <div className="test-controls">
         <label htmlFor="dns-test-name">
-          查询名称
+          {instance.applied_config?.response_profile === "legacy-fixtures" ? "固定场景" : "查询名称"}
           <select
             id="dns-test-name"
             value={path}
@@ -385,13 +385,13 @@ export default function DnsClientTests({
           >
             {(snapshot?.paths || ["ALL"]).map((name) => (
               <option key={name} value={name}>
-                {name === "ALL" ? "全部配置名称" : name}
+                {name === "ALL" ? (instance.applied_config?.response_profile === "legacy-fixtures" ? "全部场景" : "全部配置名称") : name}
               </option>
             ))}
           </select>
         </label>
         <div className="test-method-buttons">
-          {["UDP", "TCP", "ALL"].map((method) => (
+          {["UDP", "TCP", "TLS", "ALL"].map((method) => (
             <button
               className={`button ${method === "ALL" ? "primary" : ""}`}
               key={method}
@@ -441,7 +441,7 @@ export default function DnsClientTests({
               </span>
               <strong>
                 {current.method} ·{" "}
-                {current.path === "ALL" ? "全部配置名称" : current.path}
+                {current.path === "ALL" ? (current.applied_config.response_profile === "legacy-fixtures" ? "全部场景" : "全部配置名称") : current.path}
               </strong>
               <span className="test-elapsed">
                 {current.report?.seconds !== undefined
@@ -467,6 +467,7 @@ export default function DnsClientTests({
               {[
                 current.applied_config.udp_enabled && "UDP",
                 current.applied_config.tcp_enabled && "TCP",
+                current.applied_config.tls_enabled && `TLS:${current.applied_config.tls_port ?? 1853}`,
               ]
                 .filter(Boolean)
                 .join(" / ")}

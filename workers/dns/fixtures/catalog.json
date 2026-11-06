@@ -1,0 +1,410 @@
+{
+  "description": "Public synthetic DNS fixtures copied byte-for-byte from anban ~/yz4-protocol-lab/dns on 2026-11-06; exact requests/responses, not a real DNS UPDATE/NOTIFY/DSO implementation. Private keys and runtime logs excluded.",
+  "source_sha256": {
+    "udp-final.json": "71230e9dcbdbeb4da0262ccd240994c07b2f1bceb2e27666dad125b7bf6b68df",
+    "stream-final.json": "a90447c6c5ae3706a924cb21b95d8bbd64c82b6da78e7bb32f9db3ab55956403",
+    "short.json": "7d35ec94b4a39c67c4d146db69f64019bfea5df1eb27bfcd23be2361778e74e1",
+    "wrong-id.json": "52728e1208eab25efbb00f11c9ba121aeee3a6db0d5ce3d43f48891f4be60d42"
+  },
+  "scenarios": [
+    {
+      "id": "udp/compressed-a",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 0
+    },
+    {
+      "id": "udp/uncompressed-a",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 1
+    },
+    {
+      "id": "udp/nodata",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 2
+    },
+    {
+      "id": "udp/multiple-a",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 3
+    },
+    {
+      "id": "udp/aaaa",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 4
+    },
+    {
+      "id": "udp/cname",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 5
+    },
+    {
+      "id": "udp/txt",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 6
+    },
+    {
+      "id": "udp/ns",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 7
+    },
+    {
+      "id": "udp/mx",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 8
+    },
+    {
+      "id": "udp/soa",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 9
+    },
+    {
+      "id": "udp/unknown-rr",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 10
+    },
+    {
+      "id": "udp/edns-large",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 11
+    },
+    {
+      "id": "udp/case-insensitive",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 12
+    },
+    {
+      "id": "udp/nxdomain",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 13
+    },
+    {
+      "id": "udp/servfail",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 14
+    },
+    {
+      "id": "udp/refused",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 15
+    },
+    {
+      "id": "udp/formerr",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 16
+    },
+    {
+      "id": "udp/badvers",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 17
+    },
+    {
+      "id": "udp/truncated",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 18
+    },
+    {
+      "id": "udp/wrong-id",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 19
+    },
+    {
+      "id": "udp/wrong-qr",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 20
+    },
+    {
+      "id": "udp/wrong-opcode",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 21
+    },
+    {
+      "id": "udp/wrong-question",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 22
+    },
+    {
+      "id": "udp/wrong-qtype",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 23
+    },
+    {
+      "id": "udp/wrong-qclass",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 24
+    },
+    {
+      "id": "udp/short",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 25
+    },
+    {
+      "id": "udp/missing-answer",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 26
+    },
+    {
+      "id": "udp/rdlength",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 27
+    },
+    {
+      "id": "udp/pointer-loop",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 28
+    },
+    {
+      "id": "udp/pointer-oob",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 29
+    },
+    {
+      "id": "udp/trailing",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 30
+    },
+    {
+      "id": "udp/timeout",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 31
+    },
+    {
+      "id": "udp/template-query",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 32
+    },
+    {
+      "id": "udp/template-notify",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 33
+    },
+    {
+      "id": "udp/template-update",
+      "fixture_set": "final",
+      "transport": "UDP",
+      "file": "udp-final.json",
+      "index": 34
+    },
+    {
+      "id": "stream/compressed-a",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 0
+    },
+    {
+      "id": "stream/split-prefix-body",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 1
+    },
+    {
+      "id": "stream/truncated-close",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 2
+    },
+    {
+      "id": "stream/truncated-hold",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 3
+    },
+    {
+      "id": "stream/one-byte-prefix",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 4
+    },
+    {
+      "id": "stream/zero-length",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 5
+    },
+    {
+      "id": "stream/short-message",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 6
+    },
+    {
+      "id": "stream/two-frames",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 7
+    },
+    {
+      "id": "stream/silent-next-request",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 8
+    },
+    {
+      "id": "stream/normal-10",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 9
+    },
+    {
+      "id": "stream/normal-11",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 10
+    },
+    {
+      "id": "stream/normal-12",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 11
+    },
+    {
+      "id": "stream/dso-keepalive",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 12
+    },
+    {
+      "id": "stream/dso-wrong-id",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 13
+    },
+    {
+      "id": "stream/dso-duplicate-tlv",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 14
+    },
+    {
+      "id": "stream/dso-bad-flags",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 15
+    },
+    {
+      "id": "stream/template-query",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 16
+    },
+    {
+      "id": "stream/template-notify",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 17
+    },
+    {
+      "id": "stream/template-update",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 18
+    },
+    {
+      "id": "stream/template-dso",
+      "fixture_set": "final",
+      "transport": "STREAM",
+      "file": "stream-final.json",
+      "index": 19
+    },
+    {
+      "id": "short/short",
+      "fixture_set": "short",
+      "transport": "UDP",
+      "file": "short.json",
+      "index": 0
+    },
+    {
+      "id": "wrong-id/wrong-id",
+      "fixture_set": "wrong-id",
+      "transport": "UDP",
+      "file": "wrong-id.json",
+      "index": 0
+    }
+  ]
+}

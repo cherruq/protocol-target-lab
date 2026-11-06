@@ -37,6 +37,7 @@ licenses:
 	python3 scripts/collect-third-party-licenses.py
 
 test:
+	python3 -B -m unittest discover -s workers/http -p 'test_*.py'
 	python3 -B -m unittest discover -s workers/profinet -p 'test_*.py'
 	python3 -B -m unittest discover -s workers/mpls -p 'test_*.py'
 	python3 -B -m unittest discover -s workers/igmp -p 'test_*.py'
