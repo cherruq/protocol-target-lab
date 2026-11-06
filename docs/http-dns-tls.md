@@ -7,7 +7,7 @@ applied snapshots and container adoption remain compatible.
 
 ## TLS fixture and connection
 
-HTTP image `0.4.0` and DNS image `0.2.0` include an intentionally public laboratory
+HTTP image `0.4.0` and DNS image `0.2.1` include an intentionally public laboratory
 certificate and key generated for this project. The key is public test material;
 no remote private key was copied. Download the certificate from the workspace's
 certificate link or `GET /api/tls/lab.crt` and save it as `lab.crt`.
@@ -111,3 +111,6 @@ bounded timing; silent stream cases use same-connection positive controls.
 Normal JSON reports, exit codes, ownership, deadlines and disposable cleanup are
 shared with the existing clients. Health checks have an internal 2-second deadline
 before the manager's 3-second Docker exec deadline.
+
+DNS client reports have a 768 KiB cap so all three enabled transports can verify
+32 maximum-length AAAA names without discarding successful semantic results.

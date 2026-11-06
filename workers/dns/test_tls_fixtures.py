@@ -126,6 +126,49 @@ class ConfigTests(unittest.TestCase):
             with self.subTest(profile=config["response_profile"]):
                 self.exercise_native_profile(config, port, tls_port)
 
+    @unittest.skipUnless(shutil.which("dnsmasq"), "native dnsmasq is required for maximum-size TLS report regression")
+    def test_maximum_aaaa_names_all_transports_retain_semantics_within_report_budget(self):
+        port, tls_port = unused_port(), unused_port()
+        names = [".".join([f"n{i:02}" + "a" * 60, "b" * 63, "c" * 63, "d" * 61]) for i in range(32)]
+        self.assertTrue(all(len(name) == 253 for name in names))
+        value = "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
+        config = dict(BASE, port=port, tls_enabled=True, tls_port=tls_port,
+                      records=[dict(name=name, record_type="AAAA", value=value, ttl=86400) for name in names])
+        with tempfile.TemporaryDirectory(prefix="plab-dns-max-report-") as task_dir:
+            with open(Path(task_dir) / "server.log", "w+") as log:
+                process = subprocess.Popen([sys.executable, "-B", str(ROOT / "server.py"), "--config-json", json.dumps(config),
+                                            "--internal-port", str(port), "--internal-tls-port", str(tls_port),
+                                            "--internal-bind", "127.0.0.1", "--dnsmasq", shutil.which("dnsmasq")],
+                                           stdout=log, stderr=subprocess.STDOUT)
+                try:
+                    for _ in range(60):
+                        self.assertIsNone(process.poll(), "DNS source exited before readiness")
+                        try:
+                            with connect_stream("127.0.0.1", tls_port, "TLS"):
+                                break
+                        except OSError:
+                            time.sleep(0.05)
+                    result = subprocess.run([sys.executable, "-B", str(ROOT / "client.py"), "--host", "127.0.0.1", "--port", str(port),
+                                             "--tls-port", str(tls_port), "--config-json", json.dumps(config), "--method", "ALL"],
+                                            capture_output=True, text=True, timeout=35)
+                    report = json.loads(result.stdout)
+                    self.assertEqual(result.returncode, 0, report)
+                    self.assertEqual(report["summary"], dict(total=390, passed=390, failed=0))
+                    self.assertEqual(set(report["target"]["names"]), set(names))
+                    self.assertLessEqual(len(result.stdout.encode()), 768 * 1024)
+                    for check in report["checks"]:
+                        self.assertEqual(check["request"]["name"], check["response"]["question"]["name"])
+                        for answer in check["response"]["answers"]:
+                            self.assertEqual((answer["value"], answer["ttl"]), (value, 86400))
+                finally:
+                    if process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.wait(3)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait()
+
     def exercise_native_profile(self, config, port, tls_port):
         with tempfile.TemporaryDirectory(prefix="plab-dns-standard-tls-") as task_dir:
             with open(Path(task_dir) / "server.log", "w+") as log:

@@ -982,10 +982,12 @@ async fn run_client(
             crate::receiver::OBSERVER_PORT.to_string(),
         ]);
     }
-    let report_limit = if !matches!(run.applied_config, ProtocolConfig::Http(_)) {
-        512 * 1024
-    } else {
-        REPORT_LIMIT
+    // Three DNS transports at the legal 32 x 253-byte AAAA boundary need
+    // more than 512 KiB even after supplementary wire previews are omitted.
+    let report_limit = match run.applied_config {
+        ProtocolConfig::Dns(_) => 768 * 1024,
+        ProtocolConfig::Http(_) => REPORT_LIMIT,
+        _ => 512 * 1024,
     };
     let mut child = Command::new("docker")
         .arg("--host")

@@ -2,7 +2,7 @@
   "schema": 1,
   "base_image": "python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337",
   "build_image": "protocol-target-lab/dns-build:2.90",
-  "image": "protocol-target-lab/dns:0.2.0",
+  "image": "protocol-target-lab/dns:0.2.1",
   "dnsmasq": {
     "version": "2.90",
     "url": "https://thekelleys.org.uk/dnsmasq/dnsmasq-2.90.tar.xz",

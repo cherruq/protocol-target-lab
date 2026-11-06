@@ -127,7 +127,7 @@ def finish_report(report, started):
     report["passed"] = bool(report["checks"]) and passed == len(report["checks"]) and "error" not in report
     report["seconds"] = round(time.monotonic() - started, 6)
     output = json.dumps(report, separators=(",", ":"))
-    if len(output.encode()) > 512 * 1024:
+    if len(output.encode()) > 768 * 1024:
         # Preserve all semantic results for maximum-length names. Wire bytes are supplementary.
         for check in report["checks"]:
             for packet in (check["request"], check.get("response", {}).get("wire", {})):
@@ -136,8 +136,8 @@ def finish_report(report, started):
                     packet["truncated"] = packet["length"] > 0
         report["wire_previews_omitted"] = "report byte budget"
         output = json.dumps(report, separators=(",", ":"))
-    if len(output.encode()) > 512 * 1024:
-        report = dict(passed=False, checks=[], summary=report["summary"], seconds=report["seconds"], error="DNS report exceeded 512 KiB limit")
+    if len(output.encode()) > 768 * 1024:
+        report = dict(passed=False, checks=[], summary=report["summary"], seconds=report["seconds"], error="DNS report exceeded 768 KiB limit")
         output = json.dumps(report, separators=(",", ":"))
     print(output, flush=True)
     return 0 if report["passed"] else 1
