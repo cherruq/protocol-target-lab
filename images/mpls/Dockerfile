@@ -3,6 +3,7 @@ FROM ${BASE_IMAGE}
 LABEL io.protocol-target-lab.mpls-request-schema="1" \
       io.protocol-target-lab.mpls-response-schema="1" \
       io.protocol-target-lab.mpls-client-schema="1" \
+      io.protocol-target-lab.mpls-tx-boundary-schema="1" \
       io.protocol-target-lab.mpls-control-schema="1" \
       io.protocol-target-lab.mpls-observer-schema="1" \
       org.opencontainers.image.licenses="MIT AND Python-2.0"

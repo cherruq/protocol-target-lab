@@ -173,3 +173,44 @@ belong only in explicitly owned validation namespaces and are not product startu
 steps. No claim of complete native routing, physical VLAN/runt delivery, general
 label stacks or all MPLS standards follows from a successful finite Echo test.
 Current phase acceptance is recorded separately after independent verification.
+
+## Layered short-Ethernet verification (manager0.24.0 / image0.1.1)
+
+Original `ALL`, `ECHO`, `TC_TTL`, and `PADDING` retain their Ethernet receive
+requirement. Exact13-byte `EINVAL22` is `outcome: environment_limited`, not a pass.
+Schema2 partitions summary counts into passed, failed and environment_limited;
+`passed` remains false, the run status remains failed for compatibility, and the
+waiting CLI exits1 with error code `environment_limited`. Other errors still fail.
+Old schema1 reports and old source-container adoption remain supported.
+
+`TX_BOUNDARY` is a separate opt-in case for applied `short-ethernet`, never part
+of ALL. It requires the actual source image capability
+`io.protocol-target-lab.mpls-tx-boundary-schema=1`; an old running source is retained
+and must be explicitly restarted with the new image. Web labels and describe
+explanations use the shared backend catalog.
+
+```sh
+plabctl config set mpls --scenario-json '{"mode":"short-ethernet"}'
+plabctl restart mpls
+plabctl tests run mpls --method ALL          # Receive layer: limited here, exit1
+plabctl tests run mpls --method TX_BOUNDARY  # Boundary layer: six checks, exit0 on success
+```
+
+The six checks use ECHO, TC_TTL and PADDING requests twice each. Each shares an
+absolute3-second deadline with one invalid-request processing control before and
+after it. A complete successful run sends18 actual requests and receives0 replies.
+Checks independently construct the expected13 bytes (destination6 + source6 +
+08), match actual source error length/hash/preview, require errno22 and
+submitted=false, bind accepted/error events to the current request SHA/ID/order,
+verify accepted/tx_error +1 with no suppressed/tx_submitted increment, require
+same source identity/readiness and no role-associated response for500ms, and
+require both fresh processing controls to succeed. Any other errno, missing or
+stale proof, unexpected response, changing identity or failed control fails.
+If a platform permits TX, this rejection test fails rather than silently changing
+into a receive test. Reconfiguring to normal and verifying actual Echo is a
+separate recovery test with a new applied snapshot.
+
+JSON reports, Web summaries and CLI distinguish `verification_layer: tx_boundary`
+from `ethernet_receive`. Boundary success never proves13-byte peer reception;
+there is no padding, synthetic network, mocked send, alternate transport, or
+implicit configuration switch. The real source AF_PACKET send path is unchanged.

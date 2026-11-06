@@ -67,6 +67,7 @@ export default function ProtocolClientTests<C>({
   renderExtra,
   showRetainedResultNotice = false,
   validateResult,
+  resultOutcome,
 }: {
   instance: Target<C>;
   protocolName: string;
@@ -81,6 +82,7 @@ export default function ProtocolClientTests<C>({
   renderExtra?: (run: ProtocolTestRun<C>) => ReactNode;
   showRetainedResultNotice?: boolean;
   validateResult?: (run: ProtocolTestRun<C>) => string | null;
+  resultOutcome?: (run: ProtocolTestRun<C>) => "environment_limited" | null;
 }) {
   const state = useProtocolTests<C>(instance.id);
   const {
@@ -114,6 +116,8 @@ export default function ProtocolClientTests<C>({
     Boolean(instance.current_operation) ||
     !instance.applied_config;
   const checks = current?.report?.checks || [];
+  const limitedResult = current && resultOutcome?.(current) === "environment_limited";
+  const limitedCheck = (check: {classification?: string; passed: boolean}) => Boolean(resultOutcome) && !check.passed && check.classification === "environment_limited";
   const resultProblem = current ? validateResult?.(current) : null;
   const label = (method: string) =>
     protocolTestLabel(method, snapshot?.case_labels, caseLabels);
@@ -214,9 +218,9 @@ export default function ProtocolClientTests<C>({
           <div className="test-result-heading">
             <div>
               <span
-                className={`test-status test-status-${resultProblem ? "error" : current.status}`}
+                className={`test-status test-status-${resultProblem ? "error" : limitedResult ? "environment_limited" : current.status}`}
               >
-                {resultProblem ? "结果待核对" : statuses[current.status]}
+                {resultProblem ? "结果待核对" : limitedResult ? guideText("mpls.verification.tx-boundary.environment") : statuses[current.status]}
               </span>
               <strong>
                 {reportLabel
@@ -298,12 +302,13 @@ export default function ProtocolClientTests<C>({
               <div className="test-counts">
                 共 {checks.length} 项 · 通过{" "}
                 {checks.filter((c) => c.passed).length} · 失败{" "}
-                {checks.filter((c) => !c.passed).length}
+                {checks.filter((c) => !c.passed && !limitedCheck(c)).length}
+                {resultOutcome && <> · {guideText("mpls.verification.tx-boundary.environment")} {checks.filter(limitedCheck).length}</>}
               </div>
               <div className="test-check-list">
                 {checks.map((check, i) => (
                   <details
-                    className={`test-check ${check.passed ? "passed" : "failed"}`}
+                    className={`test-check ${check.passed ? "passed" : limitedCheck(check) ? "environment-limited" : "failed"}`}
                     open={!check.passed}
                     key={`${current.id}-${i}`}
                   >
@@ -318,7 +323,7 @@ export default function ProtocolClientTests<C>({
                         </span>
                       )}
                       <span className="test-check-outcome">
-                        {check.passed ? "通过" : "失败"}
+                        {check.passed ? "通过" : limitedCheck(check) ? guideText("mpls.verification.tx-boundary.environment") : "失败"}
                       </span>
                     </summary>
                     {check.error && (

@@ -15964,6 +15964,73 @@
       "section": "connection",
       "topic": "连接与接入",
       "text": "管理服务停止后，被测容器可以继续运行。整体停止请使用 plabctl stop-all。"
+    },
+    {
+      "id": "mpls.verification.tx-boundary.case",
+      "protocols": [
+        "mpls"
+      ],
+      "section": "verification",
+      "topic": "分层验证",
+      "text": "发送边界验证（6项，不含13字节实收）",
+      "choice": {
+        "group": "case_labels",
+        "value": "TX_BOUNDARY"
+      }
+    },
+    {
+      "id": "mpls.verification.tx-boundary.scope",
+      "protocols": [
+        "mpls"
+      ],
+      "section": "verification",
+      "topic": "分层验证",
+      "text": "TX_BOUNDARY 仅适用于当前生效的 short-ethernet 场景，单独执行，不包含在 ALL。验证真实内核 EINVAL 拒绝、精确13字节内容、计数器及前后处理控制；通过不代表对端实际收到13字节帧。"
+    },
+    {
+      "id": "mpls.verification.tx-boundary.layer_boundary",
+      "protocols": [
+        "mpls"
+      ],
+      "section": "verification",
+      "topic": "分层验证",
+      "text": "验证层：真实发送边界。此结果只确认内核拒绝与服务连续处理正确，不证明13字节以太网实收，也未使用软件替代传输。"
+    },
+    {
+      "id": "mpls.verification.tx-boundary.layer_wire",
+      "protocols": [
+        "mpls"
+      ],
+      "section": "verification",
+      "topic": "分层验证",
+      "text": "验证层：以太网实收。13字节发送被内核拒绝时保留为环境受限；原ALL/ECHO/TC_TTL/PADDING要求不变。"
+    },
+    {
+      "id": "mpls.verification.tx-boundary.environment",
+      "protocols": [
+        "mpls"
+      ],
+      "section": "verification",
+      "topic": "分层验证",
+      "text": "环境受限"
+    },
+    {
+      "id": "mpls.verification.tx-boundary.counts",
+      "protocols": [
+        "mpls"
+      ],
+      "section": "verification",
+      "topic": "分层验证",
+      "text": "环境受限项不计为通过；JSON 保留 passed=false 和 CLI 非零退出码。"
+    },
+    {
+      "id": "mpls.verification.tx-boundary.boundary_problem",
+      "protocols": [
+        "mpls"
+      ],
+      "section": "verification",
+      "topic": "分层验证",
+      "text": "发送边界证据、前后控制或实际请求计数不完整，不能确认通过。"
     }
   ]
 }

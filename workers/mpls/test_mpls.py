@@ -78,6 +78,37 @@ class SourceTests(unittest.TestCase):
         page=x.query_events(0,16);self.assertEqual(x.evictions,44);self.assertEqual(page['returned'],16);self.assertTrue(page['truncated']);self.assertLess(len(json.dumps(page).encode()),65536);self.assertEqual(page['events'][0]['event_id'],45);self.assertEqual(len(page['events'][0]['frame']['preview_hex']),256)
 
 
+class BoundaryTests(unittest.TestCase):
+    def test_independent_short13_oracle_rejects_other_errno_bytes_and_submission(self):
+        import client
+        cfg=copy.deepcopy(w.DEFAULT_CONFIG);cfg['scenario']['mode']='short-ethernet'
+        wire=bytes.fromhex('02000000581002000000582008')
+        output={'kind':'tx_error','errno':22,'submitted':False,'scenario':'short-ethernet','frame':w.summary(wire)}
+        self.assertFalse(client.short_tx_evidence(cfg,output)['wire_receive_verified'])
+        for patch in ({'errno':1},{'errno':True},{'submitted':True},{'kind':'suppressed'},{'frame':w.summary(wire+b'\0')},{'frame':w.summary(wire[:-1]+b'\x09')},{'scenario':'normal'}):
+            with self.subTest(patch=patch),self.assertRaises(ValueError):client.short_tx_evidence(cfg,{**output,**patch})
+        with self.assertRaises(ValueError):client.short_tx_evidence(w.DEFAULT_CONFIG,output)
+    def test_boundary_ignores_observer_tcp_and_arp_but_detects_short_and_icmp_frames(self):
+        import client
+        c=copy.deepcopy(w.DEFAULT_CONFIG);request=w.decode_request(w.request_frame(c,1,2,b'nonce'));reply=w.reply_frame(request,c,1)
+        for size in (12,13,14,20,33,34,41,60):
+            with self.subTest(size=size):self.assertIsNotNone(client.boundary_association(reply[:size],c,request))
+        tcp=bytearray(reply);tcp[23]=6;tcp[26:34]=socket.inet_aton('172.22.0.2')+socket.inet_aton('172.22.0.3')
+        self.assertIsNone(client.boundary_association(bytes(tcp),c,request))
+        arp=reply[:12]+b'\x08\x06'+reply[14:];self.assertIsNone(client.boundary_association(arp,c,request))
+    def test_controls_share_absolute_deadline_and_never_mask_main_or_control_failure(self):
+        import client
+        for failed in (None,0,1,2):
+            x=client.Client.__new__(client.Client);x.deadline=time.monotonic()+30
+            checks=[{'passed':n!=failed,'response':{},'error':'injected failure'}for n in range(3)]
+            x.check=mock.Mock(side_effect=checks)
+            r=x.boundary_check('ECHO',1)
+            self.assertEqual(r['passed'],failed is None)
+            if failed==0:self.assertEqual(x.check.call_count,1)
+            else:
+                self.assertEqual(x.check.call_count,3);deadlines=[c.kwargs['deadline']for c in x.check.call_args_list];self.assertEqual(len(set(deadlines)),1)
+
+
 class QuietAssociationTests(unittest.TestCase):
     def setUp(self):
         import client

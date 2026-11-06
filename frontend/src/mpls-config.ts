@@ -59,6 +59,7 @@ export const mplsScenarioLabels: Record<MplsScenario, string> = lazyGuidanceLabe
   "short-icmp": guideText("mpls.configuration.mpls-config.014"),
 }));
 export const mplsCaseLabels = lazyGuidanceLabels(() => ({
+  TX_BOUNDARY: guideText("mpls.verification.tx-boundary.case"),
   ECHO: guideText("mpls.verification.mpls-config.015"),
   TC_TTL: guideText("mpls.verification.mpls-config.016"),
   PADDING: guideText("mpls.verification.mpls-config.017"),

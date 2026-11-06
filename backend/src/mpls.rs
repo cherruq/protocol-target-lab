@@ -7,7 +7,14 @@ use sha2::{Digest, Sha256};
 use std::net::Ipv4Addr;
 pub const OBSERVER_PORT: u16 = 18089;
 pub const PATH: &str = "echo";
-pub const CASES: [&str; 5] = ["ECHO", "TC_TTL", "PADDING", "INVALID_REQUEST", "ALL"];
+pub const CASES: [&str; 6] = [
+    "ECHO",
+    "TC_TTL",
+    "PADDING",
+    "INVALID_REQUEST",
+    "ALL",
+    "TX_BOUNDARY",
+];
 pub const RUNTIME_LABEL: &str = "io.protocol-target-lab.mpls-runtime-id";
 pub const NETWORK_KIND: &str = "mpls-l2";
 pub const FILTER: [[u32; 4]; 4] = [
@@ -185,12 +192,27 @@ impl MplsConfig {
             )
         )
     }
+    pub fn cases(&self) -> Vec<&'static str> {
+        CASES
+            .iter()
+            .copied()
+            .filter(|m| *m != "TX_BOUNDARY" || self.scenario == Scenario::ShortEthernet {})
+            .collect()
+    }
     pub fn test_budget(&self, method: &str) -> Result<TestBudget> {
         self.validate()?;
-        if !CASES.contains(&method) {
-            bail!("config.test: choose MPLS case or ALL")
+        if !self.cases().contains(&method) {
+            bail!(
+                "config.test: choose an available MPLS case; TX_BOUNDARY requires applied short-ethernet"
+            )
         };
-        let checks = if method == "ALL" { 8 } else { 2 };
+        let checks = if method == "TX_BOUNDARY" {
+            6
+        } else if method == "ALL" {
+            8
+        } else {
+            2
+        };
         Ok(TestBudget {
             phase_bounds_ms: vec![3000; checks as usize],
             total_ms: 30000,
