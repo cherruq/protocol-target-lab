@@ -1,6 +1,7 @@
 export type ProtocolCheck = {
   name: string;
   passed: boolean;
+  classification?: "passed" | "failed" | "environment_limited";
   error?: string;
   seconds?: number;
   request?: Record<string, unknown>;
@@ -20,6 +21,9 @@ export type ProtocolTestRun<C> = {
   applied_config: C;
   report: {
     passed: boolean;
+    verification_schema?: number;
+    verification_layer?: string;
+    outcome?: string;
     restoration_complete?: boolean;
     restoration?: unknown;
     checks: ProtocolCheck[];

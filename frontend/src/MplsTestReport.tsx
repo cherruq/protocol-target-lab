@@ -15,6 +15,8 @@ export default function MplsTestReport({
   const unexpected = mplsUnexpectedCount(run.report?.summary);
   return (
     <div className="test-config-notice">
+      <p>{guideText(run.method === "TX_BOUNDARY" ? "mpls.verification.tx-boundary.layer_boundary" : "mpls.verification.tx-boundary.layer_wire")}</p>
+      <p>{guideText("mpls.verification.tx-boundary.scope")}</p>
       <strong>{guideText("mpls.verification.mplstestreport.002")}{run.applied_config.scenario.mode}
       </strong>
       <p>

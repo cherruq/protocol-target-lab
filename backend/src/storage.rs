@@ -117,7 +117,7 @@ impl Settings {
             bfd_image: value("PLAB_BFD_IMAGE", "protocol-target-lab/bfd:0.1.0"),
             vxlan_image: value("PLAB_VXLAN_IMAGE", "protocol-target-lab/vxlan:0.1.0"),
             profinet_image: value("PLAB_PROFINET_IMAGE", "protocol-target-lab/profinet:0.1.0"),
-            mpls_image: value("PLAB_MPLS_IMAGE", "protocol-target-lab/mpls:0.1.0"),
+            mpls_image: value("PLAB_MPLS_IMAGE", "protocol-target-lab/mpls:0.1.1"),
             igmp_image: value("PLAB_IGMP_IMAGE", "protocol-target-lab/igmp:0.1.0"),
             igmp_link_helper: value(
                 "PLAB_IGMP_LINK_HELPER",
@@ -1141,7 +1141,7 @@ mod tests {
         );
         assert_eq!(
             packaged["PLAB_MPLS_IMAGE"],
-            "protocol-target-lab/mpls:0.1.0"
+            "protocol-target-lab/mpls:0.1.1"
         );
         assert_eq!(
             parse_defaults("PLAB_MPLS_IMAGE='local/mpls:test'\n").unwrap()["PLAB_MPLS_IMAGE"],

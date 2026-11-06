@@ -759,3 +759,10 @@ Initial station/IP fields only initialize new native storage. Stopping or
 restarting the source retains that storage. External tools may join the data
 network; the management network is reserved for the source and owned peers.
 See [PROFINET](profinet.md) for the native/software scope and external commands.
+
+MPLS manager0.24.0/image0.1.1 adds `tests run mpls --method TX_BOUNDARY`
+for applied short-ethernet. This separate six-check real kernel-rejection test
+never replaces ALL or proves peer reception. Schema2 reports contain
+verification_layer/outcome and partition environment_limited checks. The waiting
+CLI retains exit1 for limited Ethernet reception and exposes the distinct
+`environment_limited` error code; boundary success exits0. See [MPLS](mpls.md).

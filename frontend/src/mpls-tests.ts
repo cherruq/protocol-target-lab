@@ -9,13 +9,16 @@ export function mplsResultProblem(
   if (!isMplsConfig(run.applied_config))
     return guideText("mpls.overview.mpls-tests.001");
   const expected =
-    run.method === "ALL"
+    run.method === "TX_BOUNDARY"
+      ? 6
+      : run.method === "ALL"
       ? 8
       : ["ECHO", "TC_TTL", "PADDING", "INVALID_REQUEST"].includes(run.method)
         ? 2
         : 0;
   const r = run.report;
   const expectedResponses =
+    run.method === "TX_BOUNDARY" ||
     run.method === "INVALID_REQUEST" ||
     run.applied_config.scenario.mode === "silent"
       ? 0
@@ -30,7 +33,7 @@ export function mplsResultProblem(
     !Array.isArray(r.checks) ||
     r.checks.length !== expected ||
     r.checks.some((c) => c.passed !== true) ||
-    r.summary?.actual_requests !== expected ||
+    r.summary?.actual_requests !== (run.method === "TX_BOUNDARY" ? 18 : expected) ||
     r.summary?.actual_responses !== expectedResponses ||
     (r.summary?.unexpected_responses !== undefined &&
       r.summary.unexpected_responses !== 0) ||
@@ -39,7 +42,18 @@ export function mplsResultProblem(
     (r.exit_code !== undefined && r.exit_code !== 0)
   )
     return guideText("mpls.overview.mpls-tests.002");
+  if (run.method === "TX_BOUNDARY" && (run.applied_config.scenario.mode !== "short-ethernet" || r.verification_schema !== 2 || r.verification_layer !== "tx_boundary" || r.outcome !== "passed" || r.checks.some(c => {
+    const response=c.response; const b=response?.boundary_evidence as Record<string,unknown> | undefined; const controls=response?.controls;
+    return !b || b.errno !== 22 || b.submitted !== false || b.wire_receive_verified !== false || b.source_identity_unchanged !== true || b.actual_peer_responses !== 0 || !Array.isArray(controls) || controls.length !== 2 || controls.some(c => !c || c.passed !== true);
+  }))) return guideText("mpls.verification.tx-boundary.boundary_problem");
   return null;
+}
+export function mplsResultOutcome(run: ProtocolTestRun<MplsConfig>): "environment_limited" | null {
+  const r=run.report;
+  if (run.status !== "failed" || run.error || !run.cleanup_complete || !r || r.error || r.verification_schema !== 2 || r.verification_layer !== "ethernet_receive" || r.outcome !== "environment_limited" || r.passed !== false || r.exit_code !== 1 || !isMplsConfig(run.applied_config) || run.applied_config.scenario.mode !== "short-ethernet" || !["ALL","ECHO","TC_TTL","PADDING"].includes(run.method)) return null;
+  const expected=run.method === "ALL" ? 8 : 2;
+  const limited=r.checks.filter(c=>c.classification === "environment_limited" && !c.passed).length;
+  return r.checks.length === expected && limited === (run.method === "ALL" ? 6 : 2) && r.checks.every(c=>c.passed ? c.classification === "passed" : c.classification === "environment_limited") && r.summary?.failed === 0 && r.summary?.environment_limited === limited ? "environment_limited" : null;
 }
 
 /** Worker actual count; absence is not silently interpreted as zero. */

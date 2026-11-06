@@ -286,8 +286,8 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
                 .collect(),
             vec![crate::profinet::PATH.into()],
         ),
-        ProtocolConfig::Mpls(_) => (
-            crate::mpls::CASES.into_iter().map(String::from).collect(),
+        ProtocolConfig::Mpls(c) => (
+            c.cases().into_iter().map(String::from).collect(),
             vec![crate::mpls::PATH.into()],
         ),
         ProtocolConfig::CustomEthernet(_) => (
@@ -397,6 +397,9 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
         result["test_budget"] = json!({"available":true,"budget":c.test_budget("ALL")?,"client_total_ms":crate::profinet::CLIENT_BUDGET_MS,"manager_total_ms":crate::profinet::MANAGER_BUDGET_MS});
     }
     if let ProtocolConfig::Mpls(c) = config {
+        result["verification_layers"] =
+            json!({"ALL":"ethernet_receive","TX_BOUNDARY":"tx_boundary"});
+        result["case_requirements"] = json!({"TX_BOUNDARY":{"scenario":"short-ethernet","image_capability":"io.protocol-target-lab.mpls-tx-boundary-schema=1","checks":6,"actual_requests":18,"actual_responses":0,"included_in_all":false,"wire_receive_verified":false}});
         result["path_label"] = json!("单标签Echo");
         result["test_budget"] = json!({"available":true,"budget":c.test_budget("ALL")?});
     }

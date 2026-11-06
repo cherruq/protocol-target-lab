@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   mplsResultProblem,
+  mplsResultOutcome,
   mplsUnexpectedCount,
   mplsUnexpectedPeer,
 } from "../src/mpls-tests.ts";
@@ -193,4 +194,19 @@ test("MPLS optional unexpected counts never invent0 or infer total from a bounde
   assert.equal(view.displayTruncated, true);
   assert.equal(view.serverTruncated, false);
   assert.equal(frames.length, 9);
+});
+
+test("MPLS receive limitation is distinct from a pass and from genuine failure",()=>{
+ const r=run();r.status="failed";r.applied_config.scenario.mode="short-ethernet";
+ r.report={passed:false,verification_schema:2,verification_layer:"ethernet_receive",outcome:"environment_limited",exit_code:1,checks:Array.from({length:8},(_,i)=>({name:String(i),passed:i>=6,classification:i>=6?"passed":"environment_limited"})),summary:{failed:0,environment_limited:6}};
+ assert.equal(mplsResultOutcome(r),"environment_limited");
+ r.report.summary!.failed=1;assert.equal(mplsResultOutcome(r),null);r.report.summary!.failed=0;
+ r.cleanup_complete=false;assert.equal(mplsResultOutcome(r),null);r.cleanup_complete=true;
+ r.report.checks[0].classification="failed";assert.equal(mplsResultOutcome(r),null);
+});
+test("MPLS boundary pass needs explicit rejection evidence and two processing controls",()=>{
+ const r=run();r.method="TX_BOUNDARY";r.applied_config.scenario.mode="short-ethernet";
+ r.report={passed:true,verification_schema:2,verification_layer:"tx_boundary",outcome:"passed",exit_code:0,summary:{actual_requests:18,actual_responses:0},checks:Array.from({length:6},(_,i)=>({name:String(i),passed:true,response:{boundary_evidence:{errno:22,submitted:false,wire_receive_verified:false,source_identity_unchanged:true,actual_peer_responses:0},controls:[{passed:true},{passed:true}]}}))};
+ assert.equal(mplsResultProblem(r),null);r.report.verification_layer="ethernet_receive";assert.ok(mplsResultProblem(r));r.report.verification_layer="tx_boundary";
+ (r.report.checks[0].response!.boundary_evidence as Record<string,unknown>).errno=1;assert.ok(mplsResultProblem(r));
 });

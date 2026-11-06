@@ -718,13 +718,20 @@ impl Api {
             }
             if run["status"] != "running" {
                 if run["status"] != "passed" || run["report"]["passed"] != true {
+                    let limited = run["cleanup_complete"] == true
+                        && run["error"].is_null()
+                        && run["report"]["error"].is_null()
+                        && run["applied_config"]["wire_profile"]
+                            == "mpls-single-label-ipv4-icmp-echo"
+                        && run["report"]["verification_schema"] == 2
+                        && run["report"]["outcome"] == "environment_limited";
                     return Err(Failure::new(
                         1,
-                        "test_failed",
+                        if limited {"environment_limited"} else {"test_failed"},
                         run["error"]
                             .as_str()
                             .or(run["report"]["error"].as_str())
-                            .unwrap_or("client test failed"),
+                            .unwrap_or(if limited {"MPLS Ethernet receive is environment-limited; see report checks; not a pass"} else {"client test failed"}),
                     )
                     .with_data(snapshot));
                 }

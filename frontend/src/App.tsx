@@ -20,7 +20,7 @@ import MplsConfigForm from "./MplsConfigForm";
 import MplsRuntimePanel from "./MplsRuntimePanel";
 import MplsConnectionHelp from "./MplsConnectionHelp";
 import MplsTestReport from "./MplsTestReport";
-import { mplsResultProblem } from "./mpls-tests";
+import { mplsResultProblem, mplsResultOutcome } from "./mpls-tests";
 import {
   mplsDefaults,
   isMplsConfig,
@@ -2223,6 +2223,7 @@ export default function App() {
                       reportLabel={mplsReportLabel}
                       showRetainedResultNotice
                       validateResult={mplsResultProblem}
+                      resultOutcome={mplsResultOutcome}
                       renderExtra={(run) => (
                         <MplsTestReport key={run.id} run={run} />
                       )}

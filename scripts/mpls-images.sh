@@ -14,6 +14,6 @@ install -m0644 LICENSE "$context/LICENSE"
 install -m0644 workers/mpls/server.py workers/mpls/client.py workers/mpls/mpls_wire.py "$context/workers/mpls/"
 install -m0644 images/mpls/Dockerfile images/mpls/dependencies.lock.json images/mpls/NOTICE "$context/images/mpls/"
 docker build --network=none --pull=false --build-arg "BASE_IMAGE=$base_image" --tag "$image" \
-    --label org.opencontainers.image.title=protocol-target-lab-mpls --label org.opencontainers.image.version=0.1.0 \
+    --label org.opencontainers.image.title=protocol-target-lab-mpls --label org.opencontainers.image.version=0.1.1 \
     -f "$context/images/mpls/Dockerfile" "$context"
 docker image inspect "$image" > dist/mpls-image-inspect.json

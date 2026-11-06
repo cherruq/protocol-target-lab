@@ -81,6 +81,25 @@ def quiet_association(raw,c,request):
     if payload and (payload in raw or len(payload)>1 and payload[1:] in raw):return 'current_payload_nonce_and_roles'
     return None
 
+def boundary_association(raw,c,request):
+    # Observer TCP/ARP legitimately shares these MACs. Only reply-profile IPv4/
+    # ICMP or a genuinely truncated role-pair header is unexpected at this layer.
+    if len(raw)>=12 and raw[:6]==mac(c['client_mac'])and raw[6:12]==mac(c['source_mac']):
+        if len(raw)<14:return 'boundary_truncated_ethernet_role_pair_without_wire_id'
+        if raw[12:14]==b'\x08\x00'and(len(raw)<34 or raw[23]==1):return 'boundary_icmp_or_short_ipv4_role_pair_without_wire_id'
+    return quiet_association(raw,c,request)
+
+def short_tx_evidence(cfg, output):
+    """Independent 13-byte oracle: destination6 + source6 + first EtherType byte.
+
+    Only this exact kernel rejection qualifies; other errno, suppression or
+    missing/stale proof never becomes a successful boundary check.
+    """
+    expected=mac(cfg['client_mac'])+mac(cfg['source_mac'])+b'\x08'
+    if cfg['scenario']['mode']!='short-ethernet' or output.get('kind')!='tx_error' or type(output.get('errno'))is not int or output['errno']!=22 or output.get('submitted')is not False or output.get('scenario')!='short-ethernet' or output.get('frame')!=summary(expected):
+        raise ValueError('not the exact current13-byte Ethernet EINVAL rejection')
+    return {'expected_frame':summary(expected),'errno':22,'submitted':False,'wire_receive_verified':False}
+
 class Client:
     def __init__(self,a,c):self.a=a;self.cfg=c;self.born=time.monotonic();self.deadline=self.born+30;self.transport=None;self.obs=None;self.requests=0;self.responses=0;self.unexpected=0;self.identity=None
     def get(self,path,deadline=None):self.obs.phase=min(self.deadline,deadline or self.deadline);return self.obs.get(path)
@@ -99,8 +118,8 @@ class Client:
         raise ValueError('input flood before request')
     def valid_peer_frame(self,raw,meta):
         return not meta['truncated'] and not meta.get('vlan_valid') and meta['packet_type']!=4 and meta['interface']==self.transport.interface['name'] and meta['ifindex']==self.transport.interface['ifindex'] and meta['hardware_type']==1 and len(raw)>=12 and meta['hardware_address']==mac_text(raw[6:12])
-    def check(self,method,round_no):
-        start=time.monotonic();end=min(self.deadline,start+3);record={'name':method+' round '+str(round_no),'passed':False,'request':{'method':method,'path':'echo','round':round_no},'response':{}};received=[];events=[];sha=None
+    def check(self,method,round_no,boundary=False,deadline=None):
+        start=time.monotonic();end=min(self.deadline,start+3,deadline or self.deadline);record={'name':method+' round '+str(round_no),'passed':False,'classification':'failed','verification_layer':'tx_boundary'if boundary else'ethernet_receive','request':{'method':method,'path':'echo','round':round_no},'response':{}};received=[];events=[];sha=None
         try:
             self.drain();before=self.get('/v1/status',end);self.valid_status(before);cursor=before['next_event_id']-1
             ident,seq=struct.unpack('!HH',os.urandom(4));payload=os.urandom(17 if method=='PADDING' else 16);kwargs={}
@@ -140,9 +159,21 @@ class Client:
                     if not outputs:continue
                     output=outputs[0]
                     if output['request_id']!=source['request_id'] or output['event_id']<=source['event_id']:raise ValueError('source output not linked to current accepted request')
-                    if output['kind']=='tx_error':record['response']['source_events']=events;record['environment_unavailable']=True;raise ValueError('environment_unavailable: source tx_error errno='+str(output.get('errno'))+' intended_length='+str(output['frame']['wire_length']))
-                    expected=reply_frame(parsed,self.cfg,output['reply_ip_identifier'])
-                    if expected is None:
+                    if output['kind']=='tx_error':
+                        if boundary:
+                            record['response']['boundary_evidence']=short_tx_evidence(self.cfg,output)
+                            if quiet_end is None:quiet_end=time.monotonic()+.5
+                        else:
+                            record['response']['source_events']=events;record['environment_unavailable']=True
+                            try:short_tx_evidence(self.cfg,output);record['classification']='environment_limited'
+                            except ValueError:pass
+                            raise ValueError('environment_unavailable: source tx_error errno='+str(output.get('errno'))+' intended_length='+str(output['frame']['wire_length']))
+                    elif boundary:raise ValueError('TX_BOUNDARY requires actual kernel EINVAL rejection, not submission or suppression')
+                    if boundary:
+                        expected=None
+                    else:expected=reply_frame(parsed,self.cfg,output['reply_ip_identifier'])
+                    if boundary:pass
+                    elif expected is None:
                         if output['kind']!='suppressed':raise ValueError('silent scenario did not suppress current request')
                         if quiet_end is None:quiet_end=time.monotonic()+.5
                     else:
@@ -156,35 +187,52 @@ class Client:
                         if matches:
                             wire,meta,kind,padding=matches[0];matched={'frame':summary(wire),'metadata':meta,'match_kind':kind,'padding_bytes':padding};self.responses+=1;break
                 if quiet_end is not None:
-                    unexpected=[{'frame':summary(wire),'metadata':meta,'association_reason':reason} for wire,meta in received if (reason:=quiet_association(wire,self.cfg,parsed)) is not None]
+                    unexpected=[{'frame':summary(wire),'metadata':meta,'association_reason':reason} for wire,meta in received if (reason:=(boundary_association(wire,self.cfg,parsed)if boundary else quiet_association(wire,self.cfg,parsed))) is not None]
                     if unexpected:
                         self.responses+=len(unexpected);self.unexpected+=len(unexpected);record['response']['unexpected_peer']=unexpected[:8];record['response']['unexpected_peer_total']=len(unexpected);record['response']['unexpected_peer_truncated']=len(unexpected)>8
                         raise ValueError('unexpected actual associated incoming reply during required silence')
                     if time.monotonic()>=quiet_end:break
             else:raise TimeoutError('absolute3-second check deadline: no complete current source+peer proof')
-            if reject is None and self.cfg['scenario']['mode']!='silent' and matched is None:raise ValueError('missing actual incoming opaque reply')
+            if not boundary and reject is None and self.cfg['scenario']['mode']!='silent' and matched is None:raise ValueError('missing actual incoming opaque reply')
             record['response'].update(source_events=events,peer=matched,quiet_ms=500 if quiet_end is not None else 0)
-            after=self.get('/v1/status',end);self.valid_status(after);record['passed']=True
+            after=self.get('/v1/status',end);self.valid_status(after)
+            if boundary:
+                proof=record['response']['boundary_evidence'];keys=('accepted','tx_error','tx_submitted','suppressed')
+                for key,delta in zip(keys,(1,1,0,0)):
+                    if type(before['counters'][key])is not int or type(after['counters'][key])is not int or after['counters'][key]!=before['counters'][key]+delta:raise ValueError('boundary source counter delta mismatch: '+key)
+                proof.update(counters_before={k:before['counters'][k]for k in keys},counters_after={k:after['counters'][k]for k in keys},source_identity_unchanged=True,actual_peer_responses=0)
+            record['passed']=True;record['classification']='passed'
         except GlobalDeadline:raise
         except Exception as error:record['error']=type(error).__name__+': '+str(error)[:512];record['response'].setdefault('source_events',events)
         record['seconds']=round(time.monotonic()-start,6);return record
+    def boundary_check(self,method,round_no):
+        start=time.monotonic();end=min(self.deadline,start+3)
+        pre=self.check('INVALID_REQUEST',round_no,deadline=end)
+        if not pre['passed']:
+            return {'name':method+' boundary round '+str(round_no),'passed':False,'classification':'failed','verification_layer':'tx_boundary','error':'before-boundary processing control failed','response':{'controls':[pre]},'seconds':round(time.monotonic()-start,6)}
+        result=self.check(method,round_no,boundary=True,deadline=end)
+        post=self.check('INVALID_REQUEST',round_no,deadline=end)
+        result['name']=method+' boundary round '+str(round_no);result['response']['controls']=[pre,post]
+        if not post['passed']:result['passed']=False;result['classification']='failed';result['error']='after-boundary processing control failed: '+post.get('error','unknown')
+        result['seconds']=round(time.monotonic()-start,6);return result
     def run(self):
-        r={'protocol':'mpls','scenario':self.cfg['scenario']['mode'],'passed':False,'checks':[],'planned':{'requests':8 if self.a.method=='ALL' else 2,'checks':8 if self.a.method=='ALL' else 2}}
+        r={'protocol':'mpls','scenario':self.cfg['scenario']['mode'],'passed':False,'checks':[],'verification_schema':2,'verification_layer':'tx_boundary'if self.a.method=='TX_BOUNDARY'else'ethernet_receive','planned':{'requests':18 if self.a.method=='TX_BOUNDARY'else 8 if self.a.method=='ALL' else 2,'checks':6 if self.a.method=='TX_BOUNDARY'else 8 if self.a.method=='ALL' else 2}}
         try:
+            if self.a.method=='TX_BOUNDARY'and self.cfg['scenario']['mode']!='short-ethernet':raise ValueError('TX_BOUNDARY requires applied short-ethernet scenario')
             self.obs=Observer(self.a.observer_host,self.a.observer_port,self.a.expected_boot_id,self.a.expected_runtime_id,self.cfg);s=self.get('/v1/status');self.valid_status(s)
             actual=interface_info(self.a.interface,self.cfg['client_mac'])
             if actual['mac']==s['interface']['mac']:raise ValueError('environment_unavailable: peer requires distinct actual Ethernet interface')
             self.transport=Transport(self.a.interface,self.cfg['client_mac'],False)
-            for method in (METHODS if self.a.method=='ALL' else (self.a.method,)):
-                for n in (1,2):r['checks'].append(self.check(method,n))
+            for method in (METHODS[:3]if self.a.method=='TX_BOUNDARY'else METHODS if self.a.method=='ALL' else (self.a.method,)):
+                for n in (1,2):r['checks'].append(self.boundary_check(method,n)if self.a.method=='TX_BOUNDARY'else self.check(method,n))
             r['passed']=bool(r['checks']) and all(x['passed'] for x in r['checks']);r['source_identity']=self.identity
         except Exception as e:r['error']=type(e).__name__+': '+str(e)[:512]
         finally:
             if self.transport:self.transport.close()
-        checks=r['checks'];r['summary']={'total':len(checks),'passed':sum(x['passed'] for x in checks),'failed':sum(not x['passed'] for x in checks),'actual_requests':self.requests,'actual_responses':self.responses,'unexpected_responses':self.unexpected};r['seconds']=round(time.monotonic()-self.born,6);return r
+        checks=r['checks'];r['summary']={'total':len(checks),'passed':sum(x['passed'] for x in checks),'failed':sum(not x['passed']and x.get('classification')!='environment_limited'for x in checks),'environment_limited':sum(x.get('classification')=='environment_limited'for x in checks),'actual_requests':self.requests,'actual_responses':self.responses,'unexpected_responses':self.unexpected};r['outcome']='failed'if r.get('error')or r['summary']['failed']or not checks else'environment_limited'if r['summary']['environment_limited']else'passed';r['seconds']=round(time.monotonic()-self.born,6);return r
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--config-json',required=True);p.add_argument('--interface',required=True);p.add_argument('--observer-host',required=True);p.add_argument('--observer-port',type=int,default=18089);p.add_argument('--expected-boot-id',required=True);p.add_argument('--expected-runtime-id',required=True);p.add_argument('--method',choices=METHODS+('ALL',),default='ALL');p.add_argument('--path',choices=('echo',),default='echo');a=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--config-json',required=True);p.add_argument('--interface',required=True);p.add_argument('--observer-host',required=True);p.add_argument('--observer-port',type=int,default=18089);p.add_argument('--expected-boot-id',required=True);p.add_argument('--expected-runtime-id',required=True);p.add_argument('--method',choices=METHODS+('ALL','TX_BOUNDARY'),default='ALL');p.add_argument('--path',choices=('echo',),default='echo');a=p.parse_args()
     def expired(*_):raise GlobalDeadline('absolute30-second total deadline')
     signal.signal(signal.SIGALRM,expired);signal.alarm(30)
     try:

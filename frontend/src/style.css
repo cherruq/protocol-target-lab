@@ -2165,3 +2165,6 @@ select:disabled {
 @media (max-width: 560px) {
   .protocol-search { margin-top: 14px; }
 }
+
+.test-status-environment_limited, .test-check.environment-limited .test-check-outcome { color: #946200; background: #fff5d6; }
+.test-check.environment-limited { border-color: #e5bd5b; }

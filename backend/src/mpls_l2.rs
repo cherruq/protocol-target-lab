@@ -750,6 +750,13 @@ pub async fn client_preflight(
     if rows.len() != 1 || docker::container_id(&rows[0])? != source_id {
         bail!("MPLS source changed before MPLS client test");
     }
+    if method == "TX_BOUNDARY"
+        && rows[0]["Config"]["Labels"]["io.protocol-target-lab.mpls-tx-boundary-schema"] != "1"
+    {
+        bail!(
+            "config.test: source image lacks TX_BOUNDARY capability; import the new image and explicitly restart MPLS, old source is preserved"
+        );
+    }
     let view = source_view(&rows[0], c, deployment, instance).await?;
     if c.link.is_bridge() {
         let n = network(deployment, instance)
