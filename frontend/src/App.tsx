@@ -1522,7 +1522,7 @@ export default function App() {
                 <div className="instance-actions">
                   <button
                     className="button primary"
-                    disabled={locked || Boolean(environment?.config_error)}
+                    disabled={locked || Boolean(environment?.config_error) || displayedStatus === "running"}
                     onClick={() => void operate("start")}
                   >
                     <Icon name="play" />
