@@ -1,3 +1,4 @@
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 import { validIpv4 } from "./dns-config.ts";
 
 export const bfdModes = [
@@ -41,23 +42,23 @@ export const bfdDefaults: BfdConfig = {
   detect_mult: 3,
   scenario: { mode: "normal" },
 };
-export const bfdModeLabels: Record<BfdMode, string> = {
-  normal: "正常周期控制",
-  poll: "目标发起 Poll / Final",
-  quiet: "目标静默窗口",
-  "wrong-your": "错误 Your discriminator",
-  ttl254: "目标 TTL 254",
-  short: "目标 7 字节短报文",
-};
-export const bfdCaseLabels: Record<string, string> = {
-  NORMAL: "正常模式（两个新鲜会话轮次）",
-  POLL: "目标 Poll（两个新鲜会话轮次）",
-  QUIET: "目标静默及恢复（两个新鲜会话轮次）",
-  WRONG_YOUR: "错误 Your 及恢复（两个新鲜会话轮次）",
-  TTL254: "TTL 254 及恢复（两个新鲜会话轮次）",
-  SHORT: "短报文及恢复（两个新鲜会话轮次）",
-  ALL: "当前生效模式全部阶段（两个新鲜会话轮次）",
-};
+export const bfdModeLabels: Record<BfdMode, string> = lazyGuidanceLabels(() => ({
+  normal: guideText("bfd.configuration.bfd-config.001"),
+  poll: guideText("bfd.configuration.bfd-config.002"),
+  quiet: guideText("bfd.configuration.bfd-config.003"),
+  "wrong-your": guideText("bfd.configuration.bfd-config.004"),
+  ttl254: guideText("bfd.configuration.bfd-config.005"),
+  short: guideText("bfd.configuration.bfd-config.006"),
+}));
+export const bfdCaseLabels: Record<string, string> = lazyGuidanceLabels(() => ({
+  NORMAL: guideText("bfd.verification.bfd-config.007"),
+  POLL: guideText("bfd.verification.bfd-config.008"),
+  QUIET: guideText("bfd.verification.bfd-config.009"),
+  WRONG_YOUR: guideText("bfd.verification.bfd-config.010"),
+  TTL254: guideText("bfd.verification.bfd-config.011"),
+  SHORT: guideText("bfd.verification.bfd-config.012"),
+  ALL: guideText("bfd.verification.bfd-config.013"),
+}));
 function object(v: unknown): v is Record<string, unknown> {
   return Boolean(v && typeof v === "object" && !Array.isArray(v));
 }
@@ -138,7 +139,7 @@ function unicast(ip: string): boolean {
 export function validateBfdConfig(config: BfdConfig): void {
   if (!isBfdConfig(config))
     throw new Error(
-      "BFD 必须含固定 profile、完整10字段及与模式匹配的场景字段；不能含额外字段。",
+      guideText("bfd.configuration.bfd-config.020"),
     );
   if (
     !unicast(config.bind_ip) ||
@@ -146,39 +147,39 @@ export function validateBfdConfig(config: BfdConfig): void {
     config.bind_ip === config.peer_ip
   )
     throw new Error(
-      "绑定地址与对端地址必须是两个不同的明确单播 IPv4 地址，不能使用通配、组播或广播地址。",
+      guideText("bfd.configuration.bfd-config.021"),
     );
   if (!/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,14}$/.test(config.interface))
     throw new Error(
-      "目标接口名须为1～15个 ASCII 字符，以字母、数字或下划线开头，其余仅可含字母、数字、下划线、点、连字符。",
+      guideText("bfd.configuration.bfd-config.022"),
     );
   for (const [key, low, high, label] of [
-    ["source_port", 49152, 65535, "源 UDP 端口"],
-    ["local_discriminator", 1, 4294967295, "本地 discriminator"],
-    ["min_tx_us", 1000000, 4294967295, "最小发送间隔"],
-    ["min_rx_us", 1000000, 4294967295, "最小接收间隔"],
-    ["detect_mult", 1, 255, "检测倍数"],
+    ["source_port", 49152, 65535, guideText("bfd.configuration.bfd-config.023")],
+    ["local_discriminator", 1, 4294967295, guideText("bfd.configuration.bfd-config.024")],
+    ["min_tx_us", 1000000, 4294967295, guideText("bfd.configuration.bfd-config.025")],
+    ["min_rx_us", 1000000, 4294967295, guideText("bfd.configuration.bfd-config.026")],
+    ["detect_mult", 1, 255, guideText("bfd.configuration.bfd-config.027")],
   ] as const)
     if (
       !Number.isInteger(config[key]) ||
       config[key] < low ||
       config[key] > high
     )
-      throw new Error(`${label}必须是 ${low}～${high} 之间的整数。`);
+      throw new Error(`${label}${guideText("bfd.configuration.bfd-config.028")}${low}～${high}${guideText("bfd.configuration.bfd-config.029")}`);
   if (
     config.scenario.mode !== "normal" &&
     (!Number.isInteger(config.scenario.after_up_ms) ||
       config.scenario.after_up_ms < 0 ||
       config.scenario.after_up_ms > 3600000)
   )
-    throw new Error("Up 后延迟须为0～3600000之间的整毫秒数。");
+    throw new Error(guideText("bfd.configuration.bfd-config.030"));
   if (
     "duration_ms" in config.scenario &&
     (!Number.isInteger(config.scenario.duration_ms) ||
       config.scenario.duration_ms < 1 ||
       config.scenario.duration_ms > 3600000)
   )
-    throw new Error("故障持续时间须为1～3600000之间的整毫秒数。");
+    throw new Error(guideText("bfd.configuration.bfd-config.031"));
 }
 export function sameBfdConfig(a: BfdConfig, b: BfdConfig): boolean {
   return (
@@ -201,12 +202,12 @@ export function sameBfdConfig(a: BfdConfig, b: BfdConfig): boolean {
   );
 }
 export function bfdDescription(c: BfdConfig): string {
-  return `UDP ${c.bind_ip}:3784 → ${c.peer_ip}:3784 · 目标接口 ${c.interface} · 源端口 ${c.source_port} · discriminator ${c.local_discriminator} · Tx/Rx ${c.min_tx_us}/${c.min_rx_us} μs · 检测倍数 ${c.detect_mult} · ${bfdModeLabels[c.scenario.mode]}${c.scenario.mode === "normal" ? "" : ` / Up后 ${c.scenario.after_up_ms} ms`}${"duration_ms" in c.scenario ? ` / 持续 ${c.scenario.duration_ms} ms` : ""}`;
+  return `UDP ${c.bind_ip}:3784 → ${c.peer_ip}${guideText("bfd.configuration.bfd-config.016")}${c.interface}${guideText("bfd.configuration.bfd-config.017")}${c.source_port} · discriminator ${c.local_discriminator} · Tx/Rx ${c.min_tx_us}/${c.min_rx_us}${guideText("bfd.configuration.bfd-config.018")}${c.detect_mult} · ${bfdModeLabels[c.scenario.mode]}${c.scenario.mode === "normal" ? "" : `${guideText("bfd.configuration.bfd-config.014")}${c.scenario.after_up_ms} ms`}${"duration_ms" in c.scenario ? `${guideText("bfd.configuration.bfd-config.015")}${c.scenario.duration_ms} ms` : ""}`;
 }
 
 /** A retained report is named from its own applied snapshot, never today's case-label metadata. */
 export function bfdReportLabel(method: string, config: BfdConfig): string {
   return method === "ALL"
-    ? `${config.scenario.mode} 场景完整验证（2轮 · 测试时生效快照）`
+    ? `${config.scenario.mode}${guideText("bfd.configuration.bfd-config.019")}`
     : bfdCaseLabels[method] || method;
 }

@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import { useEffect, useRef, useState } from "react";
 import { isLegacyConfig, type StoredConfig } from "./config";
 import {
@@ -146,10 +147,8 @@ function WireSummary({
               </span>
               <pre>{bytes?.body_preview_hex || "（空字节预览）"}</pre>
               {bytes?.body_truncated && (
-                <p>
-                  仅显示部分字节；正文原长度为{" "}
-                  {bytes?.body_length?.toLocaleString() ?? "未知"} 字节。
-                </p>
+                <p>{guideText("http.verification.clienttests.001")}{" "}
+                  {bytes?.body_length?.toLocaleString() ?? guideText("http.verification.clienttests.002")}{guideText("http.verification.clienttests.003")}</p>
               )}
             </div>
           )}
@@ -164,7 +163,7 @@ function WireSummary({
           )}
         </>
       ) : (
-        <p>本项未提供此方向的收发摘要。</p>
+        <p>{guideText("http.verification.clienttests.004")}</p>
       )}
     </div>
   );
@@ -340,15 +339,11 @@ export default function ClientTests({
       <div className="client-test-heading">
         <div>
           <h3 id={`tests-${instance.id}`}>内置客户端测试</h3>
-          <p>
-            使用当前生效参数，在目标宿主机运行一次性客户端容器。此测试不能替代跨节点验收。
-          </p>
+          <p>{guideText("http.verification.clienttests.005")}</p>
         </div>
       </div>
       {hasUnappliedConfig && (
-        <div className="test-config-notice">
-          存在未应用的配置；本次测试使用当前生效快照，不会自动保存或重启实例。
-        </div>
+        <div className="test-config-notice">{guideText("http.verification.clienttests.006")}</div>
       )}
       <div className="test-controls">
         <label htmlFor={`test-path-${instance.id}`}>
@@ -389,19 +384,13 @@ export default function ClientTests({
         </div>
       </div>
       {!["/ok", "/chunked", "/close"].includes(path) && (
-        <p className="test-config-notice">
-          固定场景按预设字节和时序核对；测试通过表示目标正确输出该场景，不表示畸形报文是合法业务响应。
-          {path === "/head" || path === "/health" ? " 此场景使用 HEAD。" : " 此场景使用 GET。"}
+        <p className="test-config-notice">{guideText("http.verification.clienttests.007")}{path === "/head" || path === "/health" ? guideText("http.verification.clienttests.008") : guideText("http.verification.clienttests.009")}
         </p>
       )}
       {!instance.enabled || instance.status !== "running" ? (
-        <p className="test-availability">
-          启动 HTTP 服务并确认运行就绪后，可发起客户端测试。
-        </p>
+        <p className="test-availability">{guideText("http.verification.clienttests.010")}</p>
       ) : instance.current_operation ? (
-        <p className="test-availability">
-          协议操作进行中，完成后可发起客户端测试。
-        </p>
+        <p className="test-availability">{guideText("http.verification.clienttests.011")}</p>
       ) : null}
       {fetchError && (
         <div className="test-error" role="alert">
@@ -461,9 +450,7 @@ export default function ClientTests({
             )}
           </div>
           {sourceChanged && (
-            <p className="test-config-notice">
-              此结果来自先前的被测容器，不代表当前 HTTP 服务的新状态。
-            </p>
+            <p className="test-config-notice">{guideText("http.verification.clienttests.012")}</p>
           )}
           <div
             className={`test-cleanup ${current.cleanup_complete ? "complete" : current.status === "running" ? "pending" : "residue"}`}
@@ -526,8 +513,8 @@ export default function ClientTests({
                     {check.error && (
                       <p className="test-check-error">{check.error}</p>
                     )}
-                    {check.expected_behavior && <p>预期行为：{check.expected_behavior}</p>}
-                    {check.quiet_window_seconds !== undefined && <p>有限静默观察窗口：{check.quiet_window_seconds} 秒，不代表窗口以外无报文。</p>}
+                    {check.expected_behavior && <p>{guideText("http.verification.clienttests.013")}{check.expected_behavior}</p>}
+                    {check.quiet_window_seconds !== undefined && <p>{guideText("http.verification.clienttests.014")}{check.quiet_window_seconds}{guideText("http.verification.clienttests.015")}</p>}
                     <div className="test-wire-grid">
                       <WireSummary title="请求" message={check.request} />
                       <WireSummary title="响应" message={check.response} />
@@ -538,20 +525,14 @@ export default function ClientTests({
             </>
           )}
           {!checks.length && current.status === "running" && (
-            <p className="test-empty">
-              正在发送请求并收集实际响应，结果将自动刷新。
-            </p>
+            <p className="test-empty">{guideText("http.verification.clienttests.016")}</p>
           )}
           {!checks.length && current.status !== "running" && (
-            <p className="test-empty">
-              没有可展示的逐项结果，请查看本次测试状态与错误原因。
-            </p>
+            <p className="test-empty">{guideText("http.verification.clienttests.017")}</p>
           )}
         </div>
       ) : !submitting && !waitingId && !fetchError ? (
-        <p className="test-empty">
-          尚无客户端测试结果。仅保留当前或最后一次测试，不保存历史记录。
-        </p>
+        <p className="test-empty">{guideText("http.verification.clienttests.018")}</p>
       ) : null}
     </section>
   );

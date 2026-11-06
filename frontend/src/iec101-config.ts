@@ -1,3 +1,4 @@
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 import { validIpv4 } from "./dns-config.ts";
 
 export type Iec101Channel = {
@@ -36,13 +37,13 @@ export const iec101Defaults: Iec101Config = {
     point: { ioa: 1, value: true },
   },
 };
-export const iec101CaseLabels: Record<string, string> = {
-  RESET_STATUS: "链路复位与状态",
-  CLASS2: "二级数据与遥信",
-  GI: "总召唤确认、数据与结束",
-  STREAM: "原生期限内分片与粘连",
-  ALL: "全部测试（默认双通道16项）",
-};
+export const iec101CaseLabels: Record<string, string> = lazyGuidanceLabels(() => ({
+  RESET_STATUS: guideText("iec101.verification.iec101-config.001"),
+  CLASS2: guideText("iec101.verification.iec101-config.002"),
+  GI: guideText("iec101.verification.iec101-config.003"),
+  STREAM: guideText("iec101.verification.iec101-config.004"),
+  ALL: guideText("iec101.verification.iec101-config.005"),
+}));
 function object(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -92,37 +93,37 @@ export function isIec101Config(value: unknown): value is Iec101Config {
 export function validateIec101Config(config: Iec101Config): void {
   if (!isIec101Config(config))
     throw new Error(
-      "IEC101 必须含固定 profile、9600/8N1 及两个完整通道；不支持 enabled 或多余字段。",
+      guideText("iec101.configuration.iec101-config.012"),
     );
   if (!validIpv4(config.bind_ip))
-    throw new Error("绑定地址必须是有效 IPv4 地址。");
+    throw new Error(guideText("iec101.configuration.iec101-config.013"));
   const first = Number(config.bind_ip.split(".")[0]);
   if ((first >= 224 && first <= 239) || config.bind_ip === "255.255.255.255")
     throw new Error(
-      "绑定地址须为单播 IPv4 地址或 0.0.0.0，不能使用组播或广播地址。",
+      guideText("iec101.configuration.iec101-config.014"),
     );
   for (const kind of ["single", "double"] as const) {
     const c = config[kind];
-    const name = kind === "single" ? "单字节通道" : "双字节通道";
+    const name = kind === "single" ? guideText("iec101.configuration.iec101-config.015") : guideText("iec101.configuration.iec101-config.016");
     const max = kind === "single" ? 254 : 65534;
     const maxIoa = kind === "single" ? 255 : 16777215;
     for (const [key, low, high, label] of [
-      ["port", 1, 65535, "TCP端口"],
-      ["link_address", 1, max, "链路地址"],
-      ["common_address", 1, max, "公共地址 CA"],
-      ["originator_address", 0, kind === "single" ? 0 : 255, "发起地址 OA"],
+      ["port", 1, 65535, guideText("iec101.configuration.iec101-config.017")],
+      ["link_address", 1, max, guideText("iec101.configuration.iec101-config.018")],
+      ["common_address", 1, max, guideText("iec101.configuration.iec101-config.019")],
+      ["originator_address", 0, kind === "single" ? 0 : 255, guideText("iec101.configuration.iec101-config.020")],
     ] as const)
       if (!Number.isInteger(c[key]) || c[key] < low || c[key] > high)
-        throw new Error(`${name}的${label}必须是 ${low}～${high} 之间的整数。`);
+        throw new Error(`${name}${guideText("iec101.configuration.iec101-config.021")}${label}${guideText("iec101.configuration.iec101-config.022")}${low}～${high}${guideText("iec101.configuration.iec101-config.023")}`);
     if (
       !Number.isInteger(c.point.ioa) ||
       c.point.ioa < 1 ||
       c.point.ioa > maxIoa
     )
-      throw new Error(`${name}的 IOA 必须是 1～${maxIoa} 之间的整数。`);
+      throw new Error(`${name}${guideText("iec101.configuration.iec101-config.024")}${maxIoa}${guideText("iec101.configuration.iec101-config.025")}`);
   }
   if (config.single.port === config.double.port)
-    throw new Error("IEC101 两个通道的 TCP 端口必须不同。");
+    throw new Error(guideText("iec101.configuration.iec101-config.026"));
 }
 export function updateIec101Channel(
   config: Iec101Config,
@@ -161,10 +162,10 @@ export function sameIec101Config(a: Iec101Config, b: Iec101Config): boolean {
   );
 }
 export function iec101Description(config: Iec101Config): string {
-  return `9600/8N1（PTY请求） · ${(["single", "double"] as const)
+  return `${guideText("iec101.configuration.iec101-config.011")}${(["single", "double"] as const)
     .map((kind) => {
       const c = config[kind];
-      return `${kind} TCP ${config.bind_ip}:${c.port} · 宽度 ${kind === "single" ? "1/1/1/1" : "2/2/2/3"} · link ${c.link_address} / CA ${c.common_address} / ${kind === "single" ? "OA不在线编码" : `OA ${c.originator_address}`} / IOA ${c.point.ioa} / 模拟单点 ${c.point.value} / E5 ${c.single_char_ack ? "启用" : "禁用"}`;
+      return `${kind} TCP ${config.bind_ip}:${c.port}${guideText("iec101.configuration.iec101-config.009")}${kind === "single" ? "1/1/1/1" : "2/2/2/3"} · link ${c.link_address} / CA ${c.common_address} / ${kind === "single" ? guideText("iec101.configuration.iec101-config.006") : `OA ${c.originator_address}`} / IOA ${c.point.ioa}${guideText("iec101.configuration.iec101-config.010")}${c.point.value} / E5 ${c.single_char_ack ? guideText("iec101.configuration.iec101-config.007") : guideText("iec101.configuration.iec101-config.008")}`;
     })
     .join("；")}`;
 }

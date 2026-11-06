@@ -6,7 +6,7 @@ HTTPS/DNS TLS and the migrated reference scenarios are documented in [the TLS an
 point to the same native binary, using the management HTTP API for workspace
 commands. It does not edit the server's files or invoke local Docker for these
 commands. The Web UI is for interactive use; the CLI exposes the same implemented
-HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD, VXLAN and ARP-client
+HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD, VXLAN, ARP-client, Custom Ethernet, IGMP, MPLS and PROFINET
 workspaces to automation. Both control the same saved settings and resources.
 
 API commands default to `http://127.0.0.1:18000`. Set `PLAB_URL` or pass `--url`
@@ -20,6 +20,7 @@ machine running `plabctl`; they do not prove cross-node reachability.
 | --- | --- |
 | `health` | Management process health/version; not protocol readiness |
 | `protocols` | Implemented protocols, actual state/errors and workspace |
+| `describe http` | Shared guidance, parameter schema, saved/applied settings, current connection and test metadata (read-only) |
 | `schema http` | Configuration schema and supported methods |
 | `show http` or `status http` | Current protocol descriptor including saved/applied state |
 | `config get http` | Saved configuration |
@@ -53,6 +54,8 @@ starts or restarts the service; apply using `start http` or `restart http`.
 The CLI resolves the protocol's existing workspace ID. Custom legacy IDs remain
 usable. It never creates, copies or deletes protocol configurations. A read-only
 configuration diagnostic remains read-only through the API.
+
+See [shared protocol guidance](protocol-descriptions.md) for the `describe` JSON contract, catalog maintenance and unavailable-state behavior.
 
 ## Machine contract
 

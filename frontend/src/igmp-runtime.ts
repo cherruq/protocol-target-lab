@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import type { RuntimeEnvelope } from "./runtime-status.ts";
 export type IgmpParameters = {
   sysctl_qrv: number;
@@ -184,18 +185,18 @@ export function currentIgmpRuntime(
 }
 export function igmpForceDescription(value: number): string {
   return value === 0
-    ? "0 · 自动兼容（非强制v2）"
+    ? guideText("igmp.overview.igmp-runtime.001")
     : value === 2
-      ? "2 · 配置值2，仍可能v1回退；结合all与实际Report判读"
-      : `${value} · 实际force值，不承诺v2报告`;
+      ? guideText("igmp.overview.igmp-runtime.002")
+      : `${value}${guideText("igmp.overview.igmp-runtime.003")}`;
 }
 export function igmpNativeReportDescription(
   record: IgmpRuntime["last_report"],
 ): string {
-  if (!record) return "尚无实际原生Report记录";
+  if (!record) return guideText("igmp.overview.igmp-runtime.004");
   const v = record.decoded.igmp_version,
     t = record.decoded.igmp_type;
-  return `${typeof v === "number" && [1, 2, 3].includes(v) ? `v${v}` : "未知版本"} · type ${typeof t === "number" ? `0x${t.toString(16)}` : "未提供"}（实际捕获，不由query profile推断）`;
+  return `${typeof v === "number" && [1, 2, 3].includes(v) ? `v${v}` : guideText("igmp.overview.igmp-runtime.005")} · type ${typeof t === "number" ? `0x${t.toString(16)}` : guideText("igmp.overview.igmp-runtime.006")}${guideText("igmp.overview.igmp-runtime.007")}`;
 }
 
 export type IgmpOwnedLinkView = {

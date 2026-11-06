@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import type { DnsConfig, DnsRecord } from "./dns-config";
 
 export default function DnsConfigForm({
@@ -20,9 +21,7 @@ export default function DnsConfigForm({
   return (
     <div className="dns-config-fields">
       <div className="field-row">
-        <label htmlFor="dns-bind">
-          绑定地址
-          <input
+        <label htmlFor="dns-bind">{guideText("dns.configuration.dnsconfigform.007")}<input
             id="dns-bind"
             value={config.bind_ip}
             onChange={(e) => onChange({ ...config, bind_ip: e.target.value })}
@@ -30,11 +29,9 @@ export default function DnsConfigForm({
             required
             spellCheck={false}
           />
-          <span className="field-help">0.0.0.0 表示全部 IPv4 接口</span>
+          <span className="field-help">{guideText("dns.configuration.dnsconfigform.001")}</span>
         </label>
-        <label htmlFor="dns-port">
-          DNS 端口
-          <input
+        <label htmlFor="dns-port">{guideText("dns.configuration.dnsconfigform.008")}<input
             id="dns-port"
             type="number"
             min="1"
@@ -49,7 +46,7 @@ export default function DnsConfigForm({
         </label>
       </div>
       <fieldset className="dns-transports" disabled={disabled}>
-        <legend>启用传输（至少一项）</legend>
+        <legend>{guideText("dns.configuration.dnsconfigform.009")}</legend>
         <label>
           <input
             type="checkbox"
@@ -83,9 +80,7 @@ export default function DnsConfigForm({
           /> TLS（DNS over TLS）
         </label>
       </fieldset>
-      <label htmlFor="dns-tls-port">
-        TLS 端口
-        <input
+      <label htmlFor="dns-tls-port">{guideText("dns.configuration.dnsconfigform.010")}<input
           id="dns-tls-port"
           type="number"
           min="1"
@@ -95,14 +90,10 @@ export default function DnsConfigForm({
           onChange={(e) => onChange({ ...config, tls_port: e.currentTarget.valueAsNumber })}
           required={Boolean(config.tls_enabled)}
         />
-        <span className="field-help">
-          默认 1853；使用内置公开实验室证书。启用 TCP 时两者端口必须不同。
-          {" "}<a href="/api/tls/lab.crt" download="lab.crt">下载实验室证书 lab.crt</a>
+        <span className="field-help">{guideText("dns.configuration.dnsconfigform.002")}{" "}<a href="/api/tls/lab.crt" download="lab.crt">{guideText("dns.configuration.dnsconfigform.003")}</a>
         </span>
       </label>
-      <label htmlFor="dns-response-profile">
-        应答模式
-        <select
+      <label htmlFor="dns-response-profile">{guideText("dns.configuration.dnsconfigform.011")}<select
           id="dns-response-profile"
           value={config.response_profile ?? "standard"}
           disabled={disabled}
@@ -113,15 +104,13 @@ export default function DnsConfigForm({
             onChange(next);
           }}
         >
-          <option value="standard">标准 DNS（dnsmasq 静态记录）</option>
-          <option value="legacy-fixtures">旧脚本固定场景</option>
+          <option value="standard">{guideText("dns.configuration.dnsconfigform.012")}</option>
+          <option value="legacy-fixtures">{guideText("dns.configuration.dnsconfigform.013")}</option>
         </select>
       </label>
       {config.response_profile === "legacy-fixtures" && (
         <>
-          <label htmlFor="dns-fixture-set">
-            场景集
-            <select
+          <label htmlFor="dns-fixture-set">{guideText("dns.configuration.dnsconfigform.014")}<select
               id="dns-fixture-set"
               value={config.fixture_set ?? "final"}
               disabled={disabled}
@@ -133,33 +122,23 @@ export default function DnsConfigForm({
               }}
             >
               <option value="final">final（UDP / TCP / TLS）</option>
-              <option value="short">short（仅 UDP）</option>
-              <option value="wrong-id">wrong-id（仅 UDP）</option>
+              <option value="short">{guideText("dns.configuration.dnsconfigform.015")}</option>
+              <option value="wrong-id">{guideText("dns.configuration.dnsconfigform.016")}</option>
             </select>
           </label>
-          <p className="field-help">
-            精确匹配旧脚本请求字节并输出预设报文，包括畸形、截断和受控 NOTIFY / UPDATE / DSO 响应。
-            这不代表真实区域更新或 DSO 订阅；下方记录保留给标准模式，固定场景不使用这些记录。
-            short / wrong-id 场景集仅支持 UDP，切换场景不会自动关闭其他传输。
-          </p>
+          <p className="field-help">{guideText("dns.configuration.dnsconfigform.004")}</p>
         </>
       )}
       <div className="dns-record-heading">
-        <h3>应答记录</h3>
-        <span>{config.records.length} / 32 条</span>
+        <h3>{guideText("dns.configuration.dnsconfigform.017")}</h3>
+        <span>{config.records.length}{guideText("dns.configuration.dnsconfigform.018")}</span>
       </div>
-      <p className="field-help">
-        仅支持 A /
-        AAAA；名称不区分大小写，保存时转为小写并移除末尾点。同名称、同类型最多
-        16 条且 TTL 必须一致。
-      </p>
+      <p className="field-help">{guideText("dns.configuration.dnsconfigform.005")}</p>
       <div className="dns-records">
         {config.records.map((r, i) => (
           <fieldset className="dns-record" key={i} disabled={disabled}>
-            <legend>记录 {i + 1}</legend>
-            <label htmlFor={`dns-name-${i}`}>
-              名称
-              <input
+            <legend>{guideText("dns.configuration.dnsconfigform.019")}{i + 1}</legend>
+            <label htmlFor={`dns-name-${i}`}>{guideText("dns.configuration.dnsconfigform.020")}<input
                 id={`dns-name-${i}`}
                 value={r.name}
                 onChange={(e) => record(i, { name: e.target.value })}
@@ -170,9 +149,7 @@ export default function DnsConfigForm({
               />
             </label>
             <div className="field-row">
-              <label htmlFor={`dns-type-${i}`}>
-                类型
-                <select
+              <label htmlFor={`dns-type-${i}`}>{guideText("dns.configuration.dnsconfigform.021")}<select
                   id={`dns-type-${i}`}
                   value={r.record_type}
                   onChange={(e) =>
@@ -185,9 +162,7 @@ export default function DnsConfigForm({
                   <option>AAAA</option>
                 </select>
               </label>
-              <label htmlFor={`dns-ttl-${i}`}>
-                TTL（秒）
-                <input
+              <label htmlFor={`dns-ttl-${i}`}>{guideText("dns.configuration.dnsconfigform.022")}<input
                   id={`dns-ttl-${i}`}
                   type="number"
                   min="0"
@@ -202,7 +177,7 @@ export default function DnsConfigForm({
               </label>
             </div>
             <label htmlFor={`dns-value-${i}`}>
-              {r.record_type === "A" ? "IPv4 地址" : "IPv6 地址"}
+              {r.record_type === "A" ? guideText("dns.configuration.dnsconfigform.023") : guideText("dns.configuration.dnsconfigform.024")}
               <input
                 id={`dns-value-${i}`}
                 value={r.value}
@@ -222,9 +197,7 @@ export default function DnsConfigForm({
                 })
               }
               disabled={disabled || config.records.length <= 1}
-            >
-              移除此记录
-            </button>
+            >{guideText("dns.configuration.dnsconfigform.025")}</button>
           </fieldset>
         ))}
       </div>
@@ -241,12 +214,8 @@ export default function DnsConfigForm({
             ],
           })
         }
-      >
-        添加 DNS 记录
-      </button>
-      <p className="field-help">
-        添加或移除记录只修改草稿；保存后仍需显式运行或重启才会生效。
-      </p>
+      >{guideText("dns.configuration.dnsconfigform.026")}</button>
+      <p className="field-help">{guideText("dns.configuration.dnsconfigform.006")}</p>
     </div>
   );
 }

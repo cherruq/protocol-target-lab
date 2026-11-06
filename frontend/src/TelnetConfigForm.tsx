@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import { bannerByteLength, type TelnetConfig } from "./telnet-config";
 
 export default function TelnetConfigForm({
@@ -12,9 +13,7 @@ export default function TelnetConfigForm({
   return (
     <>
       <div className="field-row">
-        <label htmlFor="telnet-bind">
-          绑定地址
-          <input
+        <label htmlFor="telnet-bind">{guideText("telnet.configuration.telnetconfigform.008")}<input
             id="telnet-bind"
             value={config.bind_ip}
             onChange={(e) => onChange({ ...config, bind_ip: e.target.value })}
@@ -23,11 +22,9 @@ export default function TelnetConfigForm({
             autoComplete="off"
             spellCheck={false}
           />
-          <span className="field-help">0.0.0.0 表示全部 IPv4 接口</span>
+          <span className="field-help">{guideText("telnet.configuration.telnetconfigform.001")}</span>
         </label>
-        <label htmlFor="telnet-port">
-          TCP 端口
-          <input
+        <label htmlFor="telnet-port">{guideText("telnet.configuration.telnetconfigform.009")}<input
             id="telnet-port"
             type="number"
             min="1"
@@ -41,9 +38,7 @@ export default function TelnetConfigForm({
           />
         </label>
       </div>
-      <label htmlFor="telnet-banner">
-        欢迎语（Banner）
-        <input
+      <label htmlFor="telnet-banner">{guideText("telnet.configuration.telnetconfigform.010")}<input
           id="telnet-banner"
           value={config.banner}
           onChange={(e) => onChange({ ...config, banner: e.target.value })}
@@ -52,15 +47,10 @@ export default function TelnetConfigForm({
           autoComplete="off"
           spellCheck={false}
         />
-        <span className="field-help">
-          UTF-8 {bannerByteLength(config.banner)} / 256
-          字节；单行非空文本，不能包含 ASCII 控制字符。
-        </span>
+        <span className="field-help">{guideText("telnet.configuration.telnetconfigform.002")}{bannerByteLength(config.banner)}{guideText("telnet.configuration.telnetconfigform.003")}</span>
       </label>
       <div className="field-row">
-        <label htmlFor="telnet-connections">
-          最大连接数
-          <input
+        <label htmlFor="telnet-connections">{guideText("telnet.configuration.telnetconfigform.011")}<input
             id="telnet-connections"
             type="number"
             min="1"
@@ -80,11 +70,9 @@ export default function TelnetConfigForm({
             required
             disabled={disabled}
           />
-          <span className="field-help">1～128 个客户端连接</span>
+          <span className="field-help">{guideText("telnet.configuration.telnetconfigform.004")}</span>
         </label>
-        <label htmlFor="telnet-line-bytes">
-          最大输入行（字节）
-          <input
+        <label htmlFor="telnet-line-bytes">{guideText("telnet.configuration.telnetconfigform.012")}<input
             id="telnet-line-bytes"
             type="number"
             min="64"
@@ -104,17 +92,12 @@ export default function TelnetConfigForm({
             required
             disabled={disabled}
           />
-          <span className="field-help">
-            64～65536 字节，去掉行尾 CRLF 后计数。
-          </span>
+          <span className="field-help">{guideText("telnet.configuration.telnetconfigform.005")}</span>
         </label>
       </div>
       <div className="response-description">
-        <p>
-          使用 telnetlib3 4.0.3 进行真实 Telnet 协议协商，实验应用提供
-          ECHO、INFO、CLOSE 命令；不提供系统登录或 shell。
-        </p>
-        <p>保存只修改配置；显式运行或重启后应用新的欢迎语与限制。</p>
+        <p>{guideText("telnet.configuration.telnetconfigform.006")}</p>
+        <p>{guideText("telnet.configuration.telnetconfigform.007")}</p>
       </div>
     </>
   );

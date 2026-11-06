@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import type { MqttSnConfig, PredefinedTopic } from "./mqtt-sn-config";
 
 export default function MqttSnConfigForm({
@@ -20,22 +21,12 @@ export default function MqttSnConfigForm({
   return (
     <>
       <div className="protocol-binding-note">
-        <strong>固定原生绑定</strong>
-        <p>
-          网关 UDP：<code>{config.bind_ip}</code>；同容器私有 Broker：
-          <code>{config.broker_host}</code>
-          （仅环回监听）。这些地址固定，不提供任意 IP 选项。
-        </p>
-        <p>
-          使用主机网络；私有 Broker 随本 MQTT-SN
-          服务启停，不额外创建工作台，也不依赖公开 MQTT
-          服务是否运行。客户端表使用原生固定容量。
-        </p>
+        <strong>{guideText("mqtt-sn.configuration.mqttsnconfigform.001")}</strong>
+        <p>{guideText("mqtt-sn.configuration.mqttsnconfigform.002")}<code>{config.bind_ip}</code>{guideText("mqtt-sn.configuration.mqttsnconfigform.003")}<code>{config.broker_host}</code>{guideText("mqtt-sn.configuration.mqttsnconfigform.004")}</p>
+        <p>{guideText("mqtt-sn.configuration.mqttsnconfigform.005")}</p>
       </div>
       <div className="field-row">
-        <label htmlFor="mqtt-sn-port">
-          主 UDP 端口
-          <input
+        <label htmlFor="mqtt-sn-port">{guideText("mqtt-sn.configuration.mqttsnconfigform.012")}<input
             id="mqtt-sn-port"
             type="number"
             min="1"
@@ -49,9 +40,7 @@ export default function MqttSnConfigForm({
             disabled={disabled}
           />
         </label>
-        <label htmlFor="mqtt-sn-gateway-id">
-          网关 ID
-          <input
+        <label htmlFor="mqtt-sn-gateway-id">{guideText("mqtt-sn.configuration.mqttsnconfigform.013")}<input
             id="mqtt-sn-gateway-id"
             type="number"
             min="1"
@@ -67,9 +56,7 @@ export default function MqttSnConfigForm({
         </label>
       </div>
       <div className="field-row">
-        <label htmlFor="mqtt-sn-group">
-          发现组播地址
-          <input
+        <label htmlFor="mqtt-sn-group">{guideText("mqtt-sn.configuration.mqttsnconfigform.014")}<input
             id="mqtt-sn-group"
             value={config.discovery_group}
             onChange={(e) =>
@@ -81,9 +68,7 @@ export default function MqttSnConfigForm({
             spellCheck={false}
           />
         </label>
-        <label htmlFor="mqtt-sn-discovery-port">
-          发现 UDP 端口
-          <input
+        <label htmlFor="mqtt-sn-discovery-port">{guideText("mqtt-sn.configuration.mqttsnconfigform.015")}<input
             id="mqtt-sn-discovery-port"
             type="number"
             min="1"
@@ -103,12 +88,10 @@ export default function MqttSnConfigForm({
             required
             disabled={disabled}
           />
-          <span className="field-help">须与主 UDP 端口不同。</span>
+          <span className="field-help">{guideText("mqtt-sn.configuration.mqttsnconfigform.006")}</span>
         </label>
       </div>
-      <label htmlFor="mqtt-sn-broker-port">
-        私有 Broker TCP 端口
-        <input
+      <label htmlFor="mqtt-sn-broker-port">{guideText("mqtt-sn.configuration.mqttsnconfigform.016")}<input
           id="mqtt-sn-broker-port"
           type="number"
           min="1"
@@ -121,26 +104,18 @@ export default function MqttSnConfigForm({
           required
           disabled={disabled}
         />
-        <span className="field-help">
-          固定仅 127.0.0.1 TCP；可与 UDP 使用相同端口数字。
-        </span>
+        <span className="field-help">{guideText("mqtt-sn.configuration.mqttsnconfigform.007")}</span>
       </label>
       <div className="dns-record-heading">
-        <h3>预定义主题</h3>
-        <span>{config.predefined_topics.length} / 16 条</span>
+        <h3>{guideText("mqtt-sn.configuration.mqttsnconfigform.017")}</h3>
+        <span>{config.predefined_topics.length}{guideText("mqtt-sn.configuration.mqttsnconfigform.018")}</span>
       </div>
-      <p className="field-help">
-        ID 与名称分别唯一；名称只允许 1～128 字节可见
-        ASCII，不能含空白、逗号、+、#，不能以 $ 开头。plab/test
-        及其下级命名空间保留给测试；名称区分大小写。
-      </p>
+      <p className="field-help">{guideText("mqtt-sn.configuration.mqttsnconfigform.008")}</p>
       <div className="mqtt-sn-topics">
         {config.predefined_topics.map((item, index) => (
           <fieldset className="protocol-point" key={index} disabled={disabled}>
-            <legend>预定义主题 {index + 1}</legend>
-            <label htmlFor={`mqtt-sn-topic-id-${index}`}>
-              主题 ID
-              <input
+            <legend>{guideText("mqtt-sn.configuration.mqttsnconfigform.019")}{index + 1}</legend>
+            <label htmlFor={`mqtt-sn-topic-id-${index}`}>{guideText("mqtt-sn.configuration.mqttsnconfigform.020")}<input
                 id={`mqtt-sn-topic-id-${index}`}
                 type="number"
                 min="1"
@@ -155,9 +130,7 @@ export default function MqttSnConfigForm({
                 required
               />
             </label>
-            <label htmlFor={`mqtt-sn-topic-name-${index}`}>
-              主题名称
-              <input
+            <label htmlFor={`mqtt-sn-topic-name-${index}`}>{guideText("mqtt-sn.configuration.mqttsnconfigform.021")}<input
                 id={`mqtt-sn-topic-name-${index}`}
                 value={item.topic}
                 onChange={(e) => changeTopic(index, { topic: e.target.value })}
@@ -166,8 +139,7 @@ export default function MqttSnConfigForm({
                 spellCheck={false}
               />
               <span className="field-help">
-                {new TextEncoder().encode(item.topic).length} / 128 字节
-              </span>
+                {new TextEncoder().encode(item.topic).length}{guideText("mqtt-sn.configuration.mqttsnconfigform.009")}</span>
             </label>
             <button
               className="button"
@@ -181,9 +153,7 @@ export default function MqttSnConfigForm({
                   ),
                 })
               }
-            >
-              移除此主题
-            </button>
+            >{guideText("mqtt-sn.configuration.mqttsnconfigform.022")}</button>
           </fieldset>
         ))}
       </div>
@@ -203,15 +173,10 @@ export default function MqttSnConfigForm({
             ],
           });
         }}
-      >
-        添加预定义主题
-      </button>
+      >{guideText("mqtt-sn.configuration.mqttsnconfigform.023")}</button>
       <div className="response-description">
-        <p>
-          本轮验收 QoS 1 端到端收发和真实组播 GWINFO；原生栈的其他 QoS
-          能力未在本轮验收。
-        </p>
-        <p>主题增删和端口编辑只修改草稿；保存后仍需显式运行或重启才会生效。</p>
+        <p>{guideText("mqtt-sn.configuration.mqttsnconfigform.010")}</p>
+        <p>{guideText("mqtt-sn.configuration.mqttsnconfigform.011")}</p>
       </div>
     </>
   );

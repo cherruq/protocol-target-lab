@@ -1,14 +1,15 @@
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 import { runtimeHeartbeatAge, type RuntimeTarget } from "./runtime-status";
 import useRuntimeSnapshot from "./useRuntimeSnapshot";
 import {
   currentArpClientRuntime,
   arpPendingRemainingMs,
 } from "./arp-client-runtime";
-const mappingKinds: Record<string, string> = {
+const mappingKinds: Record<string, string> = lazyGuidanceLabels(() => ({
   server_mac_for_target_ip: "ARP 查询IP对应MAC",
   assigned_ip_for_target_mac: "RARP 目标MAC对应实验分配IP",
   server_ip_for_known_mac: "InARP 已知MAC对应协议IP",
-};
+}));
 export default function ArpClientRuntimePanel(target: RuntimeTarget) {
   const { runtime, snapshot, snapshotExpired, receivedAt, now, error } =
     useRuntimeSnapshot(target, currentArpClientRuntime);
@@ -35,12 +36,10 @@ export default function ArpClientRuntimePanel(target: RuntimeTarget) {
   return (
     <section className="panel" aria-label="ARP-client 只读运行态">
       <div className="panel-heading">
-        <h2>ARP-client 只读运行态</h2>
-        <span className="muted">约每2秒采样 · 不生成回应</span>
+        <h2>{guideText("arp-client.runtime.arpclientruntimepanel.011")}</h2>
+        <span className="muted">{guideText("arp-client.runtime.arpclientruntimepanel.012")}</span>
       </div>
-      <p>
-        目标持续主动请求，无反向对端时重试和超时是正常运行行为。运行不等于已解析；pending与最近历史映射分别记录，不提供连接Up或响应ACK。
-      </p>
+      <p>{guideText("arp-client.runtime.arpclientruntimepanel.001")}</p>
       {error && (
         <div className="test-error" role="alert">
           {error}
@@ -49,13 +48,13 @@ export default function ArpClientRuntimePanel(target: RuntimeTarget) {
       {!runtime ? (
         <p role="status">
           {target.disconnected
-            ? "管理服务失联，运行态待确认。"
+            ? guideText("arp-client.runtime.arpclientruntimepanel.002")
             : target.status !== "running"
-              ? "服务未运行，主动请求状态不可用。"
+              ? guideText("arp-client.runtime.arpclientruntimepanel.003")
               : snapshotExpired && snapshot?.available
-                ? "运行态样本已过期，当前请求与历史映射待重新核对。"
+                ? guideText("arp-client.runtime.arpclientruntimepanel.004")
                 : snapshot?.reason ||
-                  (snapshot ? "实时状态不可用。" : "正在读取真实请求端状态…")}
+                  (snapshot ? guideText("arp-client.runtime.arpclientruntimepanel.005") : guideText("arp-client.runtime.arpclientruntimepanel.006"))}
         </p>
       ) : (
         <>
@@ -70,7 +69,7 @@ export default function ArpClientRuntimePanel(target: RuntimeTarget) {
                 </dd>
               </div>
               <div>
-                <dt>主循环心跳距今（保守估计）</dt>
+                <dt>{guideText("arp-client.runtime.arpclientruntimepanel.013")}</dt>
                 <dd>
                   {Number.isFinite(age) ? `${Math.ceil(age)} ms` : "待确认"}
                 </dd>
@@ -83,28 +82,28 @@ export default function ArpClientRuntimePanel(target: RuntimeTarget) {
                 </dd>
               </div>
               <div>
-                <dt>应用链路 / 请求模式 / 场景</dt>
+                <dt>{guideText("arp-client.runtime.arpclientruntimepanel.014")}</dt>
                 <dd>
                   {runtime.link_mode} / {runtime.mode} /{" "}
                   {runtime.request_scenario}
                 </dd>
               </div>
               <div>
-                <dt>实际请求发送 / 映射累计 / 超时</dt>
+                <dt>{guideText("arp-client.runtime.arpclientruntimepanel.015")}</dt>
                 <dd>
                   {runtime.counters.queries_sent} / {runtime.counters.resolved}{" "}
                   / {runtime.counters.timeouts}
                 </dd>
               </div>
               <div>
-                <dt>负向静默 / 负向非预期回应</dt>
+                <dt>{guideText("arp-client.runtime.arpclientruntimepanel.016")}</dt>
                 <dd>
                   {runtime.counters.negative_silent} /{" "}
                   {runtime.counters.unexpected_responses}
                 </dd>
               </div>
               <div>
-                <dt>观察帧 / incoming / 拒绝帧</dt>
+                <dt>{guideText("arp-client.runtime.arpclientruntimepanel.017")}</dt>
                 <dd>
                   {runtime.counters.observed_frames} /{" "}
                   {runtime.counters.incoming_frames} /{" "}
@@ -112,7 +111,7 @@ export default function ArpClientRuntimePanel(target: RuntimeTarget) {
                 </dd>
               </div>
               <div>
-                <dt>忽略控制流量 / OUTGOING / 日志丢弃</dt>
+                <dt>{guideText("arp-client.runtime.arpclientruntimepanel.018")}</dt>
                 <dd>
                   {runtime.counters.ignored_control} /{" "}
                   {runtime.counters.ignored_outgoing} /{" "}
@@ -120,14 +119,12 @@ export default function ArpClientRuntimePanel(target: RuntimeTarget) {
                 </dd>
               </div>
             </dl>
-            <p className="field-help">
-              negative_silent只在该负向query到期且没有可归属回应时增加，不代表链路一帧都没有；resolved为本boot历史计数，不是当前请求已完成。
-            </p>
-            <h3>当前 pending 请求（采样）</h3>
+            <p className="field-help">{guideText("arp-client.runtime.arpclientruntimepanel.007")}</p>
+            <h3>{guideText("arp-client.runtime.arpclientruntimepanel.019")}</h3>
             {runtime.pending ? (
               <dl>
                 <div>
-                  <dt>本地 query_id / 重试索引</dt>
+                  <dt>{guideText("arp-client.runtime.arpclientruntimepanel.020")}</dt>
                   <dd>
                     {runtime.pending.query_id} / {runtime.pending.retry_index}
                     （0为首次）
@@ -142,7 +139,7 @@ export default function ArpClientRuntimePanel(target: RuntimeTarget) {
                   </dd>
                 </div>
                 <div>
-                  <dt>剩余响应期限（估计）</dt>
+                  <dt>{guideText("arp-client.runtime.arpclientruntimepanel.021")}</dt>
                   <dd>
                     {!fresh
                       ? "状态待确认"
@@ -152,20 +149,18 @@ export default function ArpClientRuntimePanel(target: RuntimeTarget) {
                   </dd>
                 </div>
                 <div>
-                  <dt>本query可归属非预期回应</dt>
+                  <dt>{guideText("arp-client.runtime.arpclientruntimepanel.022")}</dt>
                   <dd>{runtime.pending.unexpected_responses}</dd>
                 </div>
               </dl>
             ) : (
-              <p>
-                当前样本没有pending，可能处于下一组间隔；不据此宣称映射成功。
-              </p>
+              <p>{guideText("arp-client.runtime.arpclientruntimepanel.008")}</p>
             )}
-            <h3>最近历史映射（当前 boot）</h3>
+            <h3>{guideText("arp-client.runtime.arpclientruntimepanel.023")}</h3>
             {runtime.last_mapping ? (
               <dl>
                 <div>
-                  <dt>映射种类 / 本地 query_id</dt>
+                  <dt>{guideText("arp-client.runtime.arpclientruntimepanel.024")}</dt>
                   <dd>
                     {mappingKinds[runtime.last_mapping.mapping_kind] ||
                       runtime.last_mapping.mapping_kind}{" "}
@@ -173,37 +168,30 @@ export default function ArpClientRuntimePanel(target: RuntimeTarget) {
                   </dd>
                 </div>
                 <div>
-                  <dt>实际历史 MAC → IP</dt>
+                  <dt>{guideText("arp-client.runtime.arpclientruntimepanel.025")}</dt>
                   <dd>
                     {runtime.last_mapping.mapping_mac} →{" "}
                     {runtime.last_mapping.mapping_ip}
                   </dd>
                 </div>
                 <div>
-                  <dt>收到距今（保守估计）</dt>
+                  <dt>{guideText("arp-client.runtime.arpclientruntimepanel.026")}</dt>
                   <dd>
                     {Number.isFinite(elapsed)
                       ? `${Math.ceil(Math.max(0, runtime.uptime_ms - runtime.last_mapping.received_ms + elapsed))} ms`
-                      : "待确认"}
-                    ，不代表当前pending已解析
-                  </dd>
+                      : "待确认"}{guideText("arp-client.runtime.arpclientruntimepanel.027")}</dd>
                 </div>
                 <div>
-                  <dt>实际响应 SHA256</dt>
+                  <dt>{guideText("arp-client.runtime.arpclientruntimepanel.028")}</dt>
                   <dd className="applied-body">
                     {runtime.last_mapping.response_sha256}
                   </dd>
                 </div>
               </dl>
             ) : (
-              <p>
-                当前boot尚无真实历史映射；不会从发送成功、旧容器或超时推造映射。
-              </p>
+              <p>{guideText("arp-client.runtime.arpclientruntimepanel.009")}</p>
             )}
-            <p className="field-help">
-              协议没有wire transaction
-              ID；query_id仅本地关联。相同元组的迟到相同回应仍可能有歧义。响应后不发ACK，不把padding测试nonce作为协议字段或认证。
-            </p>
+            <p className="field-help">{guideText("arp-client.runtime.arpclientruntimepanel.010")}</p>
           </div>
         </>
       )}

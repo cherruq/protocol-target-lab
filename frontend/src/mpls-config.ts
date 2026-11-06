@@ -1,3 +1,4 @@
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 import { validIpv4 } from "./dns-config.ts";
 export const mplsScenarios = [
   "normal",
@@ -41,29 +42,29 @@ export const mplsDefaults: MplsConfig = {
   reply_ttl: 64,
   scenario: { mode: "normal" },
 };
-export const mplsScenarioLabels: Record<MplsScenario, string> = {
-  normal: "正常无标签 IPv4 Echo Reply",
-  silent: "静默（真实 accepted + suppressed）",
-  "wrong-eth-src": "错误以太网源 MAC",
-  "wrong-eth-dst": "错误以太网目的 MAC",
-  "wrong-ip-src": "错误 IPv4 源地址",
-  "wrong-ip-dst": "错误 IPv4 目的地址",
-  "wrong-id": "错误 ICMP identifier（+1）",
-  "wrong-seq": "错误 ICMP sequence（+1）",
-  "wrong-payload": "错误 ICMP payload",
-  "bad-ip-checksum": "错误 IPv4 校验和",
-  "bad-icmp-checksum": "错误 ICMP 校验和",
-  "short-ethernet": "13 字节 Ethernet 输出（能力可能不可用）",
-  "short-ipv4": "33 字节截断 IPv4 输出",
-  "short-icmp": "41 字节截断 ICMP 输出",
-};
-export const mplsCaseLabels = {
-  ECHO: "当前场景 Echo 输出（2轮）",
-  TC_TTL: "TC / shim TTL 边界（2轮）",
-  PADDING: "奇数载荷与 Ethernet padding（2轮）",
-  INVALID_REQUEST: "错误标签 / 过期 TTL 拒绝（2轮）",
-  ALL: "当前生效场景全部8项",
-};
+export const mplsScenarioLabels: Record<MplsScenario, string> = lazyGuidanceLabels(() => ({
+  normal: guideText("mpls.configuration.mpls-config.001"),
+  silent: guideText("mpls.configuration.mpls-config.002"),
+  "wrong-eth-src": guideText("mpls.configuration.mpls-config.003"),
+  "wrong-eth-dst": guideText("mpls.configuration.mpls-config.004"),
+  "wrong-ip-src": guideText("mpls.configuration.mpls-config.005"),
+  "wrong-ip-dst": guideText("mpls.configuration.mpls-config.006"),
+  "wrong-id": guideText("mpls.configuration.mpls-config.007"),
+  "wrong-seq": guideText("mpls.configuration.mpls-config.008"),
+  "wrong-payload": guideText("mpls.configuration.mpls-config.009"),
+  "bad-ip-checksum": guideText("mpls.configuration.mpls-config.010"),
+  "bad-icmp-checksum": guideText("mpls.configuration.mpls-config.011"),
+  "short-ethernet": guideText("mpls.configuration.mpls-config.012"),
+  "short-ipv4": guideText("mpls.configuration.mpls-config.013"),
+  "short-icmp": guideText("mpls.configuration.mpls-config.014"),
+}));
+export const mplsCaseLabels = lazyGuidanceLabels(() => ({
+  ECHO: guideText("mpls.verification.mpls-config.015"),
+  TC_TTL: guideText("mpls.verification.mpls-config.016"),
+  PADDING: guideText("mpls.verification.mpls-config.017"),
+  INVALID_REQUEST: guideText("mpls.verification.mpls-config.018"),
+  ALL: guideText("mpls.verification.mpls-config.019"),
+}));
 function object(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
@@ -122,31 +123,31 @@ function mac(v: string) {
 export function validateMplsConfig(c: MplsConfig): void {
   if (!isMplsConfig(c))
     throw new Error(
-      "MPLS 必须含固定 profile、完整9字段和严格 link / scenario；没有 bind_ip 或应用 port。",
+      guideText("mpls.configuration.mpls-config.031"),
     );
   if (
     !mac(c.source_mac) ||
     !mac(c.client_mac) ||
     c.source_mac.toLowerCase() === c.client_mac.toLowerCase()
   )
-    throw new Error("目标与测试对端须使用不同的非零单播 MAC；保存统一小写。");
+    throw new Error(guideText("mpls.configuration.mpls-config.032"));
   if (
     !roleIp(c.source_ip) ||
     !roleIp(c.client_ip) ||
     c.source_ip === c.client_ip
   )
-    throw new Error("两个协议角色 IPv4 须不同，不能是0/8、组播或全一广播。");
+    throw new Error(guideText("mpls.configuration.mpls-config.033"));
   if (
     c.link.mode === "host-interface" &&
     !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,14}$/.test(c.link.interface)
   )
     throw new Error(
-      "接口名须为1～15个ASCII字符，以字母/数字/下划线开头，其余仅字母/数字/下划线/点/连字符。",
+      guideText("mpls.configuration.mpls-config.034"),
     );
   if (!Number.isInteger(c.label) || c.label < 16 || c.label > 1048575)
-    throw new Error("MPLS label 须为16～1048575的整数。");
+    throw new Error(guideText("mpls.configuration.mpls-config.035"));
   if (!Number.isInteger(c.reply_ttl) || c.reply_ttl < 1 || c.reply_ttl > 255)
-    throw new Error("IPv4回复 TTL 须为1～255的整数。");
+    throw new Error(guideText("mpls.configuration.mpls-config.036"));
 }
 export function normalizeMplsConfig(c: MplsConfig): MplsConfig {
   validateMplsConfig(c);
@@ -198,14 +199,14 @@ export function changeMplsLink(
 }
 export function mplsLinkDescription(c: MplsConfig) {
   return c.link.mode === "docker-bridge"
-    ? "受管隔离内部 bridge · 两个真实 veth"
-    : `现有 Ethernet 接口 ${c.link.interface}（启动核对实际 MAC）`;
+    ? guideText("mpls.configuration.mpls-config.020")
+    : `${guideText("mpls.configuration.mpls-config.021")}${c.link.interface}${guideText("mpls.configuration.mpls-config.022")}`;
 }
 export function mplsDescription(c: unknown) {
-  if (!isMplsConfig(c)) return "MPLS配置快照类型不匹配，请核对版本。";
-  return `${mplsLinkDescription(c)} · 目标 ${c.source_mac} / 角色IP ${c.source_ip} · 对端 ${c.client_mac} / 角色IP ${c.client_ip} · label ${c.label} · 新IPv4回复TTL ${c.reply_ttl} · ${c.scenario.mode}`;
+  if (!isMplsConfig(c)) return guideText("mpls.configuration.mpls-config.023");
+  return `${mplsLinkDescription(c)}${guideText("mpls.configuration.mpls-config.024")}${c.source_mac}${guideText("mpls.configuration.mpls-config.025")}${c.source_ip}${guideText("mpls.configuration.mpls-config.026")}${c.client_mac}${guideText("mpls.configuration.mpls-config.027")}${c.client_ip} · label ${c.label}${guideText("mpls.configuration.mpls-config.028")}${c.reply_ttl} · ${c.scenario.mode}`;
 }
 export function mplsReportLabel(method: string, c: unknown) {
   if (!isMplsConfig(c)) return method;
-  return `${c.scenario.mode} · ${c.link.mode} · ${method === "ALL" ? "当前场景8项" : mplsCaseLabels[method as keyof typeof mplsCaseLabels] || method}（测试时生效快照）`;
+  return `${c.scenario.mode} · ${c.link.mode} · ${method === "ALL" ? guideText("mpls.configuration.mpls-config.029") : mplsCaseLabels[method as keyof typeof mplsCaseLabels] || method}${guideText("mpls.configuration.mpls-config.030")}`;
 }

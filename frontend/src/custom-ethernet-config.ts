@@ -1,3 +1,4 @@
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 export type CustomEthernetLink =
   | { mode: "docker-bridge" }
   | { mode: "host-interface"; interface: string };
@@ -180,7 +181,7 @@ export function customHexBytes(v: string, min = 0, max = 65535): number {
     v.length / 2 > max
   )
     throw new Error(
-      `十六进制必须为完整字节，不含0x、空格或分隔符；长度须为${min}～${max}字节。`,
+      `${guideText("custom-ethernet.configuration.custom-ethernet-config.019")}${min}～${max}${guideText("custom-ethernet.configuration.custom-ethernet-config.020")}`,
     );
   return v.length / 2;
 }
@@ -198,7 +199,7 @@ export function parseCustomEtherType(v: number | string): number {
     [0x8100, 0x88a8, 0x9100].includes(n)
   )
     throw new Error(
-      "EtherType须为0x0600～0xffff的完整十六进制整数；0x8100/0x88a8/0x9100请用独立VLAN控件，不能作为构造载荷类型。",
+      guideText("custom-ethernet.configuration.custom-ethernet-config.021"),
     );
   return n;
 }
@@ -207,20 +208,20 @@ function integer(v: number, min: number, max: number) {
 }
 function validatePayload(p: CustomEthernetDraft["response"]["payload"]): void {
   if (!validCustomMac(p.destination_mac))
-    throw new Error("响应目的MAC须为非零完整6字节地址；允许单播、组播或广播。");
+    throw new Error(guideText("custom-ethernet.configuration.custom-ethernet-config.022"));
   if (!unicast(p.source_mac.value))
     throw new Error(
-      "发送源覆盖值须为非零完整单播MAC，即使当前使用接口MAC也需保留有效值。",
+      guideText("custom-ethernet.configuration.custom-ethernet-config.023"),
     );
   parseCustomEtherType(p.ether_type);
   if (!integer(p.vlan.vid, 0, 4094) || !integer(p.vlan.pcp, 0, 7))
     throw new Error(
-      "VLAN VID须为0～4094、PCP须为0～7的整数；禁用时也保留有效值。",
+      guideText("custom-ethernet.configuration.custom-ethernet-config.024"),
     );
   const bytes = customHexBytes(p.payload_hex, 0, 65521);
   if (bytes + (p.vlan.enabled ? 18 : 14) > 65535)
     throw new Error(
-      "构造帧完整长度不能超过65535字节；启用VLAN时payload最多65517字节。",
+      guideText("custom-ethernet.configuration.custom-ethernet-config.025"),
     );
 }
 function normalized(d: CustomEthernetDraft): CustomEthernetConfig {
@@ -256,20 +257,20 @@ function normalized(d: CustomEthernetDraft): CustomEthernetConfig {
 export function validateCustomEthernetConfig(c: CustomEthernetConfig): void {
   if (!isCustomEthernetConfig(c))
     throw new Error(
-      "自定义以太网配置必须含严格10字段、双响应bank及完整VLAN/源覆盖对象，不能含IP/应用端口或多余字段。",
+      guideText("custom-ethernet.configuration.custom-ethernet-config.026"),
     );
   if (
     !unicast(c.local_mac) ||
     !unicast(c.peer_mac) ||
     c.local_mac.toLowerCase() === c.peer_mac.toLowerCase()
   )
-    throw new Error("实际目标和客户端MAC须为两个不同的非零单播地址。");
+    throw new Error(guideText("custom-ethernet.configuration.custom-ethernet-config.027"));
   if (
     c.link.mode === "host-interface" &&
     !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,14}$/.test(c.link.interface)
   )
     throw new Error(
-      "接口名须为1～15字符，不含空白、冒号或路径分隔符；启动核对真实Ethernet及MAC。",
+      guideText("custom-ethernet.configuration.custom-ethernet-config.028"),
     );
   if (
     !c.packet_filter.trim() ||
@@ -277,7 +278,7 @@ export function validateCustomEthernetConfig(c: CustomEthernetConfig): void {
     new TextEncoder().encode(c.packet_filter).length > 2048
   )
     throw new Error(
-      "独立BPF表达式不能为空/纯空白、含NUL或超过2048 UTF-8字节；实际编译及内核安装由运行前预检完成。",
+      guideText("custom-ethernet.configuration.custom-ethernet-config.029"),
     );
   if (c.request_marker_hex !== null)
     customHexBytes(c.request_marker_hex, 1, 64);
@@ -296,7 +297,7 @@ export function validateCustomEthernetConfig(c: CustomEthernetConfig): void {
     )
   )
     throw new Error(
-      "组播列表最多16个不同的真实组播MAC，不能是广播；每行一个，不改变全局allmulti。",
+      guideText("custom-ethernet.configuration.custom-ethernet-config.030"),
     );
 }
 /** The API receives only strict valid banks; invalid inactive editor text remains in the UI draft. */
@@ -305,7 +306,7 @@ export function prepareCustomEthernetSave(
   saved: CustomEthernetConfig,
 ): { config: CustomEthernetConfig; retained: string[] } {
   if (!isCustomEthernetDraft(draft))
-    throw new Error("自定义以太网草稿结构不完整。");
+    throw new Error(guideText("custom-ethernet.configuration.custom-ethernet-config.031"));
   const d = structuredClone(draft),
     retained: string[] = [];
   const p = d.response.payload;
@@ -314,26 +315,26 @@ export function prepareCustomEthernetSave(
       validatePayload(p);
     } catch {
       d.response.payload = structuredClone(saved.response.payload);
-      retained.push("构造响应bank");
+      retained.push(guideText("custom-ethernet.configuration.custom-ethernet-config.032"));
     }
   } else {
     if (p.source_mac.mode === "interface" && !unicast(p.source_mac.value)) {
       p.source_mac.value = saved.response.payload.source_mac.value;
-      retained.push("非活跃源MAC覆盖值");
+      retained.push(guideText("custom-ethernet.configuration.custom-ethernet-config.033"));
     }
     if (
       !p.vlan.enabled &&
       (!integer(p.vlan.vid, 0, 4094) || !integer(p.vlan.pcp, 0, 7))
     ) {
       p.vlan = { ...saved.response.payload.vlan, enabled: false };
-      retained.push("禁用VLAN参数");
+      retained.push(guideText("custom-ethernet.configuration.custom-ethernet-config.034"));
     }
     validatePayload(p);
     try {
       customHexBytes(d.response.frame_hex, 14, 65535);
     } catch {
       d.response.frame_hex = saved.response.frame_hex;
-      retained.push("完整帧响应bank");
+      retained.push(guideText("custom-ethernet.configuration.custom-ethernet-config.035"));
     }
   }
   const config = normalized(d);
@@ -373,25 +374,25 @@ export function sameCustomEthernetDraft(
     return false;
   }
 }
-export const customEthernetCaseLabels = {
-  ROUNDTRIP: "固定响应往返（2组 / 2次交换）",
-  REPEAT: "连续重复（2组 / 6次交换）",
-  ALL: "当前配置全部验证（4组 / 8次交换）",
-};
+export const customEthernetCaseLabels = lazyGuidanceLabels(() => ({
+  ROUNDTRIP: guideText("custom-ethernet.verification.custom-ethernet-config.001"),
+  REPEAT: guideText("custom-ethernet.verification.custom-ethernet-config.002"),
+  ALL: guideText("custom-ethernet.verification.custom-ethernet-config.003"),
+}));
 export function customEthernetLinkDescription(c: CustomEthernetConfig): string {
   return c.link.mode === "docker-bridge"
-    ? "受管隔离内部bridge · 双真实veth"
-    : `现有Ethernet接口 ${c.link.interface}`;
+    ? guideText("custom-ethernet.configuration.custom-ethernet-config.004")
+    : `${guideText("custom-ethernet.configuration.custom-ethernet-config.005")}${c.link.interface}`;
 }
 export function customEthernetDescription(c: CustomEthernetConfig): string {
   const p = c.response.payload;
-  return `${customEthernetLinkDescription(c)} · ${c.response.mode === "frame" ? `完整固定帧 ${c.response.frame_hex.length / 2}字节` : `构造固定响应 ${p.payload_hex.length / 2 + (p.vlan.enabled ? 18 : 14)}字节 · EtherType 0x${p.ether_type.toString(16)} · ${p.vlan.enabled ? `VLAN ${p.vlan.vid}/PCP${p.vlan.pcp}/DEI${Number(p.vlan.dei)}` : "无VLAN"}`} · 显式请求fixture ${c.test_request.frame_hex.length / 2}字节`;
+  return `${customEthernetLinkDescription(c)} · ${c.response.mode === "frame" ? `${guideText("custom-ethernet.configuration.custom-ethernet-config.006")}${c.response.frame_hex.length / 2}${guideText("custom-ethernet.configuration.custom-ethernet-config.007")}` : `${guideText("custom-ethernet.configuration.custom-ethernet-config.009")}${p.payload_hex.length / 2 + (p.vlan.enabled ? 18 : 14)}${guideText("custom-ethernet.configuration.custom-ethernet-config.010")}${p.ether_type.toString(16)} · ${p.vlan.enabled ? `VLAN ${p.vlan.vid}/PCP${p.vlan.pcp}/DEI${Number(p.vlan.dei)}` : guideText("custom-ethernet.configuration.custom-ethernet-config.008")}`}${guideText("custom-ethernet.configuration.custom-ethernet-config.011")}${c.test_request.frame_hex.length / 2}${guideText("custom-ethernet.configuration.custom-ethernet-config.012")}`;
 }
 export function customEthernetReportLabel(
   method: string,
   snapshot: unknown,
 ): string {
   return isCustomEthernetConfig(snapshot)
-    ? `${snapshot.response.mode === "frame" ? "完整帧" : "构造载荷"} · ${method === "ALL" ? "计划4组 / 8次交换" : method === "REPEAT" ? "计划重复2组 / 6次交换" : "计划往返2组 / 2次交换"}（测试时生效快照）`
+    ? `${snapshot.response.mode === "frame" ? guideText("custom-ethernet.configuration.custom-ethernet-config.013") : guideText("custom-ethernet.configuration.custom-ethernet-config.014")} · ${method === "ALL" ? guideText("custom-ethernet.configuration.custom-ethernet-config.015") : method === "REPEAT" ? guideText("custom-ethernet.configuration.custom-ethernet-config.016") : guideText("custom-ethernet.configuration.custom-ethernet-config.017")}${guideText("custom-ethernet.configuration.custom-ethernet-config.018")}`
     : method;
 }

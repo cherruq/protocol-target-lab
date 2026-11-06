@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import {
   quoteShellCommand,
   type ArpConnectionInfo,
@@ -45,7 +46,7 @@ export default function IgmpConnectionHelp({
             </button>
           </>
         ) : (
-          <p>命令数组不可用，请核对管理服务版本；不会猜测或自动执行。</p>
+          <p>{guideText("igmp.connection.igmpconnectionhelp.001")}</p>
         )}
       </div>
     );
@@ -56,14 +57,14 @@ export default function IgmpConnectionHelp({
       style={{ gridColumn: "1 / -1", minWidth: 0 }}
       aria-label="IGMP 内核成员接入说明"
     >
-      <strong>内核成员与实际查询对端</strong>
+      <strong>{guideText("igmp.connection.igmpconnectionhelp.002")}</strong>
       {connection?.client_execution && (
         <dl>
           {Object.entries({
-            role: "测试角色",
-            bridge: "隔离软件二层",
-            host: "既有接口 / 外部客户端",
-            observer: "私有只读观察",
+            role: guideText("igmp.connection.igmpconnectionhelp.003"),
+            bridge: guideText("igmp.connection.igmpconnectionhelp.004"),
+            host: guideText("igmp.connection.igmpconnectionhelp.005"),
+            observer: guideText("igmp.connection.igmpconnectionhelp.006"),
           }).map(
             ([key, label]) =>
               typeof connection.client_execution?.[
@@ -94,12 +95,8 @@ export default function IgmpConnectionHelp({
       ) : null}
       {helper && (
         <>
-          <h3>对端专属kernel VXLAN helper（仅复制，不执行）</h3>
-          <p>
-            以下是已对调角色的typed spec，必须在实际对端由root执行，并将
-            <code>&lt;peer-underlay-interface&gt;</code>
-            替换为对端本机真实接口；不能复制目标underlay名或假装Web已SSH创建。命令只管理有归属的新设备，不改旧接口/路由/防火墙。承载UDP不是IGMP端口。
-          </p>
+          <h3>{guideText("igmp.connection.igmpconnectionhelp.007")}</h3>
+          <p>{guideText("igmp.connection.igmpconnectionhelp.008")}<code>{guideText("igmp.connection.igmpconnectionhelp.009")}</code>{guideText("igmp.connection.igmpconnectionhelp.010")}</p>
           {helper.requires?.length ? (
             <ul>
               {helper.requires.map((n, i) => (
@@ -108,14 +105,14 @@ export default function IgmpConnectionHelp({
             </ul>
           ) : null}
           <details>
-            <summary>查看对端helper结构化参数</summary>
+            <summary>{guideText("igmp.connection.igmpconnectionhelp.011")}</summary>
             <pre className="protocol-wire">
               {boundedWireSummary(helper.spec).text}
             </pre>
           </details>
-          {command(helper.start_argv, "复制对端helper start")}
-          {command(helper.status_argv, "复制对端helper status")}
-          {command(helper.stop_argv, "复制对端helper stop")}
+          {command(helper.start_argv, guideText("igmp.connection.igmpconnectionhelp.012"))}
+          {command(helper.status_argv, guideText("igmp.connection.igmpconnectionhelp.013"))}
+          {command(helper.stop_argv, guideText("igmp.connection.igmpconnectionhelp.014"))}
           {helper.notes?.length ? (
             <ul>
               {helper.notes.map((n, i) => (
@@ -127,11 +124,8 @@ export default function IgmpConnectionHelp({
       )}
       {external ? (
         <>
-          <h3>外部同镜像Query客户端模板</h3>
-          <p>
-            先用<code>plabctl runtime igmp</code>核对实际kernel、source
-            IPv4/MAC、CID/image/boot/runtime。明确替换所有source身份和客户端本机接口/IP占位，SSH目标是管理服务器；只读转发不承载IGMP数据。测试端不IP加入目标组，避免抑制目标报告。执行后再核源身份并精确清理自有forward/helper。
-          </p>
+          <h3>{guideText("igmp.connection.igmpconnectionhelp.015")}</h3>
+          <p>{guideText("igmp.connection.igmpconnectionhelp.016")}<code>{guideText("igmp.connection.igmpconnectionhelp.017")}</code>{guideText("igmp.connection.igmpconnectionhelp.018")}</p>
           {external.requires?.length ? (
             <ul>
               {external.requires.map((n, i) => (
@@ -139,8 +133,8 @@ export default function IgmpConnectionHelp({
               ))}
             </ul>
           ) : null}
-          {command(external.observer_forward, "复制IGMP只读转发模板")}
-          {command(external.argv, "复制外部IGMP客户端模板")}
+          {command(external.observer_forward, guideText("igmp.connection.igmpconnectionhelp.019"))}
+          {command(external.argv, guideText("igmp.connection.igmpconnectionhelp.020"))}
           {external.notes?.length ? (
             <ul>
               {external.notes.map((n, i) => (
@@ -150,14 +144,9 @@ export default function IgmpConnectionHelp({
           ) : null}
         </>
       ) : (
-        <p>
-          当前配置不提供虚构的外部host命令。默认bridge可用上方一次性客户端；其他link是否可内置测试由真实peer接口/helper预检决定，不自动猜测或SSH。
-        </p>
+        <p>{guideText("igmp.connection.igmpconnectionhelp.021")}</p>
       )}
-      <p>
-        目标是持久内核成员，不是raw报告或ACK服务。General
-        Query发往224.0.0.1、Report发往成员组；Group-specific只验证第一applied组。每轮12秒/global90秒，startup/测试前候选Report不冒作本轮响应。停止只释放本工作台引用，不承诺共享host整体离组。
-      </p>
+      <p>{guideText("igmp.connection.igmpconnectionhelp.022")}</p>
     </section>
   );
 }

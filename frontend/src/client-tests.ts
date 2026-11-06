@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import type { StoredConfig } from "./config";
 
 export type TestMethod =
@@ -50,9 +51,9 @@ export type WireMessage = {
   tls?: { version?: string; cipher?: string; verified_server_name?: string };
 };
 export function httpResponseStatus(message: WireMessage): string {
-  if (message.status !== null) return String(message.status ?? "未提供");
-  if (message.wire && (message.wire.body_length ?? message.body_length ?? 0) > 0) return "已收到原始报文，未解析 HTTP 状态";
-  return "未收到响应";
+  if (message.status !== null) return String(message.status ?? guideText("http.verification.client-tests.001"));
+  if (message.wire && (message.wire.body_length ?? message.body_length ?? 0) > 0) return guideText("http.verification.client-tests.002");
+  return guideText("http.verification.client-tests.003");
 }
 export type TestCheck = {
   name: string;
@@ -148,9 +149,9 @@ export function testDurationLabel(
     Number.isFinite(clientSeconds) &&
     clientSeconds >= 0
   )
-    return `客户端耗时 ${clientSeconds.toFixed(3)} 秒`;
+    return `${guideText("http.verification.client-tests.004")}${clientSeconds.toFixed(3)}${guideText("http.verification.client-tests.005")}`;
   const total = elapsedSeconds(run, now);
   return run.finished_at !== null && total < 1
-    ? "总耗时不足 1 秒"
-    : `总耗时 ${total.toFixed(1)} 秒`;
+    ? guideText("http.verification.client-tests.006")
+    : `${guideText("http.verification.client-tests.007")}${total.toFixed(1)}${guideText("http.verification.client-tests.008")}`;
 }

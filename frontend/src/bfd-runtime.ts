@@ -1,3 +1,4 @@
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 export type BfdRuntime = {
   schema_version: 1;
   protocol: "bfd";
@@ -30,23 +31,23 @@ export type BfdRuntimeEnvelope = {
   sample_age_ms?: number;
   runtime?: BfdRuntime;
 };
-export const bfdStateLabels: Record<string, string> = {
-  Up: "Up（双向建立）",
-  Down: "Down（未建立）",
-  Init: "Init（协商中）",
-  AdminDown: "AdminDown（管理停止）",
-};
-export const bfdDiagnosticLabels: Record<number, string> = {
-  0: "无诊断",
-  1: "控制检测超时",
-  2: "Echo 失败",
-  3: "对端报告会话 Down",
-  4: "转发平面重置",
-  5: "路径 Down",
-  6: "连接路径 Down",
-  7: "管理停止",
-  8: "反向连接路径 Down",
-};
+export const bfdStateLabels: Record<string, string> = lazyGuidanceLabels(() => ({
+  Up: guideText("bfd.overview.bfd-runtime.001"),
+  Down: guideText("bfd.overview.bfd-runtime.002"),
+  Init: guideText("bfd.overview.bfd-runtime.003"),
+  AdminDown: guideText("bfd.overview.bfd-runtime.004"),
+}));
+export const bfdDiagnosticLabels: Record<number, string> = lazyGuidanceLabels(() => ({
+  0: guideText("bfd.overview.bfd-runtime.005"),
+  1: guideText("bfd.overview.bfd-runtime.006"),
+  2: guideText("bfd.overview.bfd-runtime.007"),
+  3: guideText("bfd.overview.bfd-runtime.008"),
+  4: guideText("bfd.overview.bfd-runtime.009"),
+  5: guideText("bfd.overview.bfd-runtime.010"),
+  6: guideText("bfd.overview.bfd-runtime.011"),
+  7: guideText("bfd.overview.bfd-runtime.012"),
+  8: guideText("bfd.overview.bfd-runtime.013"),
+}));
 /** Never render an Up from a previous selected source container or unsupported status schema. */
 export function currentBfdRuntime(
   value: BfdRuntimeEnvelope | null,

@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import {
   FLOAT32_MAX,
   type Iec104Address,
@@ -29,9 +30,7 @@ export default function Iec104ConfigForm({
     const point = config.points[role];
     return (
       <div className="field-row">
-        <label htmlFor={`iec104-${role}-ca`}>
-          公共地址（CA）
-          <input
+        <label htmlFor={`iec104-${role}-ca`}>{guideText("iec104.configuration.iec104configform.013")}<input
             id={`iec104-${role}-ca`}
             type="number"
             min="1"
@@ -44,9 +43,7 @@ export default function Iec104ConfigForm({
             required
           />
         </label>
-        <label htmlFor={`iec104-${role}-ioa`}>
-          信息体地址（IOA）
-          <input
+        <label htmlFor={`iec104-${role}-ioa`}>{guideText("iec104.configuration.iec104configform.014")}<input
             id={`iec104-${role}-ioa`}
             type="number"
             min="1"
@@ -65,9 +62,7 @@ export default function Iec104ConfigForm({
   return (
     <>
       <div className="field-row">
-        <label htmlFor="iec104-bind">
-          绑定地址
-          <input
+        <label htmlFor="iec104-bind">{guideText("iec104.configuration.iec104configform.015")}<input
             id="iec104-bind"
             value={config.bind_ip}
             onChange={(e) => onChange({ ...config, bind_ip: e.target.value })}
@@ -76,11 +71,9 @@ export default function Iec104ConfigForm({
             autoComplete="off"
             spellCheck={false}
           />
-          <span className="field-help">0.0.0.0 表示全部 IPv4 接口</span>
+          <span className="field-help">{guideText("iec104.configuration.iec104configform.001")}</span>
         </label>
-        <label htmlFor="iec104-port">
-          TCP 端口
-          <input
+        <label htmlFor="iec104-port">{guideText("iec104.configuration.iec104configform.016")}<input
             id="iec104-port"
             type="number"
             min="1"
@@ -94,9 +87,7 @@ export default function Iec104ConfigForm({
           />
         </label>
       </div>
-      <label htmlFor="iec104-connections">
-        最大连接数
-        <input
+      <label htmlFor="iec104-connections">{guideText("iec104.configuration.iec104configform.017")}<input
           id="iec104-connections"
           type="number"
           min="1"
@@ -116,13 +107,11 @@ export default function Iec104ConfigForm({
           required
           disabled={disabled}
         />
-        <span className="field-help">
-          1～64 个连接；固定三种点角色，所有 (CA, IOA) 地址组合必须不同。
-        </span>
+        <span className="field-help">{guideText("iec104.configuration.iec104configform.002")}</span>
       </label>
       <div className="iec104-points">
         <fieldset className="protocol-point" disabled={disabled}>
-          <legend>单点遥信 · M_SP_NA_1</legend>
+          <legend>{guideText("iec104.configuration.iec104configform.018")}</legend>
           {addressFields("single")}
           <label className="point-boolean" htmlFor="iec104-single-value">
             <input
@@ -141,20 +130,14 @@ export default function Iec104ConfigForm({
                   },
                 })
               }
-            />
-            启动初值：{config.points.single.value ? "true（1）" : "false（0）"}
+            />{guideText("iec104.configuration.iec104configform.019")}{config.points.single.value ? "true（1）" : "false（0）"}
           </label>
-          <p className="field-help">
-            此值仅是启动初值；运行时可被真实协议命令修改。实时值请通过 GI / READ
-            的实际返回查看。
-          </p>
+          <p className="field-help">{guideText("iec104.configuration.iec104configform.003")}</p>
         </fieldset>
         <fieldset className="protocol-point" disabled={disabled}>
-          <legend>浮点测量 · M_ME_NC_1</legend>
+          <legend>{guideText("iec104.configuration.iec104configform.020")}</legend>
           {addressFields("measured")}
-          <label htmlFor="iec104-measured-value">
-            启动初值（float32）
-            <input
+          <label htmlFor="iec104-measured-value">{guideText("iec104.configuration.iec104configform.021")}<input
               id="iec104-measured-value"
               type="number"
               min={-FLOAT32_MAX}
@@ -180,31 +163,19 @@ export default function Iec104ConfigForm({
               required
             />
           </label>
-          <p className="field-help">
-            有限 32 位浮点数；实际协议值按 float32 表示，以真实读回报告为准。
-          </p>
+          <p className="field-help">{guideText("iec104.configuration.iec104configform.004")}</p>
         </fieldset>
         <fieldset className="protocol-point" disabled={disabled}>
-          <legend>直接命令 · C_SC_NA_1 · DIRECT</legend>
+          <legend>{guideText("iec104.configuration.iec104configform.022")}</legend>
           {addressFields("command")}
-          <p className="field-help">
-            固定映射：命令 CA {config.points.command.ca} / IOA{" "}
-            {config.points.command.ioa} → 模拟单点 CA {config.points.single.ca}{" "}
-            / IOA {config.points.single.ioa}。
-          </p>
-          <p className="field-help">
-            命令仅修改本实验服务的模拟内存，不连接或驱动物理开关；不提供设备控制验收。
-          </p>
+          <p className="field-help">{guideText("iec104.configuration.iec104configform.005")}{config.points.command.ca}{guideText("iec104.configuration.iec104configform.006")}{" "}
+            {config.points.command.ioa}{guideText("iec104.configuration.iec104configform.007")}{config.points.single.ca}{" "}{guideText("iec104.configuration.iec104configform.008")}{config.points.single.ioa}{guideText("iec104.configuration.iec104configform.009")}</p>
+          <p className="field-help">{guideText("iec104.configuration.iec104configform.010")}</p>
         </fieldset>
       </div>
       <div className="response-description">
-        <p>
-          保存与生效区展示的是启动参数快照，不是实时遥信。显式运行或重启后使用上述初值初始化。
-        </p>
-        <p>
-          COMMAND
-          测试会读取当前模拟单点，取反后再恢复；实际帧和读回点值见测试报告。
-        </p>
+        <p>{guideText("iec104.configuration.iec104configform.011")}</p>
+        <p>{guideText("iec104.configuration.iec104configform.012")}</p>
       </div>
     </>
   );

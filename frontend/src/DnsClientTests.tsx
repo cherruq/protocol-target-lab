@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import { useEffect, useRef, useState } from "react";
 import type { DnsConfig } from "./dns-config";
 import { acceptedTestWasReplaced } from "./client-tests";
@@ -173,7 +174,7 @@ function Wire({
                   ))}
                 </ul>
               ) : (
-                <p>空应答记录集</p>
+                <p>{guideText("dns.verification.dnsclienttests.001")}</p>
               )}
             </div>
           )}
@@ -184,10 +185,7 @@ function Wire({
               </span>
               <pre>{wire.hex || "（空字节预览）"}</pre>
               {Boolean(wire.truncated) && (
-                <p>
-                  仅显示前 128 字节；原始长度为 {String(wire.length ?? "未知")}{" "}
-                  字节。
-                </p>
+                <p>{guideText("dns.verification.dnsclienttests.002")}{String(wire.length ?? guideText("dns.verification.dnsclienttests.003"))}{" "}{guideText("dns.verification.dnsclienttests.004")}</p>
               )}
             </div>
           )}
@@ -203,7 +201,7 @@ function Wire({
           </details>
         </>
       ) : (
-        <p>未收到此方向的收发摘要。</p>
+        <p>{guideText("dns.verification.dnsclienttests.005")}</p>
       )}
     </div>
   );
@@ -363,16 +361,11 @@ export default function DnsClientTests({
       <div className="client-test-heading">
         <div>
           <h3 id={`dns-tests-${instance.id}`}>DNS 内置客户端测试</h3>
-          <p>
-            使用当前生效配置，在目标宿主机运行一次性客户端容器，验证已启用的 UDP / TCP / TLS 收发。
-            固定场景核对预设字节与时序；通过不代表真实区域更新或 DSO 订阅。不能替代跨节点验收。
-          </p>
+          <p>{guideText("dns.verification.dnsclienttests.006")}</p>
         </div>
       </div>
       {hasUnappliedConfig && (
-        <div className="test-config-notice">
-          存在未应用的配置；测试使用当前生效快照，不会自动保存或重启 DNS 服务。
-        </div>
+        <div className="test-config-notice">{guideText("dns.verification.dnsclienttests.007")}</div>
       )}
       <div className="test-controls">
         <label htmlFor="dns-test-name">
@@ -405,9 +398,7 @@ export default function DnsClientTests({
         </div>
       </div>
       {(!instance.enabled || instance.status !== "running") && (
-        <p className="test-availability">
-          启动 DNS 服务并确认运行就绪后，可发起客户端测试。
-        </p>
+        <p className="test-availability">{guideText("dns.verification.dnsclienttests.008")}</p>
       )}
       {fetchError && (
         <div className="test-error" role="alert">
@@ -480,9 +471,7 @@ export default function DnsClientTests({
             )}
           </div>
           {current.source_container_id !== instance.container_id && (
-            <p className="test-config-notice">
-              此结果来自先前的被测容器，不代表当前 DNS 服务的新状态。
-            </p>
+            <p className="test-config-notice">{guideText("dns.verification.dnsclienttests.009")}</p>
           )}
           <div
             className={`test-cleanup ${current.cleanup_complete ? "complete" : current.status === "running" ? "pending" : "residue"}`}
@@ -545,15 +534,13 @@ export default function DnsClientTests({
           ) : (
             <p className="test-empty">
               {current.status === "running"
-                ? "正在发送 DNS 查询并收集实际响应，结果将自动刷新。"
-                : "没有可展示的逐项结果，请查看状态与错误原因。"}
+                ? guideText("dns.verification.dnsclienttests.010")
+                : guideText("dns.verification.dnsclienttests.011")}
             </p>
           )}
         </div>
       ) : !submitting && !waiting && !fetchError ? (
-        <p className="test-empty">
-          尚无 DNS 客户端结果。仅保留当前或最后一次测试，不保存历史记录。
-        </p>
+        <p className="test-empty">{guideText("dns.verification.dnsclienttests.012")}</p>
       ) : null}
     </section>
   );

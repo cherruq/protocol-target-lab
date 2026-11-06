@@ -1,3 +1,4 @@
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 import { validIpv4 } from "./dns-config.ts";
 
 export type Iec104Address = { ca: number; ioa: number };
@@ -22,13 +23,13 @@ export const iec104Defaults: Iec104Config = {
     command: { ca: 2, ioa: 1 },
   },
 };
-export const iec104CaseLabels: Record<string, string> = {
-  CONNECT: "连接与启动数据传输",
-  GI: "总召唤 GI",
-  READ: "点读取 READ",
-  COMMAND: "模拟单点直接命令",
-  ALL: "全部测试",
-};
+export const iec104CaseLabels: Record<string, string> = lazyGuidanceLabels(() => ({
+  CONNECT: guideText("iec104.verification.iec104-config.001"),
+  GI: guideText("iec104.verification.iec104-config.002"),
+  READ: guideText("iec104.verification.iec104-config.003"),
+  COMMAND: guideText("iec104.verification.iec104-config.004"),
+  ALL: guideText("iec104.verification.iec104-config.005"),
+}));
 function object(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -57,44 +58,44 @@ export function isIec104Config(value: unknown): value is Iec104Config {
 }
 export function validateIec104Config(config: Iec104Config): void {
   if (!validIpv4(config.bind_ip))
-    throw new Error("绑定地址必须是有效 IPv4 地址。");
+    throw new Error(guideText("iec104.configuration.iec104-config.012"));
   const first = Number(config.bind_ip.split(".")[0]);
   if ((first >= 224 && first <= 239) || config.bind_ip === "255.255.255.255")
     throw new Error(
-      "绑定地址须为单播 IPv4 地址或 0.0.0.0，不能使用组播或广播地址。",
+      guideText("iec104.configuration.iec104-config.013"),
     );
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535)
-    throw new Error("端口必须是 1～65535 之间的整数。");
+    throw new Error(guideText("iec104.configuration.iec104-config.014"));
   if (
     !Number.isInteger(config.max_connections) ||
     config.max_connections < 1 ||
     config.max_connections > 64
   )
-    throw new Error("最大连接数必须是 1～64 之间的整数。");
+    throw new Error(guideText("iec104.configuration.iec104-config.015"));
   const seen = new Set<string>();
   for (const [role, name] of [
-    ["single", "单点遥信"],
-    ["measured", "浮点测量"],
-    ["command", "直接命令"],
+    ["single", guideText("iec104.configuration.iec104-config.016")],
+    ["measured", guideText("iec104.configuration.iec104-config.017")],
+    ["command", guideText("iec104.configuration.iec104-config.018")],
   ] as const) {
     const point = config.points[role];
     if (!Number.isInteger(point.ca) || point.ca < 1 || point.ca > 65534)
-      throw new Error(`${name}的公共地址 CA 必须是 1～65534 之间的整数。`);
+      throw new Error(`${name}${guideText("iec104.configuration.iec104-config.019")}`);
     if (!Number.isInteger(point.ioa) || point.ioa < 1 || point.ioa > 16777215)
       throw new Error(
-        `${name}的信息体地址 IOA 必须是 1～16777215 之间的整数。`,
+        `${name}${guideText("iec104.configuration.iec104-config.020")}`,
       );
     const key = `${point.ca}/${point.ioa}`;
     if (seen.has(key))
-      throw new Error("三个角色的 (CA, IOA) 地址组合必须全局唯一，不能重叠。");
+      throw new Error(guideText("iec104.configuration.iec104-config.021"));
     seen.add(key);
   }
   if (typeof config.points.single.value !== "boolean")
-    throw new Error("单点启动初值必须是布尔值 true 或 false。");
+    throw new Error(guideText("iec104.configuration.iec104-config.022"));
   const measured = config.points.measured.value;
   if (!Number.isFinite(measured) || Math.abs(measured) > FLOAT32_MAX)
     throw new Error(
-      "测量启动初值必须是有限 float32 范围内的数字（绝对值不超过约 3.4028234663852886 × 10³⁸）。",
+      guideText("iec104.configuration.iec104-config.023"),
     );
 }
 export function sameIec104Config(a: Iec104Config, b: Iec104Config): boolean {
@@ -113,5 +114,5 @@ export function sameIec104Config(a: Iec104Config, b: Iec104Config): boolean {
   );
 }
 export function iec104StartupDescription(config: Iec104Config): string {
-  return `启动参数（非实时点值）：单点 CA ${config.points.single.ca} / IOA ${config.points.single.ioa}，初值 ${config.points.single.value}；测量 CA ${config.points.measured.ca} / IOA ${config.points.measured.ioa}，初值 ${config.points.measured.value}；DIRECT 命令 CA ${config.points.command.ca} / IOA ${config.points.command.ioa} → 模拟单点 CA ${config.points.single.ca} / IOA ${config.points.single.ioa}`;
+  return `${guideText("iec104.configuration.iec104-config.006")}${config.points.single.ca} / IOA ${config.points.single.ioa}${guideText("iec104.configuration.iec104-config.007")}${config.points.single.value}${guideText("iec104.configuration.iec104-config.008")}${config.points.measured.ca} / IOA ${config.points.measured.ioa}${guideText("iec104.configuration.iec104-config.009")}${config.points.measured.value}${guideText("iec104.configuration.iec104-config.010")}${config.points.command.ca} / IOA ${config.points.command.ioa}${guideText("iec104.configuration.iec104-config.011")}${config.points.single.ca} / IOA ${config.points.single.ioa}`;
 }
