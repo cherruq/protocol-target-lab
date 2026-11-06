@@ -12,7 +12,11 @@ mkdir -p "$stage/sources/dnsmasq" "$stage/sources/build"
 docker save --output "$stage/dns-image.tar" "$image"
 install -m 0644 third-party/dnsmasq/dnsmasq-2.90.tar.xz third-party/dnsmasq/COPYING third-party/dnsmasq/COPYING-v3 third-party/dnsmasq/README.md "$stage/sources/dnsmasq/"
 install -m 0644 images/dns/Dockerfile images/dns/build.Dockerfile images/dns/dependencies.lock.json "$stage/sources/build/"
-install -m 0644 workers/dns/server.py workers/dns/client.py workers/dns/dns_wire.py LICENSE "$stage/sources/"
+mkdir -p "$stage/sources/worker"
+install -m 0644 workers/dns/*.py "$stage/sources/worker/"
+cp -R workers/dns/fixtures "$stage/sources/worker/fixtures"
+cp -R workers/tls "$stage/sources/tls"
+install -m 0644 LICENSE "$stage/sources/"
 python3 - "$stage" "$image" <<'PY'
 import hashlib,json,pathlib,sys
 root=pathlib.Path(sys.argv[1])

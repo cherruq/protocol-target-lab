@@ -4,8 +4,8 @@ A Linux protocol test target manager. The native Rust service serves an embedded
 React Web application, JSON API, and live logs. Protocol workers run in Docker
 containers with independently managed lifecycles.
 
-The current implementation supports **seventeen protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD, VXLAN, ARP-client, Custom Ethernet, IGMP, MPLS and PROFINET**, with manager version **0.21.2**,
-HTTP server/client image **0.3.0**, DNS server/client image **0.1.1**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, IEC101 dual-channel slave/client image **0.1.0**, BFD peer/client image **0.1.0**, VXLAN ARP responder/client image **0.1.0**, ARP-client requester/inverse-peer image **0.1.0**, Custom Ethernet fixed-responder/client image **0.1.0**, IGMP native-member/query-client image **0.1.0**, MPLS target/client image **0.1.0**, and PROFINET native-DCP/software-PTCP/client image **0.1.0**. Each protocol has one fixed workspace and
+The current implementation supports **seventeen protocols: HTTP, DNS, MQTT, Telnet, IEC104, MQTT-SN, RTP, RTCP, DL/T645, IEC101, BFD, VXLAN, ARP-client, Custom Ethernet, IGMP, MPLS and PROFINET**, with manager version **0.22.0**,
+HTTP server/client image **0.4.0**, DNS server/client image **0.2.0**, MQTT server/client image **0.1.1**, Telnet server/client image **0.1.0**, IEC104 server/client image **0.1.1**, MQTT-SN server/client image **0.1.1**, RTP receiver/client image **0.1.0**, RTCP receiver/client image **0.1.0**, DL/T645 meter/client image **0.1.0**, IEC101 dual-channel slave/client image **0.1.0**, BFD peer/client image **0.1.0**, VXLAN ARP responder/client image **0.1.0**, ARP-client requester/inverse-peer image **0.1.0**, Custom Ethernet fixed-responder/client image **0.1.0**, IGMP native-member/query-client image **0.1.0**, MPLS target/client image **0.1.0**, and PROFINET native-DCP/software-PTCP/client image **0.1.0**. Each protocol has one fixed workspace and
 one main configuration. The sidebar shows the protocol and its actual state;
 selecting it opens configuration, start/stop/restart, responses, logs, and tests
 directly. There is no instance list or create/copy/delete configuration workflow.
@@ -19,6 +19,16 @@ standalone binaries in `dist/`. Include these notices whenever distributing a
 standalone manager. After changing Cargo/npm dependencies, prepare their caches,
 run `make licenses`, and review the regenerated inventory. `make test` checks
 reproducibility; packaging rejects stale lockfile/license hashes without network.
+
+## HTTPS and DNS TLS
+
+The existing HTTP workspace can switch its port to HTTPS. DNS supports independently
+enabled UDP, TCP and TLS endpoints, retaining real dnsmasq for normal queries.
+HTTP adds 24 fixed reference response paths; DNS includes all 57 saved raw fixtures
+in selectable sets. Built-in clients validate the public laboratory certificate
+and verify actual response bytes and explicitly bounded timing. See
+[HTTPS, DNS TLS and response scenarios](docs/http-dns-tls.md) for configuration,
+certificate download, all paths, fixture IDs and test boundaries.
 
 ## CLI for agents
 
@@ -99,7 +109,7 @@ exist locally and fails if it is missing. `PLAB_BUILD_IMAGE` can select a prepar
 build image.
 
 The HTTP image is
-`protocol-target-lab/http:0.3.0`. Build artifacts are under `target/` and `dist/`.
+`protocol-target-lab/http:0.4.0`. Build artifacts are under `target/` and `dist/`.
 The manager package is `dist/protocol-target-lab_0.17.0_amd64.deb`.
 
 If a compatible manager binary was compiled in a separate Ubuntu 24.04 build
@@ -151,7 +161,7 @@ and reports the reason. Image import is separate from installation:
 
 ```sh
 # On a machine containing the built image:
-docker save -o http-image.tar protocol-target-lab/http:0.3.0
+docker save -o http-image.tar protocol-target-lab/http:0.4.0
 # On the target:
 sudo docker load -i http-image.tar
 ```
@@ -224,7 +234,7 @@ uses its saved legacy snapshot and the new worker's compatibility arguments.
 Explicit saves write schema version 2; both v1 and v2 files remain readable.
 
 Manager 0.8.0 continues to use HTTP image
-`protocol-target-lab/http:0.3.0`; if a customized environment file still selects an
+`protocol-target-lab/http:0.4.0`; if a customized environment file still selects an
 older image, update `PLAB_HTTP_IMAGE` after importing the new version. The manager
 checks image capability before stopping the running HTTP service to apply new options.
 

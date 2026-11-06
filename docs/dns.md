@@ -1,5 +1,7 @@
 # DNS workspace
 
+HTTPS/DNS TLS and the migrated reference scenarios are documented in [the TLS and scenario guide](http-dns-tls.md).
+
 DNS uses the real, unmodified dnsmasq 2.90 resolver engine with an original
 Python configuration wrapper and independent standard-library DNS client.
 This workspace implements a local static DNS target: configured A/AAAA answers,

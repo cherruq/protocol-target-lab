@@ -1,5 +1,7 @@
 # HTTP target
 
+HTTPS/DNS TLS and the migrated reference scenarios are documented in [the TLS and scenario guide](http-dns-tls.md).
+
 The HTTP worker runs continuously in Docker until explicitly stopped. It uses
 Python 3.12's standard library and has no pip packages or external dependencies.
 The manager supplies bind address, port, generated response length, and generation

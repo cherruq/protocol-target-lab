@@ -3,6 +3,8 @@ import { isLegacyConfig, type StoredConfig } from "./config";
 import {
   resultCounts,
   testMethods,
+  httpMethodsForPath,
+  httpResponseStatus,
   testPaths,
   testDurationLabel,
   visibleTestRun,
@@ -70,7 +72,7 @@ function configDescription(config: StoredConfig): string {
   const mode = isLegacyConfig(config)
     ? `旧版固定正文 ${new TextEncoder().encode(config.response_body).length} 字节`
     : `${config.response_length.toLocaleString()} 字节 · ${config.response_mode === "fixed" ? "固定内容" : "每次随机"}`;
-  return `${config.bind_ip}:${config.port} · ${mode}`;
+  return `${config.tls_enabled ? "HTTPS" : "HTTP"} · ${config.bind_ip}:${config.port} · ${mode}`;
 }
 
 function WireSummary({
@@ -80,6 +82,7 @@ function WireSummary({
   title: string;
   message?: WireMessage;
 }) {
+  const bytes = message?.wire ?? message;
   return (
     <div className="wire-summary">
       <h4>{title}</h4>
@@ -102,16 +105,18 @@ function WireSummary({
               <div>
                 <dt>HTTP 状态</dt>
                 <dd>
-                  {message.status === null ? "未收到响应" : message.status}
+                  {httpResponseStatus(message)}
                 </dd>
               </div>
             )}
-            {message.body_length !== undefined && (
+            {bytes?.body_length !== undefined && (
               <div>
-                <dt>正文原长度</dt>
-                <dd>{message.body_length.toLocaleString()} 字节</dd>
+                <dt>{message.wire ? "原始报文原长度" : "正文原长度"}</dt>
+                <dd>{bytes?.body_length.toLocaleString()} 字节</dd>
               </div>
             )}
+            {message.tls?.version && <div><dt>TLS</dt><dd>{message.tls.version} · {message.tls.cipher}</dd></div>}
+            {message.tls?.verified_server_name && <div><dt>已校验证书名称</dt><dd>{message.tls.verified_server_name}</dd></div>}
           </dl>
           {message.headers && (
             <details className="wire-headers">
@@ -133,26 +138,29 @@ function WireSummary({
               </pre>
             </details>
           )}
-          {message.body_preview_hex !== undefined && (
+          {bytes?.body_preview_hex !== undefined && (
             <div className="wire-body">
               <span>
-                正文十六进制预览
-                {message.body_truncated ? " · 已截断" : " · 完整"}
+                {message.wire ? "原始报文" : "正文"}十六进制预览
+                {bytes?.body_truncated ? " · 已截断" : " · 完整"}
               </span>
-              <pre>{message.body_preview_hex || "（空字节预览）"}</pre>
-              {message.body_truncated && (
+              <pre>{bytes?.body_preview_hex || "（空字节预览）"}</pre>
+              {bytes?.body_truncated && (
                 <p>
                   仅显示部分字节；正文原长度为{" "}
-                  {message.body_length?.toLocaleString() ?? "未知"} 字节。
+                  {bytes?.body_length?.toLocaleString() ?? "未知"} 字节。
                 </p>
               )}
             </div>
           )}
-          {message.body_sha256 && (
+          {bytes?.body_sha256 && (
             <div className="wire-hash">
-              <span>正文 SHA256</span>
-              <code>{message.body_sha256}</code>
+              <span>{message.wire ? "原始报文" : "正文"} SHA256</span>
+              <code>{bytes?.body_sha256}</code>
             </div>
+          )}
+          {message.expected_wire_sha256 && (
+            <div className="wire-hash"><span>预设原始报文 SHA256</span><code>{message.expected_wire_sha256}</code></div>
           )}
         </>
       ) : (
@@ -366,6 +374,7 @@ export default function ClientTests({
               key={method}
               disabled={
                 disabled ||
+                !httpMethodsForPath(path).includes(method) ||
                 Boolean(snapshot && !snapshot.cases.includes(method))
               }
               onClick={() => void start(method)}
@@ -379,6 +388,12 @@ export default function ClientTests({
           ))}
         </div>
       </div>
+      {!["/ok", "/chunked", "/close"].includes(path) && (
+        <p className="test-config-notice">
+          固定场景按预设字节和时序核对；测试通过表示目标正确输出该场景，不表示畸形报文是合法业务响应。
+          {path === "/head" || path === "/health" ? " 此场景使用 HEAD。" : " 此场景使用 GET。"}
+        </p>
+      )}
       {!instance.enabled || instance.status !== "running" ? (
         <p className="test-availability">
           启动 HTTP 服务并确认运行就绪后，可发起客户端测试。
@@ -417,7 +432,7 @@ export default function ClientTests({
                 {statuses[current.status]}
               </span>
               <strong>
-                {current.method === "ALL" ? "全部方法" : current.method}{" "}
+                {current.method === "ALL" ? (["/ok", "/chunked", "/close"].includes(current.path) ? "全部方法" : "场景验证") : current.method}{" "}
                 {current.path}
               </strong>
               <span className="test-elapsed">{testDurationLabel(current)}</span>
@@ -491,7 +506,7 @@ export default function ClientTests({
                         {check.request?.method} {check.request?.path}
                         {check.response?.status !== undefined
                           ? check.response.status === null
-                            ? " · 未收到响应"
+                            ? ` · ${httpResponseStatus(check.response)}`
                             : ` · HTTP ${check.response.status}`
                           : ""}
                       </span>
@@ -511,6 +526,8 @@ export default function ClientTests({
                     {check.error && (
                       <p className="test-check-error">{check.error}</p>
                     )}
+                    {check.expected_behavior && <p>预期行为：{check.expected_behavior}</p>}
+                    {check.quiet_window_seconds !== undefined && <p>有限静默观察窗口：{check.quiet_window_seconds} 秒，不代表窗口以外无报文。</p>}
                     <div className="test-wire-grid">
                       <WireSummary title="请求" message={check.request} />
                       <WireSummary title="响应" message={check.response} />

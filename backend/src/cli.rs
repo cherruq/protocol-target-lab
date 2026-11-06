@@ -17,8 +17,8 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
   schema PROTOCOL | show PROTOCOL | status PROTOCOL
   config get PROTOCOL [--applied]
   config set PROTOCOL --file FILE|- | --data JSON
-  config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random]
-  config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON]
+  config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random] [--tls-enabled true|false]
+  config set dns [--bind-ip IP] [--port N] [--udp-enabled true|false] [--tcp-enabled true|false] [--records-json JSON] [--tls-enabled true|false] [--tls-port N] [--response-profile standard|legacy-fixtures] [--fixture-set final|short|wrong-id]
   config set mqtt [--bind-ip IP] [--port N] [--max-connections N] [--max-packet-size N]
   config set profinet [--wire-profile pnet-dcp-ptcp-lab-v1] [--link-json JSON] [--test-peer-mac MAC] [--dcp-json JSON] [--ptcp-n-json JSON] [--ptcp-f-json JSON]
   config set mpls [--wire-profile mpls-single-label-ipv4-icmp-echo] [--link-json JSON] [--source-mac MAC] [--source-ip IP] [--client-mac MAC] [--client-ip IP] [--label N] [--reply-ttl N] [--scenario-json JSON]
@@ -156,6 +156,10 @@ const VALUE_OPTIONS: &[&str] = &[
     "--name",
     "--udp-enabled",
     "--tcp-enabled",
+    "--tls-enabled",
+    "--tls-port",
+    "--response-profile",
+    "--fixture-set",
     "--records-json",
     "--points-json",
     "--predefined-topics-json",
@@ -359,6 +363,10 @@ fn parse(args: &[String]) -> Result<Options> {
                 "--response-mode",
                 "--udp-enabled",
                 "--tcp-enabled",
+                "--tls-enabled",
+                "--tls-port",
+                "--response-profile",
+                "--fixture-set",
                 "--records-json",
                 "--points-json",
                 "--predefined-topics-json",
@@ -831,6 +839,7 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
             | "--min-tx-us"
             | "--min-rx-us"
             | "--detect-mult"
+            | "--tls-port"
             | "--port"
             | "--response-length"
             | "--max-connections"
@@ -845,13 +854,15 @@ fn config_patch(fields: BTreeMap<String, String>) -> Result<Value> {
                     .parse::<u32>()
                     .map_err(|_| Failure::usage(format!("{key} must be a nonnegative integer")))?
             ),
-            "--udp-enabled" | "--tcp-enabled" | "--programming-key-enabled" | "--promiscuous" => {
-                Value::Bool(
-                    value
-                        .parse::<bool>()
-                        .map_err(|_| Failure::usage(format!("{key} must be true or false")))?,
-                )
-            }
+            "--udp-enabled"
+            | "--tcp-enabled"
+            | "--tls-enabled"
+            | "--programming-key-enabled"
+            | "--promiscuous" => Value::Bool(
+                value
+                    .parse::<bool>()
+                    .map_err(|_| Failure::usage(format!("{key} must be true or false")))?,
+            ),
             "--dcp-json"
             | "--ptcp-n-json"
             | "--ptcp-f-json"

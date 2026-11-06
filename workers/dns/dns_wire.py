@@ -4,7 +4,9 @@ import ipaddress
 import re
 import secrets
 import socket
+import ssl
 import struct
+from pathlib import Path
 
 TYPE_IDS = {"A": 1, "AAAA": 28, "TXT": 16}
 TYPE_NAMES = {v: k for k, v in TYPE_IDS.items()}
@@ -18,15 +20,29 @@ def canonical_name(value):
     return name
 
 def validate_config(config):
-    if not isinstance(config, dict) or set(config) != {"bind_ip", "port", "udp_enabled", "tcp_enabled", "records"}:
-        raise ValueError("config: expected bind_ip, port, udp_enabled, tcp_enabled, records only")
+    required = {"bind_ip", "port", "udp_enabled", "tcp_enabled", "records"}
+    optional = {"tls_enabled", "tls_port", "response_profile", "fixture_set"}
+    if not isinstance(config, dict) or not required <= set(config) or set(config) - required - optional:
+        raise ValueError("config: expected DNS fields and optional TLS/profile fields only")
+    config = dict(config, tls_enabled=config.get("tls_enabled", False),
+                  tls_port=config.get("tls_port", 1853),
+                  response_profile=config.get("response_profile", "standard"),
+                  fixture_set=config.get("fixture_set", "final"))
     if not isinstance(config["bind_ip"], str):
         raise ValueError("bind_ip: expected IPv4 string")
     ip = ipaddress.IPv4Address(config["bind_ip"])
     if ip.is_multicast or int(ip) == 0xffffffff or type(config["port"]) is not int or not 1 <= config["port"] <= 65535:
         raise ValueError("bind_ip/port: expected unicast/wildcard IPv4 and port 1..65535")
-    if any(type(config[k]) is not bool for k in ("udp_enabled", "tcp_enabled")) or not (config["udp_enabled"] or config["tcp_enabled"]):
-        raise ValueError("transports: enable UDP or TCP using booleans")
+    if any(type(config[k]) is not bool for k in ("udp_enabled", "tcp_enabled", "tls_enabled")) or not any(config[k] for k in ("udp_enabled", "tcp_enabled", "tls_enabled")):
+        raise ValueError("transports: enable UDP, TCP or TLS using booleans")
+    if type(config["tls_port"]) is not int or not 1 <= config["tls_port"] <= 65535:
+        raise ValueError("tls_port: expected 1..65535")
+    if config["tls_enabled"] and config["tcp_enabled"] and config["tls_port"] == config["port"]:
+        raise ValueError("tls_port: must differ from the enabled TCP port")
+    if config["response_profile"] not in ("standard", "legacy-fixtures") or config["fixture_set"] not in ("final", "short", "wrong-id"):
+        raise ValueError("response_profile/fixture_set: unsupported DNS profile")
+    if config["response_profile"] == "legacy-fixtures" and config["fixture_set"] != "final" and (not config["udp_enabled"] or config["tcp_enabled"] or config["tls_enabled"]):
+        raise ValueError("fixture_set: active short/wrong-id fixtures require UDP only")
     if not isinstance(config["records"], list) or not 1 <= len(config["records"]) <= 32:
         raise ValueError("records: expected 1..32 records")
     records, seen, sets = [], set(), {}
@@ -132,13 +148,32 @@ def recv_exact(sock, size):
         result.extend(part)
     return bytes(result)
 
+def tls_context():
+    image = Path(__file__).resolve().parent / "tls" / "lab.crt"
+    source = Path(__file__).resolve().parents[1] / "tls" / "lab.crt"
+    context = ssl.create_default_context(cafile=str(image if image.exists() else source))
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    return context
+
+
+def connect_stream(host, port, transport):
+    sock = socket.create_connection((host, port), timeout=3)
+    if transport == "TLS":
+        try:
+            sock = tls_context().wrap_socket(sock, server_hostname="protocol-target-lab.test")
+        except BaseException:
+            sock.close()
+            raise
+    return sock
+
+
 def exchange(host, port, transport, data):
     # getaddrinfo accepts literal IPv4/IPv6 and hostnames; no config field can override this destination.
     family, socktype, proto, _, address = socket.getaddrinfo(host, port, type=socket.SOCK_DGRAM if transport == "UDP" else socket.SOCK_STREAM)[0]
-    with socket.socket(family, socktype, proto) as sock:
+    with (socket.socket(family, socktype, proto) if transport == "UDP" else connect_stream(host, port, transport)) as sock:
         sock.settimeout(3)
-        sock.connect(address)
         if transport == "UDP":
+            sock.connect(address)
             sock.send(data)
             return sock.recv(65535)
         sock.sendall(struct.pack("!H", len(data)) + data)

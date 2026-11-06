@@ -10,6 +10,10 @@ export type DnsConfig = {
   udp_enabled: boolean;
   tcp_enabled: boolean;
   records: DnsRecord[];
+  tls_enabled?: boolean;
+  tls_port?: number;
+  response_profile?: "standard" | "legacy-fixtures";
+  fixture_set?: "final" | "short" | "wrong-id";
 };
 export const dnsDefaults: DnsConfig = {
   bind_ip: "0.0.0.0",
@@ -77,8 +81,20 @@ export function normalizeDnsConfig(config: DnsConfig): DnsConfig {
     );
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535)
     throw new Error("端口必须是 1～65535 之间的整数。");
-  if (!config.udp_enabled && !config.tcp_enabled)
-    throw new Error("UDP 和 TCP 至少启用一种传输。");
+  if (config.tls_enabled !== undefined && typeof config.tls_enabled !== "boolean")
+    throw new Error("TLS 开关必须是布尔值。");
+  if (!config.udp_enabled && !config.tcp_enabled && !config.tls_enabled)
+    throw new Error("UDP、TCP 和 TLS 至少启用一种传输。");
+  if (config.tls_port !== undefined && (!Number.isInteger(config.tls_port) || config.tls_port < 1 || config.tls_port > 65535))
+    throw new Error("TLS 端口必须是 1～65535 之间的整数。");
+  if (config.tls_enabled && config.tcp_enabled && (config.tls_port ?? 1853) === config.port)
+    throw new Error("TCP 和 TLS 不能共用同一监听端口。");
+  if (config.response_profile !== undefined && !["standard", "legacy-fixtures"].includes(config.response_profile))
+    throw new Error("请选择标准 DNS 或旧脚本固定场景。");
+  if (config.fixture_set !== undefined && !["final", "short", "wrong-id"].includes(config.fixture_set))
+    throw new Error("请选择有效的旧脚本场景集。");
+  if (config.response_profile === "legacy-fixtures" && (config.fixture_set ?? "final") !== "final" && (config.tcp_enabled || config.tls_enabled))
+    throw new Error("short / wrong-id 场景集仅支持 UDP，请先关闭 TCP 和 TLS。");
   if (config.records.length < 1 || config.records.length > 32)
     throw new Error("请配置 1～32 条 DNS 记录。");
   const sets = new Map<string, { ttl: number; count: number }>();
@@ -107,7 +123,11 @@ export function normalizeDnsConfig(config: DnsConfig): DnsConfig {
       throw new Error(`第 ${index + 1} 条记录：${(error as Error).message}`);
     }
   });
-  return { ...config, records };
+  const normalized = { ...config, records };
+  if (!normalized.tls_enabled) delete normalized.tls_enabled;
+  if (normalized.response_profile === "standard") delete normalized.response_profile;
+  if (normalized.fixture_set === "final") delete normalized.fixture_set;
+  return normalized;
 }
 export function sameDnsConfig(a: DnsConfig, b: DnsConfig): boolean {
   return (
@@ -115,6 +135,22 @@ export function sameDnsConfig(a: DnsConfig, b: DnsConfig): boolean {
     a.port === b.port &&
     a.udp_enabled === b.udp_enabled &&
     a.tcp_enabled === b.tcp_enabled &&
+    Boolean(a.tls_enabled) === Boolean(b.tls_enabled) &&
+    (a.tls_port ?? 1853) === (b.tls_port ?? 1853) &&
+    (a.response_profile ?? "standard") === (b.response_profile ?? "standard") &&
+    (a.fixture_set ?? "final") === (b.fixture_set ?? "final") &&
     JSON.stringify(a.records) === JSON.stringify(b.records)
   );
+}
+
+/** Fallback examples reflect the selected applied profile, never disabled transports. */
+export function dnsConnectionCommands(config: DnsConfig): string[] {
+  if (config.response_profile === "legacy-fixtures")
+    return ["plabctl tests run dns --method ALL --path ALL"];
+  const name = config.records[0]?.name || "device.test";
+  return [
+    ...(config.udp_enabled ? [`dig @<目标IP> -p ${config.port} ${name} A`] : []),
+    ...(config.tcp_enabled ? [`dig +tcp @<目标IP> -p ${config.port} ${name} A`] : []),
+    ...(config.tls_enabled ? ["plabctl tests run dns --method TLS --path ALL"] : []),
+  ];
 }

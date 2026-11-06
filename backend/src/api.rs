@@ -65,6 +65,18 @@ pub fn router(manager: Shared) -> Router {
             "/healthz",
             get(|| async { Json(json!({"status":"ok","version":env!("CARGO_PKG_VERSION")})) }),
         )
+        .route(
+            "/api/tls/lab.crt",
+            get(|| async {
+                (
+                    [
+                        (header::CONTENT_TYPE, "application/x-pem-file"),
+                        (header::CONTENT_DISPOSITION, "attachment; filename=lab.crt"),
+                    ],
+                    include_str!("../../workers/tls/lab.crt"),
+                )
+            }),
+        )
         .route("/api/protocols", get(protocols))
         .route("/api/protocols/{id}/schema", get(schema))
         .route("/api/instances", get(list))
@@ -91,7 +103,7 @@ async fn protocols(State(m): State<Shared>) -> Json<Value> {
         let status=if d.config_error.is_some() {"unavailable"} else if d.docker_error.is_some() {"environment-unavailable"} else {workspace.map(|i|i.status.as_str()).unwrap_or("unavailable")};
         let error=d.config_error.as_deref().or(d.docker_error.as_deref()).or_else(||workspace.and_then(|i|i.runtime_error.as_deref().or(i.error.as_deref())));
         let mut descriptor=json!({"id":protocol,"name":protocol.to_ascii_uppercase(),"implementation":match protocol {"profinet"=>"Native p-net0.2.0 DCP and simultaneous software PTCP no-FollowUp/FollowUp nodes","mpls"=>"Finite single-label MPLS/IPv4 ICMP software target with fourteen output scenarios","igmp"=>"Persistent native Linux kernel IPv4 multicast member","custom-ethernet"=>"libpcap1.10.5 kernel-filtered Ethernet fixed responder","arp-client"=>"Persistent Ethernet/IPv4 ARP, RARP and InARP active requester","vxlan"=>"stdlib IPv4 unicast VXLAN Ethernet/ARP responder with eleven target scenarios","bfd"=>"stdlib IPv4 single-hop active BFD Control with explicit target fault scenarios","iec101"=>"lib60870-C 2.4.1 native unbalanced dual-channel slave via PTY/TCP","dlt645"=>"software DL/T645-2007 meter over TCP byte stream","rtcp"=>"stdlib RFC3550 RTCPv2 SR+SDES compound receiver","rtp"=>"stdlib RFC3550v2 structural receiver; opaque payload","dns"=>"dnsmasq 2.90","mqtt"=>"Mosquitto 2.0.18 + packet-size backports","telnet"=>"telnetlib3 4.0.3","iec104"=>"c104 2.2.1 + incremental TCP framing fix","mqtt-sn"=>"Eclipse Paho MQTT-SN Gateway 1.5.1 + project capacity guard; private Mosquitto 2.0.18",_=>"controlled responder"},"version":env!("CARGO_PKG_VERSION"),"available":d.config_error.is_none(),"image":m.settings.image_for(protocol),"workspace":workspace.map(|i|i.view()),"status":status,"error":error,"session_id":m.session_id});
-        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP"]);} else if protocol=="mqtt" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);} else if protocol=="profinet" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["wire_profiles"]=json!(["pnet-dcp-ptcp-lab-v1"]);descriptor["supported_features"]=json!(["native DCP persistent store","three concurrent actual MAC nodes","software PTCP N/F and eleven finite FU scenarios","same-image disposable client and external tools"]);} else if protocol=="mpls" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["wire_profiles"]=json!(["mpls-single-label-ipv4-icmp-echo"]);descriptor["supported_features"]=json!(["single-label8847 request to plain0800 ICMP Echo reply","fourteen finite output scenarios","same-image disposable actual L2 client; short13TX may be unavailable"]);} else if protocol=="igmp" {descriptor["supported_transports"]=json!(["IGMP"]);descriptor["wire_profiles"]=json!(["linux-kernel-igmp-v2"]);descriptor["supported_features"]=json!(["persistent native kernel membership","actual General/Group Query verification","owned bridge, existing interface or owned kernel VXLAN"]);} else if protocol=="custom-ethernet" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["wire_profiles"]=json!(["ethernet-fixed-response"]);descriptor["supported_features"]=json!(["live libpcap cBPF kernel attach/readback","fixed payload or opaque raw response","single8021q VLAN/AUXDATA","persistent repeated response","owned software L2 or existing host interface"]);} else if protocol=="arp-client" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["supported_features"]=json!(["active ARP/RARP/InARP requester","four modes and fifteen legal scenario pairs","same-image inverse responder","owned software L2 or existing host interface"]);} else if protocol=="vxlan" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["wire_profiles"]=json!(["vxlan-ipv4-arp"]);descriptor["supported_features"]=json!(["Ethernet/IPv4 ARP Request-to-Reply","eleven configured target scenarios","fixed peer receive port","fresh causal receive/send observation"]);} else if protocol=="bfd" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["single-hop TTL255/interface validation","Down/Init/Up","Poll/Final","normal/poll/quiet/wrong-your/ttl254/short target modes"]);} else if protocol=="iec101" {descriptor["supported_transports"]=json!(["TCP byte stream via software PTY"]);descriptor["supported_features"]=json!(["simultaneous single/double address channels","RESET/STATUS","CLASS2","GI ACT_CON/data/ACT_TERM","FCB duplicate handling"]);} else if protocol=="dlt645" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["wire_profiles"]=json!(["dlt645-2007-tcp"]);descriptor["software_function_classes"]=json!(["11","13","14","15","16","08","17","18","19","1A","1C","1D","03 reject/fixture"]);descriptor["crypto_verified"]=json!(false);} else if protocol=="rtcp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["packet_profiles"]=json!(["sr-sdes"]);descriptor["rtcp_reply_expected"]=json!(false);} else if protocol=="rtp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["RTPv2 header/CSRC/extension/padding","fresh receive observation"]);descriptor["rtp_reply_expected"]=json!(false);} else if protocol=="mqtt-sn" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["validated_qos"]=json!([1]);descriptor["validated_features"]=json!(["CONNECT/reconnect","REGISTER/PUBLISH","predefined topics","multicast GWINFO","independent MQTT broker delivery"]);} else if protocol=="iec104" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["STARTDT","STOPDT","TESTFR","GI","READ","C_SC_NA_1 DIRECT"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"]);}
+        if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP","TLS"]);} else if protocol=="mqtt" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);} else if protocol=="profinet" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["wire_profiles"]=json!(["pnet-dcp-ptcp-lab-v1"]);descriptor["supported_features"]=json!(["native DCP persistent store","three concurrent actual MAC nodes","software PTCP N/F and eleven finite FU scenarios","same-image disposable client and external tools"]);} else if protocol=="mpls" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["wire_profiles"]=json!(["mpls-single-label-ipv4-icmp-echo"]);descriptor["supported_features"]=json!(["single-label8847 request to plain0800 ICMP Echo reply","fourteen finite output scenarios","same-image disposable actual L2 client; short13TX may be unavailable"]);} else if protocol=="igmp" {descriptor["supported_transports"]=json!(["IGMP"]);descriptor["wire_profiles"]=json!(["linux-kernel-igmp-v2"]);descriptor["supported_features"]=json!(["persistent native kernel membership","actual General/Group Query verification","owned bridge, existing interface or owned kernel VXLAN"]);} else if protocol=="custom-ethernet" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["wire_profiles"]=json!(["ethernet-fixed-response"]);descriptor["supported_features"]=json!(["live libpcap cBPF kernel attach/readback","fixed payload or opaque raw response","single8021q VLAN/AUXDATA","persistent repeated response","owned software L2 or existing host interface"]);} else if protocol=="arp-client" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["supported_features"]=json!(["active ARP/RARP/InARP requester","four modes and fifteen legal scenario pairs","same-image inverse responder","owned software L2 or existing host interface"]);} else if protocol=="vxlan" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["wire_profiles"]=json!(["vxlan-ipv4-arp"]);descriptor["supported_features"]=json!(["Ethernet/IPv4 ARP Request-to-Reply","eleven configured target scenarios","fixed peer receive port","fresh causal receive/send observation"]);} else if protocol=="bfd" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["single-hop TTL255/interface validation","Down/Init/Up","Poll/Final","normal/poll/quiet/wrong-your/ttl254/short target modes"]);} else if protocol=="iec101" {descriptor["supported_transports"]=json!(["TCP byte stream via software PTY"]);descriptor["supported_features"]=json!(["simultaneous single/double address channels","RESET/STATUS","CLASS2","GI ACT_CON/data/ACT_TERM","FCB duplicate handling"]);} else if protocol=="dlt645" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["wire_profiles"]=json!(["dlt645-2007-tcp"]);descriptor["software_function_classes"]=json!(["11","13","14","15","16","08","17","18","19","1A","1C","1D","03 reject/fixture"]);descriptor["crypto_verified"]=json!(false);} else if protocol=="rtcp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["packet_profiles"]=json!(["sr-sdes"]);descriptor["rtcp_reply_expected"]=json!(false);} else if protocol=="rtp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["RTPv2 header/CSRC/extension/padding","fresh receive observation"]);descriptor["rtp_reply_expected"]=json!(false);} else if protocol=="mqtt-sn" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["validated_qos"]=json!([1]);descriptor["validated_features"]=json!(["CONNECT/reconnect","REGISTER/PUBLISH","predefined topics","multicast GWINFO","independent MQTT broker delivery"]);} else if protocol=="iec104" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["STARTDT","STOPDT","TESTFR","GI","READ","C_SC_NA_1 DIRECT"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"]);}
         descriptor
     })))
 }
@@ -111,7 +123,7 @@ async fn schema(Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
         "profinet" => Ok(Json(crate::profinet::schema())),
         "iec104" => Ok(Json(crate::iec104::schema())),
         "http" => Ok(Json(
-            json!({"protocol_id":"http","type":"object","supported_methods":crate::model::HTTP_METHODS,"properties":{"bind_ip":{"type":"string","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18090},"response_length":{"type":"integer","minimum":0,"maximum":crate::model::MAX_RESPONSE_LENGTH,"default":64},"response_mode":{"type":"string","enum":["fixed","random"],"default":"fixed"}},"required":["bind_ip","port","response_length","response_mode"]}),
+            json!({"protocol_id":"http","type":"object","supported_methods":crate::model::HTTP_METHODS,"properties":{"bind_ip":{"type":"string","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18090},"response_length":{"type":"integer","minimum":0,"maximum":crate::model::MAX_RESPONSE_LENGTH,"default":64},"response_mode":{"type":"string","enum":["fixed","random"],"default":"fixed"},"tls_enabled":{"type":"boolean","default":false}},"required":["bind_ip","port","response_length","response_mode"]}),
         )),
         "telnet" => Ok(Json(
             json!({"protocol_id":"telnet","type":"object","additionalProperties":false,"implementation":"telnetlib3 4.0.3","default":crate::telnet::TelnetConfig::default(),"supported_features":["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"],"properties":{"bind_ip":{"type":"string","format":"ipv4","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":2323},"banner":{"type":"string","minLength":1,"maxUtf8Bytes":256,"default":"Protocol Target Lab Telnet"},"max_connections":{"type":"integer","minimum":1,"maximum":128,"default":16},"max_line_bytes":{"type":"integer","minimum":64,"maximum":65536,"default":4096}},"required":["bind_ip","port","banner","max_connections","max_line_bytes"],"notes":["Finite ECHO/INFO/CLOSE lab application; no system login or shell","Banner has no ASCII control characters; input line bytes exclude CRLF"]}),
@@ -120,7 +132,7 @@ async fn schema(Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
             json!({"protocol_id":"mqtt","type":"object","additionalProperties":false,"implementation":"Mosquitto 2.0.18 + packet-size backports","supported_versions":["3.1.1","5.0"],"supported_qos":[0,1,2],"default":crate::mqtt::MqttConfig::default(),"properties":{"bind_ip":{"type":"string","format":"ipv4","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":18883},"max_connections":{"type":"integer","minimum":1,"maximum":128,"default":32},"max_packet_size":{"type":"integer","minimum":128,"maximum":1048576,"default":1048576}},"required":["bind_ip","port","max_connections","max_packet_size"]}),
         )),
         "dns" => Ok(Json(
-            json!({"protocol_id":"dns","type":"object","additionalProperties":false,"implementation":"dnsmasq 2.90","supported_transports":["UDP","TCP"],"default":crate::dns::DnsConfig::default(),"properties":{"bind_ip":{"type":"string","format":"ipv4","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":15353},"udp_enabled":{"type":"boolean","default":true},"tcp_enabled":{"type":"boolean","default":true},"records":{"type":"array","minItems":1,"maxItems":32,"items":{"type":"object","additionalProperties":false,"properties":{"name":{"type":"string","maxLength":254},"record_type":{"enum":["A","AAAA"]},"value":{"type":"string"},"ttl":{"type":"integer","minimum":0,"maximum":86400}},"required":["name","record_type","value","ttl"]}}},"required":["bind_ip","port","udp_enabled","tcp_enabled","records"],"constraints":["Enable at least one transport","ASCII DNS hostname labels <=63; canonical name <=253","Each name/type RRset has <=16 addresses and consistent TTL","No duplicate name/type/address","Unknown names are negative; no public recursion"]}),
+            json!({"protocol_id":"dns","type":"object","additionalProperties":false,"implementation":"dnsmasq 2.90","supported_transports":["UDP","TCP","TLS"],"default":crate::dns::DnsConfig::default(),"properties":{"bind_ip":{"type":"string","format":"ipv4","default":"0.0.0.0"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":15353},"udp_enabled":{"type":"boolean","default":true},"tcp_enabled":{"type":"boolean","default":true},"tls_enabled":{"type":"boolean","default":false},"tls_port":{"type":"integer","minimum":1,"maximum":65535,"default":1853},"response_profile":{"enum":["standard","legacy-fixtures"],"default":"standard"},"fixture_set":{"enum":["final","short","wrong-id"],"default":"final"},"records":{"type":"array","minItems":1,"maxItems":32,"items":{"type":"object","additionalProperties":false,"properties":{"name":{"type":"string","maxLength":254},"record_type":{"enum":["A","AAAA"]},"value":{"type":"string"},"ttl":{"type":"integer","minimum":0,"maximum":86400}},"required":["name","record_type","value","ttl"]}}},"required":["bind_ip","port","udp_enabled","tcp_enabled","records"],"constraints":["Enable at least one transport","ASCII DNS hostname labels <=63; canonical name <=253","Each name/type RRset has <=16 addresses and consistent TTL","No duplicate name/type/address","Unknown names are negative; no public recursion"]}),
         )),
         _ => Err(ApiError(
             StatusCode::NOT_FOUND,
@@ -280,7 +292,11 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
                 .collect::<Vec<_>>();
             cases.push("ALL".into());
             let mut paths = vec!["ALL".into()];
-            paths.extend(c.names());
+            paths.extend(if c.response_profile == "legacy-fixtures" {
+                crate::dns::fixture_paths(c)
+            } else {
+                c.names()
+            });
             (cases, paths)
         }
     };
@@ -820,28 +836,54 @@ async fn connection_info(
     }
     if let ProtocolConfig::Dns(config) = c {
         let record = &config.records[0];
-        let commands = config
-            .transports()
-            .into_iter()
-            .map(|transport| {
-                format!(
-                    "dig @{host} -p {} {} {} +{}",
-                    config.port,
-                    crate::dns::canonical_name(&record.name),
-                    record.record_type,
-                    if transport == "TCP" { "tcp" } else { "notcp" }
-                )
-            })
-            .collect::<Vec<_>>();
+        let mut commands = vec![];
+        if config.udp_enabled {
+            commands.push(format!(
+                "dig @{host} -p {} {} {} +notcp",
+                config.port,
+                crate::dns::canonical_name(&record.name),
+                record.record_type
+            ));
+        }
+        if config.tcp_enabled {
+            commands.push(format!(
+                "dig @{host} -p {} {} {} +tcp",
+                config.port,
+                crate::dns::canonical_name(&record.name),
+                record.record_type
+            ));
+        }
+        if config.tls_enabled {
+            commands.push(format!("openssl s_client -connect {host}:{} -servername protocol-target-lab.test -CAfile lab.crt -verify_return_error -verify_hostname protocol-target-lab.test",config.tls_port));
+        }
+        if config.response_profile == "legacy-fixtures" {
+            commands = vec!["plabctl tests run dns --method ALL --path ALL".into()];
+        }
         return Ok(Json(
-            json!({"host":host,"port":config.port,"transports":config.transports(),"records":config.records,"commands":commands,"base_url":format!("dns://{host}:{}",config.port)}),
+            json!({"host":host,"port":config.port,"tls_port":config.tls_port,"tls_enabled":config.tls_enabled,"certificate_url":"/api/tls/lab.crt","tls_server_name":"protocol-target-lab.test","response_profile":config.response_profile,"transports":config.transports(),"records":config.records,"commands":commands,"base_url":if !config.udp_enabled && !config.tcp_enabled { format!("tls://{host}:{}",config.tls_port) } else { format!("dns://{host}:{}",config.port) }}),
         ));
     }
-    let url = format!("http://{host}:{}", endpoint.port);
+    let tls = c.as_http().is_some_and(|c| c.tls_enabled);
+    let scheme = if tls { "https" } else { "http" };
+    let url = format!("{scheme}://{host}:{}", endpoint.port);
+    let trust = if tls {
+        format!(
+            "--cacert lab.crt --resolve protocol-target-lab.test:{}:{host} ",
+            endpoint.port
+        )
+    } else {
+        String::new()
+    };
+    let client_url = if tls {
+        format!("https://protocol-target-lab.test:{}", endpoint.port)
+    } else {
+        url.clone()
+    };
     Ok(Json(
-        json!({"base_url":url,"commands":[format!("curl --noproxy '*' '{url}/ok'"),format!("curl --noproxy '*' -I '{url}/ok'"),format!("curl --noproxy '*' '{url}/chunked'"),format!("curl --noproxy '*' '{url}/close'"),format!("curl --noproxy '*' --data-binary 'sample' '{url}/ok'"),format!("curl --noproxy '*' -X PUT --data-binary 'sample' '{url}/ok'"),format!("curl --noproxy '*' -X PATCH --data-binary 'sample' '{url}/ok'"),format!("curl --noproxy '*' -X DELETE '{url}/ok'"),format!("curl --noproxy '*' -X OPTIONS -i '{url}/ok'")]}),
+        json!({"base_url":url,"tls_enabled":tls,"certificate_url":"/api/tls/lab.crt","tls_server_name":"protocol-target-lab.test","paths":crate::testing::PATHS,"commands":[format!("curl --noproxy '*' {trust}'{client_url}/ok'"),format!("curl --noproxy '*' {trust}-I '{client_url}/ok'"),format!("curl --noproxy '*' {trust}--data-binary 'sample' '{client_url}/ok'"),"plabctl tests run http --method ALL --path /ok"]}),
     ))
 }
+
 async fn logs(
     State(m): State<Shared>,
     Path(id): Path<String>,

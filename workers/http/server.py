@@ -9,9 +9,11 @@ import json
 import os
 import signal
 import socket
+import ssl
 import threading
 import time
 from urllib.parse import urlsplit
+from scenarios import SCENARIO_PATHS, PATHS, authorized, response_parts, tls_file
 
 MAX_BODY_BYTES = 1024 * 1024
 PREVIEW_BYTES = 256
@@ -38,7 +40,10 @@ class Server(ThreadingHTTPServer):
     request_queue_size = 16
 
     def __init__(self, address: tuple[str, int], response_body: bytes | None = None,
-                 response_length: int = 64, response_mode: str = "fixed"):
+                 response_length: int = 64, response_mode: str = "fixed",
+                 tls: ssl.SSLContext | None = None):
+        self.tls = tls
+        self.stopping = threading.Event()
         self.legacy_body = response_body
         self.response_length = len(response_body) if response_body is not None else response_length
         self.response_mode = "legacy" if response_body is not None else response_mode
@@ -65,7 +70,8 @@ class Server(ThreadingHTTPServer):
     def process_request(self, request: socket.socket, client_address: tuple[str, int]) -> None:
         if not self.slots.acquire(blocking=False):
             try:
-                request.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                if self.tls is None:
+                    request.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
             finally:
                 self.shutdown_request(request)
             emit("connection_rejected", reason="connection_limit", peer=client_address)
@@ -77,9 +83,22 @@ class Server(ThreadingHTTPServer):
             raise
 
     def process_request_thread(self, request: socket.socket, client_address: tuple[str, int]) -> None:
+        original = request
         try:
+            if self.tls is not None:
+                # The bounded worker owns the handshake; the accept loop stays free.
+                wrapped = self.tls.wrap_socket(request, server_side=True, do_handshake_on_connect=False)
+                with self.connection_lock:
+                    self.connections.discard(original)
+                    self.connections.add(wrapped)
+                request = wrapped
+                wrapped.do_handshake()
+                emit("tls_connection", peer=client_address, version=wrapped.version(), cipher=wrapped.cipher()[0])
             super().process_request_thread(request, client_address)
+        except (OSError, ssl.SSLError) as exc:
+            emit("connection_error", peer=client_address, reason=str(exc)[:256])
         finally:
+            self.shutdown_request(request)
             self.slots.release()
 
     def shutdown_request(self, request: socket.socket) -> None:
@@ -88,6 +107,7 @@ class Server(ThreadingHTTPServer):
         super().shutdown_request(request)
 
     def close_connections(self) -> None:
+        self.stopping.set()
         with self.connection_lock:
             connections = list(self.connections)
         for connection in connections:
@@ -172,6 +192,9 @@ class Handler(BaseHTTPRequestHandler):
         emit("request", method=self.command, path=self.path[:2048],
              path_length=len(self.path), path_truncated=len(self.path) > 2048,
              peer=self.client_address, **body_fields(request_body))
+        if path in SCENARIO_PATHS:
+            self._scenario(path)
+            return
         if path not in ("/ok", "/chunked", "/close"):
             self.send_error(404, "Unknown target path")
             return
@@ -204,6 +227,21 @@ class Handler(BaseHTTPRequestHandler):
         emit("response", method=self.command, path=path, peer=self.client_address,
              status=200, framing=mode, body_sent=self.command != "HEAD", **body_fields(body))
 
+    def _scenario(self, path: str) -> None:
+        server: Server = self.server  # type: ignore[assignment]
+        accepted = authorized(self.path, {k.lower(): v for k, v in self.headers.items()})
+        self.close_connection = True
+        for delay, payload in response_parts(path, self.command, accepted):
+            if server.stopping.wait(delay):
+                return
+            if payload:
+                self.connection.sendall(payload)
+                emit("scenario_response_chunk", method=self.command, path=path,
+                     peer=self.client_address, delay_ms=round(delay * 1000),
+                     wire_length=len(payload), wire_preview_hex=payload[:PREVIEW_BYTES].hex(),
+                     wire_truncated=len(payload) > PREVIEW_BYTES)
+        emit("scenario_complete", method=self.command, path=path, accepted=accepted)
+
     do_GET = _respond
     do_HEAD = _respond
     do_POST = _respond
@@ -230,6 +268,7 @@ def main() -> None:
     content.add_argument("--response-body", help="Legacy UTF-8 body and POST echo compatibility mode")
     content.add_argument("--response-length", type=int, help="Generated body bytes, default 64 (0..1048576)")
     parser.add_argument("--response-mode", choices=("fixed", "random"), help="Generated body mode, default fixed")
+    parser.add_argument("--tls", action="store_true", help="HTTPS using the bundled laboratory certificate")
     args = parser.parse_args()
     try:
         ipaddress.IPv4Address(args.bind_ip)
@@ -245,7 +284,12 @@ def main() -> None:
     length = args.response_length if args.response_length is not None else 64
     if not 0 <= length <= MAX_BODY_BYTES:
         parser.error("--response-length must be between 0 and 1048576")
-    server = Server((args.bind_ip, args.port), body, length, args.response_mode or "fixed")
+    tls = None
+    if args.tls:
+        tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        tls.minimum_version = ssl.TLSVersion.TLSv1_2
+        tls.load_cert_chain(tls_file("lab.crt"), tls_file("lab.key"))
+    server = Server((args.bind_ip, args.port), body, length, args.response_mode or "fixed", tls)
     stopping = threading.Event()
 
     def stop(_signum: int, _frame: object) -> None:
@@ -261,7 +305,7 @@ def main() -> None:
     emit("ready", bind_ip=args.bind_ip, port=args.port, protocol="HTTP/1.1",
          max_body_bytes=MAX_BODY_BYTES, max_connections=64, methods=list(METHODS),
          response_length=server.response_length, response_mode=server.response_mode,
-         legacy_post_echo=body is not None)
+         legacy_post_echo=body is not None, tls=args.tls, paths=list(PATHS))
     try:
         server.serve_forever(poll_interval=0.1)
     finally:

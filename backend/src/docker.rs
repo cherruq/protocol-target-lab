@@ -172,18 +172,35 @@ pub async fn prepare_image(image: &str, config: &ProtocolConfig) -> Result<Strin
             );
         }
     }
+    let requires_extensions = matches!(config, ProtocolConfig::Http(c) if c.tls_enabled)
+        || matches!(config, ProtocolConfig::Dns(c) if c.requires_extensions());
+    if requires_extensions {
+        let metadata: Vec<Value> = serde_json::from_str(&cmd(&["image", "inspect", &id]).await?)?;
+        if metadata[0]["Config"]["Labels"]["io.protocol-target-lab.tls-scenarios"].as_str()
+            != Some("1")
+        {
+            bail!(
+                "config.image: import HTTP/DNS TLS and scenario assets before applying this configuration"
+            );
+        }
+    }
     Ok(id)
 }
 pub fn worker_args(config: &HttpConfig) -> Vec<String> {
-    if let Some(body) = &config.legacy_body {
-        return vec![format!("--response-body={body}")];
+    let mut args = if let Some(body) = &config.legacy_body {
+        vec![format!("--response-body={body}")]
+    } else {
+        vec![
+            "--response-length".into(),
+            config.response_length.to_string(),
+            "--response-mode".into(),
+            config.response_mode.as_str().into(),
+        ]
+    };
+    if config.tls_enabled {
+        args.push("--tls".into());
     }
-    vec![
-        "--response-length".into(),
-        config.response_length.to_string(),
-        "--response-mode".into(),
-        config.response_mode.as_str().into(),
-    ]
+    args
 }
 pub async fn owned(deployment: &str, instance: Option<&str>) -> Result<Vec<Value>> {
     let mut args = vec![
@@ -585,14 +602,14 @@ pub async fn start(
             let endpoint = config
                 .ip_endpoint()
                 .context("config.transport: IP endpoint required")?;
-            for transport in config.transports() {
+            for (host_port, internal_port, transport) in config.publications() {
                 args.extend([
                     "--publish".into(),
                     format!(
                         "{}:{}:{}/{}",
                         endpoint.bind_ip,
-                        endpoint.port,
-                        endpoint.internal_port,
+                        host_port,
+                        internal_port,
                         transport.to_ascii_lowercase()
                     ),
                 ]);
@@ -645,6 +662,71 @@ pub async fn probe_owned(
     }
     if let ProtocolConfig::Vxlan(c) = config {
         crate::vxlan::snapshot(deployment, instance, source_id, c).await?;
+        return Ok(());
+    }
+    if matches!(config, ProtocolConfig::Http(c) if c.tls_enabled)
+        || matches!(config, ProtocolConfig::Dns(c) if c.requires_extensions())
+    {
+        let before = owned(deployment, Some(instance)).await?;
+        if before.len() != 1
+            || container_id(&before[0])? != source_id
+            || !running(&before[0])
+            || !matches(&before[0], config)
+        {
+            bail!("HTTP/DNS readiness source changed");
+        }
+        let mut args = vec![
+            "exec".into(),
+            source_id.into(),
+            "python3".into(),
+            "/opt/protocol-target-lab/client.py".into(),
+            "--host".into(),
+            "127.0.0.1".into(),
+            "--port".into(),
+        ];
+        match config {
+            ProtocolConfig::Http(c) => {
+                args[5] = c.probe_ip().into();
+                args.push(c.port.to_string());
+                if c.tls_enabled {
+                    args.push("--tls".into());
+                }
+                if let Some(body) = &c.legacy_body {
+                    args.push(format!("--legacy-body={body}"));
+                } else {
+                    args.extend([
+                        "--response-length".into(),
+                        c.response_length.to_string(),
+                        "--response-mode".into(),
+                        c.response_mode.as_str().into(),
+                    ]);
+                }
+            }
+            ProtocolConfig::Dns(_) => {
+                args.push("15353".into());
+                args.extend(["--config-json".into(), serde_json::to_string(config)?]);
+            }
+            _ => unreachable!(),
+        }
+        args.push("--health".into());
+        let output = tokio::time::timeout(std::time::Duration::from_secs(3), command(&args))
+            .await
+            .context("HTTP/DNS readiness timed out")??;
+        let report: Value =
+            serde_json::from_str(output.trim()).context("HTTP/DNS health output")?;
+        if report["passed"] != true {
+            bail!("HTTP/DNS readiness did not verify actual response");
+        }
+        let after = owned(deployment, Some(instance)).await?;
+        if after.len() != 1
+            || container_id(&after[0])? != source_id
+            || !running(&after[0])
+            || !matches(&after[0], config)
+            || before[0]["State"]["Pid"] != after[0]["State"]["Pid"]
+            || before[0]["State"]["StartedAt"] != after[0]["State"]["StartedAt"]
+        {
+            bail!("HTTP/DNS readiness source changed during observation");
+        }
         return Ok(());
     }
     if let ProtocolConfig::Iec101(c) = config {
@@ -878,9 +960,9 @@ pub async fn preflight_port(
             .collect::<Vec<_>>()
     } else {
         config
-            .transports()
+            .publications()
             .into_iter()
-            .map(|t| (endpoint.bind_ip.to_string(), endpoint.port, t))
+            .map(|(port, _, t)| (endpoint.bind_ip.to_string(), port, t))
             .collect::<Vec<_>>()
     };
     let overlap = |a: &str, b: &str| a == b || a == "0.0.0.0" || b == "0.0.0.0";
@@ -935,11 +1017,13 @@ pub async fn preflight_port(
     let address_check = std::net::TcpListener::bind((endpoint.bind_ip, 0))
         .context("config.bind_ip: address is not available on this host")?;
     drop(address_check);
-    for transport in c.transports() {
+    for (port, _, transport) in c.publications() {
         let own_endpoint = own.filter(|old| {
             old.protocol_id() == c.protocol_id()
-                && old.ip_endpoint().is_some_and(|e| e.port == endpoint.port)
-                && old.transports().contains(&transport)
+                && old
+                    .publications()
+                    .iter()
+                    .any(|(p, _, t)| *p == port && *t == transport)
                 && old
                     .ip_endpoint()
                     .is_some_and(|e| overlap(e.bind_ip, endpoint.bind_ip))
@@ -947,25 +1031,21 @@ pub async fn preflight_port(
         if own_endpoint.is_none() {
             if transport == "TCP" {
                 drop(
-                    std::net::TcpListener::bind((endpoint.bind_ip, endpoint.port)).with_context(
-                        || {
-                            format!(
-                                "config.port: TCP {}:{} is unavailable",
-                                endpoint.bind_ip, endpoint.port
-                            )
-                        },
-                    )?,
+                    std::net::TcpListener::bind((endpoint.bind_ip, port)).with_context(|| {
+                        format!(
+                            "config.port: TCP {}:{} is unavailable",
+                            endpoint.bind_ip, port
+                        )
+                    })?,
                 );
             } else {
                 drop(
-                    std::net::UdpSocket::bind((endpoint.bind_ip, endpoint.port)).with_context(
-                        || {
-                            format!(
-                                "config.port: UDP {}:{} is unavailable",
-                                endpoint.bind_ip, endpoint.port
-                            )
-                        },
-                    )?,
+                    std::net::UdpSocket::bind((endpoint.bind_ip, port)).with_context(|| {
+                        format!(
+                            "config.port: UDP {}:{} is unavailable",
+                            endpoint.bind_ip, port
+                        )
+                    })?,
                 );
             }
             continue;
@@ -983,10 +1063,10 @@ pub async fn preflight_port(
                 if fields.len() < 4 || (transport == "TCP" && fields[3] != "0A") {
                     continue;
                 }
-                let Some((address, port)) = fields[1].split_once(':') else {
+                let Some((address, observed_port)) = fields[1].split_once(':') else {
                     continue;
                 };
-                if u16::from_str_radix(port, 16)? != endpoint.port {
+                if u16::from_str_radix(observed_port, 16)? != port {
                     continue;
                 }
                 if suffix == "6" {

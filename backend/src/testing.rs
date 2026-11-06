@@ -17,7 +17,35 @@ const TEST: &str = "io.protocol-target-lab.test";
 const RUN: &str = "io.protocol-target-lab.test-run";
 const SESSION: &str = "io.protocol-target-lab.session";
 const REPORT_LIMIT: u64 = 128 * 1024;
-pub const PATHS: [&str; 3] = ["/ok", "/chunked", "/close"];
+pub const PATHS: [&str; 27] = [
+    "/ok",
+    "/chunked",
+    "/close",
+    "/head",
+    "/health",
+    "/chunk-extension",
+    "/split-length",
+    "/flood",
+    "/no-content",
+    "/not-modified",
+    "/informational",
+    "/truncated",
+    "/chunk-truncated",
+    "/invalid-status",
+    "/status-099",
+    "/invalid-chunk",
+    "/conflicting-length",
+    "/negative-length",
+    "/informational-error",
+    "/only-informational",
+    "/not-found",
+    "/server-error",
+    "/stall",
+    "/auth/basic",
+    "/auth/cookie",
+    "/auth/header",
+    "/auth/query",
+];
 pub fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -183,9 +211,21 @@ impl TestRequest {
                     bail!("config.test.method: choose an enabled DNS transport or ALL");
                 }
                 if self.path != "ALL"
-                    && !c.names().contains(&crate::dns::canonical_name(&self.path))
+                    && !(if c.response_profile == "legacy-fixtures" {
+                        crate::dns::fixture_paths(c).contains(&self.path)
+                    } else {
+                        c.names().contains(&crate::dns::canonical_name(&self.path))
+                    })
                 {
                     bail!("config.test.path: choose ALL or a configured DNS name");
+                }
+                if c.response_profile == "legacy-fixtures"
+                    && self.path != "ALL"
+                    && self.method != "ALL"
+                    && ((self.path.starts_with("stream/") && self.method == "UDP")
+                        || (!self.path.starts_with("stream/") && self.method != "UDP"))
+                {
+                    bail!("config.test: fixture does not support selected transport");
                 }
                 Ok(())
             }
@@ -197,7 +237,17 @@ impl TestRequest {
             bail!("method: choose a supported HTTP method or ALL");
         }
         if !PATHS.contains(&self.path.as_str()) {
-            bail!("path: choose /ok, /chunked or /close");
+            bail!("path: choose a supported HTTP test path");
+        }
+        if !["/ok", "/chunked", "/close"].contains(&self.path.as_str()) {
+            let expected = if ["/head", "/health"].contains(&self.path.as_str()) {
+                "HEAD"
+            } else {
+                "GET"
+            };
+            if self.method != "ALL" && self.method != expected {
+                bail!("config.test.method: selected fixed scenario requires {expected} or ALL");
+            }
         }
         Ok(())
     }
@@ -339,6 +389,16 @@ pub async fn begin(manager: &Shared, instance_id: &str, request: TestRequest) ->
     if metadata[0]["Config"]["Labels"][&capability].as_str() != Some("1") {
         bail!(
             "configured image has no built-in protocol client; import matching assets before testing"
+        );
+    }
+    let extension_test = matches!(&config, ProtocolConfig::Http(c) if c.tls_enabled || !["/ok","/chunked","/close"].contains(&request.path.as_str()))
+        || matches!(&config, ProtocolConfig::Dns(c) if c.requires_extensions());
+    if extension_test
+        && (metadata[0]["Config"]["Labels"]["io.protocol-target-lab.tls-scenarios"] != "1"
+            || resources[0]["Config"]["Labels"]["io.protocol-target-lab.tls-scenarios"] != "1")
+    {
+        bail!(
+            "config.test: source and client require TLS/scenario assets; save configuration and restart explicitly"
         );
     }
     if let ProtocolConfig::Profinet(c) = &config {
@@ -660,6 +720,9 @@ async fn run_client(
             serde_json::to_string(&run.applied_config)?,
         ]),
         ProtocolConfig::Http(c) => {
+            if c.tls_enabled {
+                args.push("--tls".into());
+            }
             if let Some(body) = &c.legacy_body {
                 args.push(format!("--legacy-body={body}"));
             } else {
@@ -1110,7 +1173,7 @@ mod tests {
     #[test]
     fn test_requests_cannot_override_target_or_run_arbitrary_cases() {
         for method in HTTP_METHODS.into_iter().chain(["ALL"]) {
-            for path in PATHS {
+            for path in ["/ok", "/chunked", "/close"] {
                 assert!(
                     TestRequest {
                         method: method.into(),

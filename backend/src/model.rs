@@ -49,14 +49,20 @@ pub struct HttpConfig {
     pub response_mode: ResponseMode,
     // Preserve the old serialized form and fingerprint until explicit editing.
     pub legacy_body: Option<String>,
+    pub tls_enabled: bool,
 }
 impl Serialize for HttpConfig {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
-        let mut value = serializer
-            .serialize_struct("HttpConfig", if self.legacy_body.is_some() { 3 } else { 4 })?;
+        let mut value = serializer.serialize_struct(
+            "HttpConfig",
+            (if self.legacy_body.is_some() { 3 } else { 4 }) + usize::from(self.tls_enabled),
+        )?;
         value.serialize_field("bind_ip", &self.bind_ip)?;
         value.serialize_field("port", &self.port)?;
+        if self.tls_enabled {
+            value.serialize_field("tls_enabled", &true)?;
+        }
         if let Some(body) = &self.legacy_body {
             value.serialize_field("response_body", body)?;
         } else {
@@ -76,6 +82,8 @@ impl<'de> Deserialize<'de> for HttpConfig {
             response_length: Option<u32>,
             response_mode: Option<ResponseMode>,
             response_body: Option<String>,
+            #[serde(default)]
+            tls_enabled: bool,
         }
         let raw = Input::deserialize(deserializer)?;
         let (response_length, response_mode, legacy_body) = match (
@@ -101,6 +109,7 @@ impl<'de> Deserialize<'de> for HttpConfig {
             response_length,
             response_mode,
             legacy_body,
+            tls_enabled: raw.tls_enabled,
         })
     }
 }
@@ -112,6 +121,7 @@ impl Default for HttpConfig {
             response_length: 64,
             response_mode: ResponseMode::Fixed,
             legacy_body: None,
+            tls_enabled: false,
         }
     }
 }
@@ -202,6 +212,12 @@ pub struct HttpConfigPatch {
         skip_serializing_if = "Option::is_none"
     )]
     pub response_mode: Option<ResponseMode>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub tls_enabled: Option<bool>,
 }
 impl HttpConfigPatch {
     pub fn apply(self, mut config: HttpConfig) -> Result<HttpConfig> {
@@ -209,6 +225,7 @@ impl HttpConfigPatch {
             && self.port.is_none()
             && self.response_length.is_none()
             && self.response_mode.is_none()
+            && self.tls_enabled.is_none()
         {
             bail!("config.patch: provide at least one configuration field");
         }
@@ -226,6 +243,9 @@ impl HttpConfigPatch {
         }
         if let Some(mode) = self.response_mode {
             config.response_mode = mode;
+        }
+        if let Some(enabled) = self.tls_enabled {
+            config.tls_enabled = enabled;
         }
         config.validate()?;
         Ok(config)
@@ -432,6 +452,30 @@ impl ProtocolConfig {
             internal_port,
         })
     }
+    /// Public host socket, container socket and transport; TLS uses a separate TCP publication.
+    pub fn publications(&self) -> Vec<(u16, u16, &'static str)> {
+        if let Self::Dns(c) = self {
+            let mut ports = vec![];
+            if c.udp_enabled {
+                ports.push((c.port, 15353, "UDP"));
+            }
+            if c.tcp_enabled {
+                ports.push((c.port, 15353, "TCP"));
+            }
+            if c.tls_enabled {
+                ports.push((c.tls_port, 1853, "TCP"));
+            }
+            return ports;
+        }
+        self.ip_endpoint()
+            .map(|e| {
+                self.transports()
+                    .into_iter()
+                    .map(|t| (e.port, e.internal_port, t))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
     pub fn transports(&self) -> Vec<&'static str> {
         match self {
             Self::ArpClient(_) | Self::CustomEthernet(_) | Self::Mpls(_) | Self::Profinet(_) => {
@@ -488,7 +532,17 @@ impl ProtocolConfig {
                 let result: Self = typed_patch(
                     c,
                     value,
-                    &["bind_ip", "port", "udp_enabled", "tcp_enabled", "records"],
+                    &[
+                        "bind_ip",
+                        "port",
+                        "udp_enabled",
+                        "tcp_enabled",
+                        "records",
+                        "tls_enabled",
+                        "tls_port",
+                        "response_profile",
+                        "fixture_set",
+                    ],
                 )?
                 .into();
                 result.validate()?;
@@ -902,5 +956,64 @@ mod tests {
                     .is_err()
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tls_compatibility_tests {
+    use super::*;
+    #[test]
+    fn tls_patch_preserves_legacy_content_and_restores_exact_fingerprint() {
+        let raw = r#"{"bind_ip":"127.0.0.1","port":18090,"response_body":"hello"}"#;
+        let old: ProtocolConfig = serde_json::from_str(raw).unwrap();
+        let edited = old.patch(serde_json::json!({"tls_enabled":true})).unwrap();
+        assert!(edited.as_http().unwrap().tls_enabled);
+        assert_eq!(
+            edited.as_http().unwrap().legacy_body.as_deref(),
+            Some("hello")
+        );
+        assert_eq!(
+            edited
+                .patch(serde_json::json!({"tls_enabled":false}))
+                .unwrap()
+                .fingerprint(),
+            old.fingerprint()
+        );
+        assert!(old.patch(serde_json::json!({"tls_enabled":null})).is_err());
+    }
+    #[test]
+    fn old_dns_json_hash_and_enabled_socket_publications_stay_compatible() {
+        let old = ProtocolConfig::Dns(crate::dns::DnsConfig::default());
+        let raw = serde_json::to_value(&old).unwrap();
+        assert_eq!(raw.as_object().unwrap().len(), 5);
+        let tls = old
+            .patch(serde_json::json!({"tls_enabled":true,"tls_port":18530}))
+            .unwrap();
+        assert_eq!(
+            tls.publications(),
+            vec![
+                (15353, 15353, "UDP"),
+                (15353, 15353, "TCP"),
+                (18530, 1853, "TCP")
+            ]
+        );
+        let restored = tls
+            .patch(serde_json::json!({"tls_enabled":false,"tls_port":1853}))
+            .unwrap();
+        assert_eq!(restored.fingerprint(), old.fingerprint());
+        let only = old
+            .patch(serde_json::json!({"udp_enabled":false,"tcp_enabled":false,"tls_enabled":true}))
+            .unwrap();
+        assert_eq!(only.publications(), vec![(1853, 1853, "TCP")]);
+        for patch in [
+            serde_json::json!({"tls_enabled":true,"tls_port":15353}),
+            serde_json::json!({"tls_enabled":null}),
+            serde_json::json!({"response_profile":"legacy-fixtures","fixture_set":"short"}),
+        ] {
+            assert!(old.patch(patch).is_err());
+        }
+        assert!(
+            matches!(old.patch(serde_json::json!({"tls_port":18530})).unwrap(),ProtocolConfig::Dns(c) if c.requires_extensions())
+        );
     }
 }

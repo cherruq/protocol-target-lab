@@ -9,7 +9,20 @@ export type TestMethod =
   | "DELETE"
   | "OPTIONS"
   | "ALL";
-export type TestPath = "/ok" | "/chunked" | "/close";
+export const testPaths = [
+  "/ok", "/chunked", "/close", "/head", "/health", "/truncated",
+  "/chunk-truncated", "/invalid-status", "/status-099", "/invalid-chunk",
+  "/conflicting-length", "/negative-length", "/chunk-extension", "/no-content",
+  "/not-modified", "/informational", "/informational-error", "/only-informational",
+  "/split-length", "/not-found", "/server-error", "/stall", "/flood",
+  "/auth/basic", "/auth/cookie", "/auth/header", "/auth/query",
+] as const;
+export type TestPath = (typeof testPaths)[number];
+export function httpMethodsForPath(path: string): TestMethod[] {
+  if (["/ok", "/chunked", "/close"].includes(path)) return [...testMethods];
+  if (["/head", "/health"].includes(path)) return ["HEAD", "ALL"];
+  return ["GET", "ALL"];
+}
 export const testMethods: TestMethod[] = [
   "GET",
   "HEAD",
@@ -20,7 +33,7 @@ export const testMethods: TestMethod[] = [
   "OPTIONS",
   "ALL",
 ];
-export const testPaths: TestPath[] = ["/ok", "/chunked", "/close"];
+
 export type WireMessage = {
   method?: string;
   path?: string;
@@ -32,7 +45,15 @@ export type WireMessage = {
   body_preview_hex?: string;
   body_truncated?: boolean;
   body_sha256?: string;
+  wire?: { body_length?: number; body_preview_hex?: string; body_sha256?: string; body_truncated?: boolean };
+  expected_wire_sha256?: string;
+  tls?: { version?: string; cipher?: string; verified_server_name?: string };
 };
+export function httpResponseStatus(message: WireMessage): string {
+  if (message.status !== null) return String(message.status ?? "未提供");
+  if (message.wire && (message.wire.body_length ?? message.body_length ?? 0) > 0) return "已收到原始报文，未解析 HTTP 状态";
+  return "未收到响应";
+}
 export type TestCheck = {
   name: string;
   passed: boolean;
@@ -41,6 +62,8 @@ export type TestCheck = {
   error?: string;
   seconds?: number;
   duration_ms?: number;
+  expected_behavior?: string;
+  quiet_window_seconds?: number;
 };
 export type TestRun = {
   id: string;
