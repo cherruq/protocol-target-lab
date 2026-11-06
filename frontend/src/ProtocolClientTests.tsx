@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import type { ReactNode } from "react";
 import type { ProtocolTestRun } from "./protocol-tests";
 import {
@@ -37,20 +38,15 @@ function Wire({
       <h4>{title}</h4>
       {message ? (
         <>
-          <p className="field-help">
-            结构化收发记录；报文预览、原始长度和截断标记以记录字段为准。
-          </p>
+          <p className="field-help">{guideText("shared.verification.protocolclienttests.001")}</p>
           <pre className="protocol-wire">{preview.text}</pre>
           {preview.truncated && (
-            <p>
-              显示摘要已截断，结构化记录原长{" "}
-              {preview.originalCharacters.toLocaleString()}{" "}
-              个字符；完整结果可下载 JSON 报告。
-            </p>
+            <p>{guideText("shared.verification.protocolclienttests.002")}{" "}
+              {preview.originalCharacters.toLocaleString()}{" "}{guideText("shared.verification.protocolclienttests.003")}</p>
           )}
         </>
       ) : (
-        <p>未取得此方向的收发摘要。</p>
+        <p>{guideText("shared.verification.protocolclienttests.004")}</p>
       )}
     </div>
   );
@@ -148,15 +144,13 @@ export default function ProtocolClientTests<C>({
           </h3>
           <p>
             {receiveEvidence
-              ? `使用当前生效参数发送真实数据报，再通过受管接收容器的私有只读观察器核对新鲜接收记录、字段和完整哈希；观察器不是 ${protocolName} ACK，发送成功或观察接口 HTTP 200 本身均不代表通过。此测试不能替代跨节点验收。`
-              : "使用当前生效参数，在目标宿主机运行一次性客户端容器，核对实际协议收发。此测试不能替代跨节点验收。"}
+              ? `${guideText("shared.verification.protocolclienttests.005")}${protocolName}${guideText("shared.verification.protocolclienttests.006")}`
+              : guideText("shared.verification.protocolclienttests.007")}
           </p>
         </div>
       </div>
       {hasUnappliedConfig && (
-        <div className="test-config-notice">
-          存在未应用的配置；测试使用当前生效快照，不会自动保存或重启协议服务。
-        </div>
+        <div className="test-config-notice">{guideText("shared.verification.protocolclienttests.008")}</div>
       )}
       <div className="test-controls">
         <label htmlFor={`protocol-test-path-${instance.id}`}>
@@ -189,9 +183,7 @@ export default function ProtocolClientTests<C>({
         </div>
       </div>
       {(!instance.enabled || instance.status !== "running") && (
-        <p className="test-availability">
-          启动 {protocolName} 服务并确认运行就绪后，可发起客户端测试。
-        </p>
+        <p className="test-availability">{guideText("shared.verification.protocolclienttests.009")}{protocolName}{guideText("shared.verification.protocolclienttests.010")}</p>
       )}
       {fetchError && (
         <div className="test-error" role="alert">
@@ -205,10 +197,7 @@ export default function ProtocolClientTests<C>({
         </div>
       )}
       {startError && current && showRetainedResultNotice && (
-        <p className="test-config-notice" role="status">
-          本次发起出现错误。下方为当前保留结果（测试ID <code>{current.id}</code>
-          ），不能把它当作这次新请求已通过；请求超时也不代表一定未受理，请按测试ID核对。
-        </p>
+        <p className="test-config-notice" role="status">{guideText("shared.verification.protocolclienttests.011")}<code>{current.id}</code>{guideText("shared.verification.protocolclienttests.012")}</p>
       )}
       {notice && (
         <div className="test-config-notice" role="status">
@@ -266,9 +255,7 @@ export default function ProtocolClientTests<C>({
             )}
           </div>
           {current.source_container_id !== instance.container_id && (
-            <p className="test-config-notice">
-              此结果来自先前的被测容器，不代表当前协议服务的新状态。
-            </p>
+            <p className="test-config-notice">{guideText("shared.verification.protocolclienttests.013")}</p>
           )}
           <div
             className={`test-cleanup ${current.cleanup_complete ? "complete" : current.status === "running" ? "pending" : "residue"}`}
@@ -304,11 +291,7 @@ export default function ProtocolClientTests<C>({
             </div>
           )}
           {showActualExchanges && current.report && (
-            <p className="test-counts">
-              实际完成且具完整证据的交换：
-              {actualProtocolExchanges(current.report.summary) ?? "未提供"}{" "}
-              次；计划次数不计为完成。
-            </p>
+            <p className="test-counts">{guideText("shared.verification.protocolclienttests.014")}{actualProtocolExchanges(current.report.summary) ?? guideText("shared.verification.protocolclienttests.015")}{" "}{guideText("shared.verification.protocolclienttests.016")}</p>
           )}
           {checks.length ? (
             <>
@@ -367,16 +350,14 @@ export default function ProtocolClientTests<C>({
             <p className="test-empty">
               {current.status === "running"
                 ? receiveEvidence
-                  ? "正在发送数据报并核对目标实际接收证据，结果将自动刷新。"
-                  : "正在发送请求并收集实际协议响应，结果将自动刷新。"
-                : "没有可展示的逐项结果，请查看本次状态与错误原因。"}
+                  ? guideText("shared.verification.protocolclienttests.017")
+                  : guideText("shared.verification.protocolclienttests.018")
+                : guideText("shared.verification.protocolclienttests.019")}
             </p>
           )}
         </div>
       ) : !submitting && !waitingId && !fetchError ? (
-        <p className="test-empty">
-          尚无客户端测试结果。仅保留当前或最后一次测试，不保存历史记录。
-        </p>
+        <p className="test-empty">{guideText("shared.verification.protocolclienttests.020")}</p>
       ) : null}
     </section>
   );

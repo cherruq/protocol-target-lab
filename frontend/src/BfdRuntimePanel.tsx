@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import useRuntimeSnapshot from "./useRuntimeSnapshot";
 import {
   bfdDiagnosticLabels,
@@ -36,12 +37,9 @@ export default function BfdRuntimePanel({
     <section className="panel bfd-runtime-panel" aria-label="BFD 只读运行态">
       <div className="panel-heading">
         <h2>BFD 只读运行态</h2>
-        <span className="muted">约每2秒更新 · 不发送探测</span>
+        <span className="muted">{guideText("bfd.runtime.bfdruntimepanel.008")}</span>
       </div>
-      <p>
-        本地服务运行与真实对端会话分别核对。没有真实对端时 Down
-        不代表服务启动失败；私有观察器仅在受管容器身份核对后读取。
-      </p>
+      <p>{guideText("bfd.runtime.bfdruntimepanel.001")}</p>
       {error && (
         <div role="alert" className="test-error">
           {error}
@@ -50,13 +48,13 @@ export default function BfdRuntimePanel({
       {!runtime ? (
         <p role="status">
           {disconnected
-            ? "管理服务失联，运行态待确认。"
+            ? guideText("bfd.runtime.bfdruntimepanel.002")
             : status !== "running"
-              ? "服务未运行，实时会话状态不可用。"
+              ? guideText("bfd.runtime.bfdruntimepanel.003")
               : snapshotExpired && snapshot?.available
-                ? "运行态样本已过期，当前会话待重新核对。"
+                ? guideText("bfd.runtime.bfdruntimepanel.004")
                 : snapshot?.reason ||
-                  (snapshot ? "实时状态不可用。" : "正在读取真实会话状态…")}
+                  (snapshot ? guideText("bfd.runtime.bfdruntimepanel.005") : guideText("bfd.runtime.bfdruntimepanel.006"))}
         </p>
       ) : (
         <div className="applied-config">
@@ -78,7 +76,7 @@ export default function BfdRuntimePanel({
               </dd>
             </div>
             <div>
-              <dt>对端状态 / discriminator</dt>
+              <dt>{guideText("bfd.runtime.bfdruntimepanel.009")}</dt>
               <dd>
                 {heartbeatFresh
                   ? `${bfdStateLabels[runtime.remote_state] || runtime.remote_state} / ${runtime.remote_discriminator}`
@@ -101,7 +99,7 @@ export default function BfdRuntimePanel({
               </dd>
             </div>
             <div>
-              <dt>主循环心跳距今（保守估计）</dt>
+              <dt>{guideText("bfd.runtime.bfdruntimepanel.010")}</dt>
               <dd>
                 {Number.isFinite(heartbeatAge)
                   ? `${Math.ceil(heartbeatAge)} ms`
@@ -109,7 +107,7 @@ export default function BfdRuntimePanel({
               </dd>
             </div>
             <div>
-              <dt>协商发送 / 接收检测</dt>
+              <dt>{guideText("bfd.runtime.bfdruntimepanel.011")}</dt>
               <dd>
                 {runtime.negotiated_tx_us === null
                   ? "周期发送已抑制"
@@ -124,39 +122,35 @@ export default function BfdRuntimePanel({
               </dd>
             </div>
             <div>
-              <dt>场景次数与 Poll</dt>
+              <dt>{guideText("bfd.runtime.bfdruntimepanel.012")}</dt>
               <dd>
-                窗口 {runtime.scenario.windows_started} · Poll 已发起{" "}
+                窗口 {runtime.scenario.windows_started}{guideText("bfd.runtime.bfdruntimepanel.013")}{" "}
                 {runtime.scenario.poll_started ? "是" : "否"} / 已完成{" "}
                 {runtime.scenario.poll_completed ? "是" : "否"}
               </dd>
             </div>
             <div>
-              <dt>会话 epoch / peer discriminator</dt>
+              <dt>{guideText("bfd.runtime.bfdruntimepanel.014")}</dt>
               <dd>
                 {runtime.epoch_id} / {runtime.epoch_peer_discriminator}
               </dd>
             </div>
             <div>
-              <dt>接收总数 / 有效 / 拒绝</dt>
+              <dt>{guideText("bfd.runtime.bfdruntimepanel.015")}</dt>
               <dd>
                 {runtime.counters.rx_total} / {runtime.counters.accepted} /{" "}
                 {runtime.counters.rejected}
               </dd>
             </div>
             <div>
-              <dt>周期发送 / Final / 抑制</dt>
+              <dt>{guideText("bfd.runtime.bfdruntimepanel.016")}</dt>
               <dd>
                 {runtime.counters.tx_periodic} / {runtime.counters.tx_final} /{" "}
                 {runtime.counters.suppressed}
               </dd>
             </div>
           </dl>
-          <p className="field-help">
-            发送计数只证明成功提交本地
-            socket，不替代对端实际收到的证据。接收有效性与故障窗口以真实报文和当前
-            epoch 为准。
-          </p>
+          <p className="field-help">{guideText("bfd.runtime.bfdruntimepanel.007")}</p>
         </div>
       )}
     </section>

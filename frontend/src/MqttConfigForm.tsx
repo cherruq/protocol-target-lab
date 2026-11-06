@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import type { MqttConfig } from "./mqtt-config";
 
 export default function MqttConfigForm({
@@ -12,9 +13,7 @@ export default function MqttConfigForm({
   return (
     <>
       <div className="field-row">
-        <label htmlFor="mqtt-bind">
-          绑定地址
-          <input
+        <label htmlFor="mqtt-bind">{guideText("mqtt.configuration.mqttconfigform.006")}<input
             id="mqtt-bind"
             value={config.bind_ip}
             onChange={(e) => onChange({ ...config, bind_ip: e.target.value })}
@@ -23,11 +22,9 @@ export default function MqttConfigForm({
             autoComplete="off"
             spellCheck={false}
           />
-          <span className="field-help">0.0.0.0 表示全部 IPv4 接口</span>
+          <span className="field-help">{guideText("mqtt.configuration.mqttconfigform.001")}</span>
         </label>
-        <label htmlFor="mqtt-port">
-          TCP 端口
-          <input
+        <label htmlFor="mqtt-port">{guideText("mqtt.configuration.mqttconfigform.007")}<input
             id="mqtt-port"
             type="number"
             min="1"
@@ -42,9 +39,7 @@ export default function MqttConfigForm({
         </label>
       </div>
       <div className="field-row">
-        <label htmlFor="mqtt-connections">
-          最大连接数
-          <input
+        <label htmlFor="mqtt-connections">{guideText("mqtt.configuration.mqttconfigform.008")}<input
             id="mqtt-connections"
             type="number"
             min="1"
@@ -64,11 +59,9 @@ export default function MqttConfigForm({
             disabled={disabled}
             required
           />
-          <span className="field-help">1～128 个客户端连接</span>
+          <span className="field-help">{guideText("mqtt.configuration.mqttconfigform.002")}</span>
         </label>
-        <label htmlFor="mqtt-packet-size">
-          最大报文（字节）
-          <input
+        <label htmlFor="mqtt-packet-size">{guideText("mqtt.configuration.mqttconfigform.009")}<input
             id="mqtt-packet-size"
             type="number"
             min="128"
@@ -88,17 +81,12 @@ export default function MqttConfigForm({
             disabled={disabled}
             required
           />
-          <span className="field-help">
-            128～1048576 字节，包含完整 MQTT 报文的头部和负载。
-          </span>
+          <span className="field-help">{guideText("mqtt.configuration.mqttconfigform.003")}</span>
         </label>
       </div>
       <div className="response-description">
-        <p>
-          使用匿名 TCP 接入，支持 MQTT 3.1.1 / 5.0 与 QoS 0 / 1 /
-          2。当前阶段不提供 TLS、密码认证、WebSocket 或 SCRAM。
-        </p>
-        <p>保存只修改配置；显式运行或重启后应用新的连接数与报文限制。</p>
+        <p>{guideText("mqtt.configuration.mqttconfigform.004")}</p>
+        <p>{guideText("mqtt.configuration.mqttconfigform.005")}</p>
       </div>
     </>
   );

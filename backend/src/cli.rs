@@ -14,7 +14,7 @@ pub const HELP: &str = r#"Protocol Target Lab CLI (JSON output for API commands)
 
   plabctl [--url http://127.0.0.1:18000] [--timeout 120] [--json] COMMAND
   health | protocols | environment | assets list
-  schema PROTOCOL | show PROTOCOL | status PROTOCOL
+  describe PROTOCOL | schema PROTOCOL | show PROTOCOL | status PROTOCOL
   config get PROTOCOL [--applied]
   config set PROTOCOL --file FILE|- | --data JSON
   config set PROTOCOL [--bind-ip IP] [--port N] [--response-length N] [--response-mode fixed|random] [--tls-enabled true|false]
@@ -94,6 +94,7 @@ impl Failure {
 #[derive(Debug)]
 enum Command {
     Get(&'static str),
+    Describe(String),
     Schema(String),
     Show(String),
     ConfigGet(String, bool),
@@ -115,6 +116,7 @@ impl Command {
                 "/api/assets" => "assets.list",
                 _ => "environment",
             },
+            Self::Describe(_) => "describe",
             Self::Schema(_) => "schema",
             Self::Show(_) => "show",
             Self::ConfigGet(..) => "config.get",
@@ -349,6 +351,7 @@ fn parse(args: &[String]) -> Result<Options> {
         ["protocols"] => Command::Get("/api/protocols"),
         ["environment"] => Command::Get("/api/environment"),
         ["assets"] | ["assets", "list"] => Command::Get("/api/assets"),
+        ["describe", p] => Command::Describe(protocol(p)?),
         ["schema", p] => Command::Schema(protocol(p)?),
         ["show", p] | ["status", p] => Command::Show(protocol(p)?),
         ["config", "get", p] => Command::ConfigGet(protocol(p)?, flags.remove("--applied")),
@@ -990,6 +993,7 @@ fn field<'a>(value: &'a Value, name: &str) -> Result<&'a str> {
 async fn execute(api: &Api, command: Command) -> Result<Value> {
     match command {
         Command::Get(path) => api.get(path).await,
+        Command::Describe(p) => api.get(&format!("/api/protocols/{p}/description")).await,
         Command::Schema(p) => api.get(&format!("/api/protocols/{p}/schema")).await,
         Command::Show(p) => api.descriptor(&p).await,
         Command::ConfigGet(p, applied) => {
@@ -1185,6 +1189,21 @@ pub async fn dispatch(args: &[String]) -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn describe_accepts_protocol_ids_and_no_mutation_options() {
+        for protocol in crate::model::PROTOCOLS {
+            let options = parse(&args(&format!("describe {protocol}"))).unwrap();
+            assert!(matches!(options.command, Command::Describe(ref p) if p == protocol));
+        }
+        for command in [
+            "describe",
+            "describe ../http",
+            "describe http --wait",
+            "describe http extra",
+        ] {
+            assert!(parse(&args(command)).is_err(), "{command}");
+        }
+    }
     #[test]
     fn custom_cli_preserves_inactive_bank_and_nullable_marker() {
         let p = config_patch(BTreeMap::from([

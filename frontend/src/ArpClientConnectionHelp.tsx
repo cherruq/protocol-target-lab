@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import {
   quoteShellCommand,
   type ArpConnectionInfo,
@@ -33,7 +34,7 @@ export default function ArpClientConnectionHelp({
       style={{ gridColumn: "1 / -1", minWidth: 0 }}
       aria-label="ARP-client 二层接入说明"
     >
-      <strong>二层执行位置与私有观察</strong>
+      <strong>{guideText("arp-client.connection.arpclientconnectionhelp.001")}</strong>
       {execution && (
         <dl>
           {(Object.keys(labels) as (keyof typeof labels)[]).map(
@@ -56,14 +57,9 @@ export default function ArpClientConnectionHelp({
       ) : null}
       {external ? (
         <>
-          <h3>外部同镜像反向 peer 模板（仅 host-interface）</h3>
-          <p>
-            模板仅展示 / 复制，Web不会执行。先用{" "}
-            <code>plabctl runtime arp-client</code>{" "}
-            核对实际源身份，再明确替换本机peer接口、boot/runtime
-            ID及SSH目标占位符；SSH目标是实际测试服务器，不是实验role
-            IP。只读转发不等于ARP应答或ACK，结束后须再次核对源身份。
-          </p>
+          <h3>{guideText("arp-client.connection.arpclientconnectionhelp.002")}</h3>
+          <p>{guideText("arp-client.connection.arpclientconnectionhelp.003")}{" "}
+            <code>{guideText("arp-client.connection.arpclientconnectionhelp.004")}</code>{" "}{guideText("arp-client.connection.arpclientconnectionhelp.005")}</p>
           {external.requires?.length ? (
             <ul>
               {external.requires.map((item, index) => (
@@ -71,7 +67,7 @@ export default function ArpClientConnectionHelp({
               ))}
             </ul>
           ) : null}
-          <h4>1. 显式只读观察通道转发</h4>
+          <h4>{guideText("arp-client.connection.arpclientconnectionhelp.006")}</h4>
           {forwardCommand ? (
             <div className="command">
               <code>{forwardCommand}</code>
@@ -79,14 +75,12 @@ export default function ArpClientConnectionHelp({
                 type="button"
                 className="button"
                 onClick={() => void onCopy(forwardCommand)}
-              >
-                复制转发模板
-              </button>
+              >{guideText("arp-client.connection.arpclientconnectionhelp.007")}</button>
             </div>
           ) : (
-            <p>转发模板参数不可用，请核对管理服务版本。</p>
+            <p>{guideText("arp-client.connection.arpclientconnectionhelp.008")}</p>
           )}
-          <h4>2. 本机真实接口上的反向 peer</h4>
+          <h4>{guideText("arp-client.connection.arpclientconnectionhelp.009")}</h4>
           {peerCommand ? (
             <div className="command">
               <code>{peerCommand}</code>
@@ -94,12 +88,10 @@ export default function ArpClientConnectionHelp({
                 type="button"
                 className="button"
                 onClick={() => void onCopy(peerCommand)}
-              >
-                复制外部 peer 模板
-              </button>
+              >{guideText("arp-client.connection.arpclientconnectionhelp.010")}</button>
             </div>
           ) : (
-            <p>反向peer模板参数不可用，请核对管理服务版本。</p>
+            <p>{guideText("arp-client.connection.arpclientconnectionhelp.011")}</p>
           )}
           {external.notes?.length ? (
             <ul>
@@ -110,10 +102,7 @@ export default function ArpClientConnectionHelp({
           ) : null}
         </>
       ) : (
-        <p>
-          当前链路不提供虚构的外部host命令。受管bridge使用上方内置测试，临时peer进入同一个exact
-          owned network；不会自动连接物理LAN、SSH或修改网卡。
-        </p>
+        <p>{guideText("arp-client.connection.arpclientconnectionhelp.012")}</p>
       )}
     </section>
   );

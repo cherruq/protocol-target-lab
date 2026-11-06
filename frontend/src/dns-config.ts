@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 export type DnsRecord = {
   name: string;
   record_type: "A" | "AAAA";
@@ -37,7 +38,7 @@ export function normalizeDnsName(name: string): string {
       .some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
   )
     throw new Error(
-      "记录名称须为 ASCII DNS 名称，每段 1～63 个字母、数字或连字符，首尾不能为连字符，总长不超过 253。",
+      guideText("dns.configuration.dns-config.001"),
     );
   return normalized;
 }
@@ -58,69 +59,69 @@ function canonicalAddress(
   type: DnsRecord["record_type"],
 ): string {
   if (type === "A") {
-    if (!validIpv4(value)) throw new Error("A 记录必须填写有效 IPv4 地址。");
+    if (!validIpv4(value)) throw new Error(guideText("dns.configuration.dns-config.002"));
     return value;
   }
   try {
     if (!value.includes(":") || value.includes("%")) throw new Error();
     return new URL(`http://[${value}]/`).hostname.slice(1, -1);
   } catch {
-    throw new Error("AAAA 记录必须填写有效 IPv6 地址。");
+    throw new Error(guideText("dns.configuration.dns-config.003"));
   }
 }
 export function normalizeDnsConfig(config: DnsConfig): DnsConfig {
   if (!validIpv4(config.bind_ip))
-    throw new Error("绑定地址必须是有效 IPv4 地址。");
+    throw new Error(guideText("dns.configuration.dns-config.004"));
   const firstOctet = Number(config.bind_ip.split(".")[0]);
   if (
     (firstOctet >= 224 && firstOctet <= 239) ||
     config.bind_ip === "255.255.255.255"
   )
     throw new Error(
-      "绑定地址须为单播 IPv4 地址或 0.0.0.0，不能使用组播或广播地址。",
+      guideText("dns.configuration.dns-config.005"),
     );
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535)
-    throw new Error("端口必须是 1～65535 之间的整数。");
+    throw new Error(guideText("dns.configuration.dns-config.006"));
   if (config.tls_enabled !== undefined && typeof config.tls_enabled !== "boolean")
-    throw new Error("TLS 开关必须是布尔值。");
+    throw new Error(guideText("dns.configuration.dns-config.007"));
   if (!config.udp_enabled && !config.tcp_enabled && !config.tls_enabled)
-    throw new Error("UDP、TCP 和 TLS 至少启用一种传输。");
+    throw new Error(guideText("dns.configuration.dns-config.008"));
   if (config.tls_port !== undefined && (!Number.isInteger(config.tls_port) || config.tls_port < 1 || config.tls_port > 65535))
-    throw new Error("TLS 端口必须是 1～65535 之间的整数。");
+    throw new Error(guideText("dns.configuration.dns-config.009"));
   if (config.tls_enabled && config.tcp_enabled && (config.tls_port ?? 1853) === config.port)
-    throw new Error("TCP 和 TLS 不能共用同一监听端口。");
+    throw new Error(guideText("dns.configuration.dns-config.010"));
   if (config.response_profile !== undefined && !["standard", "legacy-fixtures"].includes(config.response_profile))
-    throw new Error("请选择标准 DNS 或旧脚本固定场景。");
+    throw new Error(guideText("dns.configuration.dns-config.011"));
   if (config.fixture_set !== undefined && !["final", "short", "wrong-id"].includes(config.fixture_set))
-    throw new Error("请选择有效的旧脚本场景集。");
+    throw new Error(guideText("dns.configuration.dns-config.012"));
   if (config.response_profile === "legacy-fixtures" && (config.fixture_set ?? "final") !== "final" && (config.tcp_enabled || config.tls_enabled))
-    throw new Error("short / wrong-id 场景集仅支持 UDP，请先关闭 TCP 和 TLS。");
+    throw new Error(guideText("dns.configuration.dns-config.013"));
   if (config.records.length < 1 || config.records.length > 32)
-    throw new Error("请配置 1～32 条 DNS 记录。");
+    throw new Error(guideText("dns.configuration.dns-config.014"));
   const sets = new Map<string, { ttl: number; count: number }>();
   const identities = new Set<string>();
   const records = config.records.map((record, index) => {
     try {
       if (record.record_type !== "A" && record.record_type !== "AAAA")
-        throw new Error("记录类型仅支持 A / AAAA。");
+        throw new Error(guideText("dns.configuration.dns-config.015"));
       if (!Number.isInteger(record.ttl) || record.ttl < 0 || record.ttl > 86400)
-        throw new Error("TTL 必须为 0～86400 之间的整秒数。");
+        throw new Error(guideText("dns.configuration.dns-config.016"));
       const name = normalizeDnsName(record.name);
       const value = canonicalAddress(record.value, record.record_type);
       const key = `${name}/${record.record_type}`;
       const set = sets.get(key) || { ttl: record.ttl, count: 0 };
       if (set.ttl !== record.ttl)
-        throw new Error("同名称、同类型的一组记录必须使用相同 TTL。");
+        throw new Error(guideText("dns.configuration.dns-config.017"));
       if (++set.count > 16)
-        throw new Error("同名称、同类型最多配置 16 条记录。");
+        throw new Error(guideText("dns.configuration.dns-config.018"));
       sets.set(key, set);
       const identity = `${key}/${value}`;
       if (identities.has(identity))
-        throw new Error("存在重复的名称、类型和地址记录。");
+        throw new Error(guideText("dns.configuration.dns-config.019"));
       identities.add(identity);
       return { ...record, name, value };
     } catch (error) {
-      throw new Error(`第 ${index + 1} 条记录：${(error as Error).message}`);
+      throw new Error(`${guideText("dns.configuration.dns-config.020")}${index + 1}${guideText("dns.configuration.dns-config.021")}${(error as Error).message}`);
     }
   });
   const normalized = { ...config, records };
@@ -149,8 +150,8 @@ export function dnsConnectionCommands(config: DnsConfig): string[] {
     return ["plabctl tests run dns --method ALL --path ALL"];
   const name = config.records[0]?.name || "device.test";
   return [
-    ...(config.udp_enabled ? [`dig @<目标IP> -p ${config.port} ${name} A`] : []),
-    ...(config.tcp_enabled ? [`dig +tcp @<目标IP> -p ${config.port} ${name} A`] : []),
+    ...(config.udp_enabled ? [`${guideText("dns.configuration.dns-config.022")}${config.port} ${name} A`] : []),
+    ...(config.tcp_enabled ? [`${guideText("dns.configuration.dns-config.023")}${config.port} ${name} A`] : []),
     ...(config.tls_enabled ? ["plabctl tests run dns --method TLS --path ALL"] : []),
   ];
 }

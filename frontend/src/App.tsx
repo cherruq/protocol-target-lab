@@ -1,3 +1,5 @@
+import { loadGuidance, subscribeGuidance, guidanceRevision } from "./protocol-description.ts";
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 import { protocolNavigationItems } from "./protocol-navigation";
 import ProfinetConfigForm from "./ProfinetConfigForm";
 import ProfinetRuntimePanel from "./ProfinetRuntimePanel";
@@ -103,6 +105,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -319,7 +322,7 @@ type Protocol = {
   status: string;
   error: string | null;
 };
-const statusNames: Record<string, string> = {
+const statusNames: Record<string, string> = lazyGuidanceLabels(() => ({
   stopped: "已停止",
   starting: "启动中",
   running: "运行中",
@@ -329,7 +332,7 @@ const statusNames: Record<string, string> = {
   "environment-unavailable": "环境不可用",
   checking: "核对中",
   unavailable: "不可用",
-};
+}));
 
 async function api<T>(
   path: string,
@@ -486,7 +489,7 @@ function ConfigFields({
             autoComplete="off"
             spellCheck={false}
           />
-          <span className="field-help">0.0.0.0 表示全部 IPv4 接口</span>
+          <span className="field-help">{guideText("http.configuration.app.001")}</span>
         </label>
         <label htmlFor={`${prefix}-port`}>
           TCP 端口
@@ -519,9 +522,7 @@ function ConfigFields({
             }}
           /> HTTPS（TLS）
         </label>
-        <p className="field-help">
-          启用后同一端口改为 HTTPS，使用内置公开实验室证书；保存后重启才生效。
-          {" "}<a href="/api/tls/lab.crt" download="lab.crt">下载实验室证书 lab.crt</a>
+        <p className="field-help">{guideText("http.configuration.app.002")}{" "}<a href="/api/tls/lab.crt" download="lab.crt">{guideText("http.configuration.app.003")}</a>
         </p>
       </fieldset>
       <div className="field-row response-fields">
@@ -547,7 +548,7 @@ function ConfigFields({
             required
             disabled={disabled}
           />
-          <span className="field-help">0～1048576 字节；0 表示空正文。</span>
+          <span className="field-help">{guideText("http.configuration.app.004")}</span>
         </label>
         <label htmlFor={`${prefix}-mode`}>
           响应模式
@@ -569,22 +570,18 @@ function ConfigFields({
       </div>
       <div className="response-description">
         {config.response_mode === "fixed" ? (
-          <p>
-            重复 ASCII <code>0123456789abcdef</code>，按指定字节数截断。
-          </p>
+          <p>{guideText("http.configuration.app.005")}<code>{guideText("http.configuration.app.006")}</code>{guideText("http.configuration.app.007")}</p>
         ) : (
-          <p>每次请求生成新的随机字节，正文长度始终等于指定字节数。</p>
+          <p>{guideText("http.configuration.app.008")}</p>
         )}
-        <p>
-          HEAD 只返回响应头；其他支持的方法均按此配置生成正文，POST
-          不回显请求正文。上述生成设置用于 /ok、/chunked 和 /close；其他旧脚本路径使用各自固定实验响应。
-        </p>
+        <p>{guideText("http.configuration.app.009")}</p>
       </div>
     </>
   );
 }
 
 export default function App() {
+  useSyncExternalStore(subscribeGuidance, guidanceRevision);
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [environment, setEnvironment] = useState<Environment | null>(null);
   const [assets, setAssets] = useState<Assets | null>(null);
@@ -890,6 +887,7 @@ export default function App() {
         setEnvironment(nextEnvironment);
         setAssets(nextAssets);
         setProtocols(nextProtocols);
+        if (nextProtocols[0]?.version) void loadGuidance(nextProtocols[0].version).catch(() => {});
         setSelectedProtocolId((current) =>
           nextProtocols.some((protocol) => protocol.id === current)
             ? current
@@ -1178,7 +1176,7 @@ export default function App() {
           })}
           {!visibleProtocols.length && (
             <p className="sidebar-loading" role="status">
-              {protocols.length ? "没有匹配的协议" : loading ? "正在读取协议…" : "无法读取协议目录"}
+              {protocols.length ? guideText("shared.overview.app.010") : loading ? guideText("shared.overview.app.011") : guideText("shared.overview.app.012")}
             </p>
           )}
         </nav>
@@ -1208,7 +1206,7 @@ export default function App() {
                 ? `${selectedProtocol.name} 协议`
                 : "协议工作台"}
             </h1>
-            <p>配置协议目标，查看实际运行状态与收发日志。</p>
+            <p>{guideText("shared.overview.app.013")}</p>
           </div>
         </header>
 
@@ -1315,165 +1313,164 @@ export default function App() {
                     <Status value={displayedStatus} />
                   </div>
                 </div>
-                <p className="instance-description">
-                  受控 {protocolName} 测试服务 <span>·</span> Docker{" "}
-                  <span>·</span>{" "}
+                <p className="instance-description">{guideText("shared.overview.app.014")}{protocolName}{guideText("shared.overview.app.015")}<span>{guideText("shared.overview.app.016")}</span>{guideText("shared.overview.app.017")}{" "}
+                  <span>{guideText("shared.overview.app.018")}</span>{" "}
                   {isProfinet
-                    ? `${selectedProtocol?.implementation || "p-net0.2.0 / software PTCP"} · DCP + PTCP-N/F同时运行`
+                    ? `${selectedProtocol?.implementation || "p-net0.2.0 / software PTCP"}${guideText("profinet.overview.app.019")}`
                     : isMpls
-                      ? `${selectedProtocol?.implementation || "单标签 MPLS 软件目标"} · 8847请求 / 0800输出`
+                      ? `${selectedProtocol?.implementation || guideText("mpls.overview.app.020")}${guideText("mpls.overview.app.021")}`
                       : isIgmp
-                        ? `${selectedProtocol?.implementation || "Linux kernel IP_ADD_MEMBERSHIP"} · 持久内核成员`
+                        ? `${selectedProtocol?.implementation || "Linux kernel IP_ADD_MEMBERSHIP"}${guideText("igmp.overview.app.022")}`
                         : isCustomEthernet
-                          ? `${selectedProtocol?.implementation || "libpcap 1.10.5 / AF_PACKET"} · 被动固定二层响应`
+                          ? `${selectedProtocol?.implementation || "libpcap 1.10.5 / AF_PACKET"}${guideText("custom-ethernet.overview.app.023")}`
                           : isArpClient
-                            ? `${selectedProtocol?.implementation || "主动 Ethernet / IPv4 ARP requester"} · 有限二层请求端`
+                            ? `${selectedProtocol?.implementation || guideText("arp-client.overview.app.024")}${guideText("arp-client.overview.app.025")}`
                             : isVxlan
-                              ? `${selectedProtocol?.implementation || "VXLAN IPv4 ARP responder"} · 有限 ARP VTEP`
+                              ? `${selectedProtocol?.implementation || "VXLAN IPv4 ARP responder"}${guideText("vxlan.overview.app.026")}`
                               : isBfd
-                                ? `${selectedProtocol?.implementation || "Python stdlib BFD"} · IPv4 单跳异步`
+                                ? `${selectedProtocol?.implementation || "Python stdlib BFD"}${guideText("bfd.overview.app.027")}`
                                 : isIec101
-                                  ? `${selectedProtocol?.implementation || "lib60870-C 2.4.1"} · 原生双通道 PTY / TCP`
+                                  ? `${selectedProtocol?.implementation || "lib60870-C 2.4.1"}${guideText("iec101.overview.app.028")}`
                                   : isDlt645
-                                    ? `${selectedProtocol?.implementation || "DL/T645-2007 software meter"} · TCP 软件电表`
+                                    ? `${selectedProtocol?.implementation || "DL/T645-2007 software meter"}${guideText("dlt645.overview.app.029")}`
                                     : isRtcp
-                                      ? `${selectedProtocol?.implementation || "RTCPv2 SR+SDES receiver"} · UDP 接收`
+                                      ? `${selectedProtocol?.implementation || "RTCPv2 SR+SDES receiver"}${guideText("rtcp.overview.app.030")}`
                                       : isRtp
-                                        ? `${selectedProtocol?.implementation || "RTPv2 receiver"} · UDP 接收`
+                                        ? `${selectedProtocol?.implementation || "RTPv2 receiver"}${guideText("rtp.overview.app.031")}`
                                         : isMqttSn
-                                          ? `${selectedProtocol?.implementation || "Paho 1.5.1"}（含注册容量保护修正） · UDP 网关`
+                                          ? `${selectedProtocol?.implementation || "Paho 1.5.1"}${guideText("mqtt-sn.overview.app.032")}`
                                           : isIec104
-                                            ? `${selectedProtocol?.implementation || "c104 2.2.1"}（含 TCP 分帧修正） · TCP`
+                                            ? `${selectedProtocol?.implementation || "c104 2.2.1"}${guideText("iec104.overview.app.033")}`
                                             : isTelnet
                                               ? `${selectedProtocol?.implementation || "TELNET"} · TCP`
                                               : isDns
                                                 ? "UDP / TCP / TLS"
                                                 : isMqtt
-                                                  ? `${selectedProtocol?.implementation || "MQTT"} · 匿名 TCP`
+                                                  ? `${selectedProtocol?.implementation || "MQTT"}${guideText("mqtt.overview.app.034")}`
                                                   : httpTls ? "HTTPS · HTTP/1.1 / TLS" : "HTTP/1.1"}
                 </p>
                 <div className="method-support">
                   <span>
                     {isProfinet
-                      ? "固定三节点与native状态边界"
+                      ? guideText("profinet.overview.app.079")
                       : isMpls
-                        ? "有限单标签与真实二层范围"
+                        ? guideText("mpls.overview.app.080")
                         : isIgmp
-                          ? "真实内核成员与查询范围"
+                          ? guideText("igmp.overview.app.081")
                           : isCustomEthernet
-                            ? "固定响应与内核接收范围"
+                            ? guideText("custom-ethernet.overview.app.082")
                             : isArpClient
-                              ? "主动请求与反向测试角色"
+                              ? guideText("arp-client.overview.app.083")
                               : isVxlan
-                                ? "固定角色与回复范围"
+                                ? guideText("vxlan.overview.app.084")
                                 : isBfd
-                                  ? "固定对端与场景"
+                                  ? guideText("bfd.overview.app.085")
                                   : isIec101
-                                    ? "固定双通道与原生协议"
+                                    ? guideText("iec101.overview.app.086")
                                     : isDlt645
-                                      ? "有限软件电表与实验边界"
+                                      ? guideText("dlt645.overview.app.087")
                                       : isRtcp
-                                        ? "固定 profile 与接收范围"
+                                        ? guideText("rtcp.overview.app.088")
                                         : isRtp
-                                          ? "接收与观察范围"
+                                          ? guideText("rtp.overview.app.089")
                                           : isMqttSn
-                                            ? "本轮验收与原生部署"
+                                            ? guideText("mqtt-sn.overview.app.090")
                                             : isIec104
-                                              ? "固定类型与命令模式"
+                                              ? guideText("iec104.overview.app.091")
                                               : isTelnet
-                                                ? "协议协商能力"
+                                                ? guideText("telnet.overview.app.092")
                                                 : isMqtt
-                                                  ? "支持的版本与 QoS"
+                                                  ? guideText("mqtt.overview.app.093")
                                                   : isDns
-                                                    ? "支持的传输"
+                                                    ? guideText("dns.overview.app.094")
                                                     : legacyApplied
-                                                      ? "新生成模式支持的方法"
-                                                      : "支持的方法"}
+                                                      ? guideText("http.overview.app.095")
+                                                      : guideText("http.overview.app.096")}
                   </span>
                   <div>
                     {(isProfinet
                       ? [
-                          "原生DCP / 软件PTCP",
-                          "三个真实MAC节点",
-                          "ALL只读24项",
-                          "软件LED / 时间戳",
+                          guideText("profinet.overview.app.097"),
+                          guideText("profinet.overview.app.098"),
+                          guideText("profinet.overview.app.099"),
+                          guideText("profinet.overview.app.100"),
                         ]
                       : isMpls
                         ? [
-                            "单shim / IPv4 ICMP",
-                            "14目标场景",
-                            "当前场景8检查",
-                            "无应用端口 / ACK",
+                            guideText("mpls.overview.app.101"),
+                            guideText("mpls.overview.app.102"),
+                            guideText("mpls.overview.app.103"),
+                            guideText("mpls.overview.app.104"),
                           ]
                         : isIgmp
                           ? [
-                              "IPv4协议号2",
-                              "Linux原生Report",
-                              "General / 首组Query",
-                              "无应用端口 / ACK",
+                              guideText("igmp.overview.app.105"),
+                              guideText("igmp.overview.app.106"),
+                              guideText("igmp.overview.app.107"),
+                              guideText("igmp.overview.app.108"),
                             ]
                           : isCustomEthernet
                             ? [
-                                "Ethernet II / 单802.1Q",
-                                "独立内核cBPF",
-                                "构造载荷 / 完整帧",
-                                "4组 / 8次交换",
+                                guideText("custom-ethernet.overview.app.109"),
+                                guideText("custom-ethernet.overview.app.110"),
+                                guideText("custom-ethernet.overview.app.111"),
+                                guideText("custom-ethernet.overview.app.112"),
                               ]
                             : isArpClient
                               ? [
                                   "ARP / RARP / InARP",
-                                  "4模式 · 15合法组合",
-                                  "实际 incoming",
-                                  "无wire txid / ACK",
+                                  guideText("arp-client.overview.app.113"),
+                                  guideText("arp-client.overview.app.114"),
+                                  guideText("arp-client.overview.app.115"),
                                 ]
                               : isVxlan
                                 ? [
-                                    "IPv4 单播 UDP",
+                                    guideText("vxlan.overview.app.116"),
                                     "Ethernet / IPv4 ARP",
-                                    "固定回程端口",
-                                    "11目标模式",
+                                    guideText("vxlan.overview.app.117"),
+                                    guideText("vxlan.overview.app.118"),
                                   ]
                                 : isBfd
                                   ? [
                                       "BFD Control",
                                       "UDP 3784",
                                       "Active",
-                                      "24字节 · 无认证",
+                                      guideText("bfd.overview.app.119"),
                                     ]
                                   : isIec101
                                     ? [
-                                        "IEC101 非平衡",
+                                        guideText("iec101.overview.app.120"),
                                         "single 1/1/1/1",
                                         "double 2/2/2/3",
-                                        "9600/8N1（PTY请求）",
+                                        guideText("iec101.overview.app.121"),
                                       ]
                                     : isDlt645
                                       ? [
                                           "DL/T645-2007",
-                                          "TCP 字节流",
-                                          "默认 ALL 只读",
-                                          "软件状态",
+                                          guideText("dlt645.overview.app.122"),
+                                          guideText("dlt645.overview.app.123"),
+                                          guideText("dlt645.overview.app.124"),
                                         ]
                                       : isRtcp
                                         ? [
                                             "RTCPv2",
                                             "UDP",
                                             "SR + SDES",
-                                            "独立接收证据",
+                                            guideText("rtcp.overview.app.125"),
                                           ]
                                         : isRtp
                                           ? [
                                               "RTPv2",
                                               "UDP",
-                                              "CSRC / 扩展 / 填充",
-                                              "有界接收证据",
+                                              guideText("rtp.overview.app.126"),
+                                              guideText("rtp.overview.app.127"),
                                             ]
                                           : isMqttSn
                                             ? [
                                                 "UDP",
-                                                "QoS 1（本轮验收）",
-                                                "组播 GWINFO",
-                                                "同容器私有 Broker",
+                                                guideText("mqtt-sn.overview.app.128"),
+                                                guideText("mqtt-sn.overview.app.129"),
+                                                guideText("mqtt-sn.overview.app.130"),
                                               ]
                                             : isIec104
                                               ? [
@@ -1509,40 +1506,40 @@ export default function App() {
                   </div>
                   <p>
                     {isProfinet
-                      ? "三节点同时：原生p-net DCP + Delay无FU节点N + 有FU节点F；二者都接纳Sync/FollowUp/Announce。初始化、native当前、NV、文件保存和实际OS应用分层；DCP ACK不等于OS成功，软件接纳不代表硬件时钟精度或物理LED。"
+                      ? guideText("profinet.overview.app.035")
                       : isMpls
-                        ? "有限软件目标接收真实EtherType8847/单shim/IPv4 Echo请求，输出普通0800 IPv4；不是通用LSR/LER、标签交换、MPLS OAM或宿主原生栈。运行不等于peer实收，send仅为提交，故障场景通过不等于normal互通。"
+                        ? guideText("mpls.overview.app.036")
                         : isIgmp
-                          ? "持续保持本工作台内核组成员引用，Report来自实际Linux内核；query profile v2/MRT100不是程序生成ACK或永久v2保证。真实force、kernel/ns/IP/MAC与actual Report版本由只读运行态给出。"
+                          ? guideText("igmp.overview.app.037")
                           : isCustomEthernet
-                            ? "每个实际内核准入且匹配可选payload前缀的incoming请求触发一条固定响应。运行不等于对端实收；没有应用端口、连接Up或标准ACK。当前fixture测试不自动修改不透明BPF。"
+                            ? guideText("custom-ethernet.overview.app.038")
                             : isArpClient
-                              ? "目标持续主动请求；临时内置工具反向应答。隔离bridge只证明软件二层链路，host使用现有真实接口。运行不等于已映射，RARP实验结果不配置系统地址；不把同接口OUTGOING当incoming。"
+                              ? guideText("arp-client.overview.app.039")
                               : isVxlan
-                                ? "仅对当前完整验证通过的合法 ARP Request 生成目标端回复或抑制。保留位和请求 THA 按基础 profile 忽略，不提供学习桥、IPv4/ICMP、GBP/GPE 或虚构隧道 Up。"
+                                ? guideText("vxlan.overview.app.040")
                                 : isBfd
-                                  ? "服务自主运行并维持一个固定对端会话。Down 是合法监测状态，不等于本地服务故障；ALL 只验证当前生效场景两个新鲜轮次，不自动切换六种模式。"
+                                  ? guideText("bfd.overview.app.041")
                                   : isIec101
-                                    ? "两个独立通道同时启用，各一个活动 TCP 主站连接。原生 FT1.2 / ASDU 经软件 PTY 透明传输；不是 IEC104，也不代表物理 RS-232/485 线速、电压或现场设备验收。"
+                                    ? guideText("iec101.overview.app.042")
                                     : isDlt645
-                                      ? "TCP 软件电表保留有限软件读写、冻结与控制行为。默认 ALL 仅核心只读 8 项；可选写周期会恢复原当前值，扩展 03 仅拒绝或固定传输 fixture（crypto_verified=false）。不代表物理 RS-485、继电器、ESAM 或密码学认证。"
+                                      ? guideText("dlt645.overview.app.043")
                                       : isRtcp
-                                        ? "固定 SR+SDES compound 接收 profile，全包验证与匹配 CNAME；不发送 RR / ACK，不依赖 RTP 工作台。私有观察器只提供实际接收证据，不是 RTCP 协议回复。"
+                                        ? guideText("rtcp.overview.app.044")
                                         : isRtp
-                                          ? "单向接收并记录实际 RTP 字段与原始载荷，不发送 RTP ACK、不解码或播放媒体。内置测试通过私有只读观察器核对目标真实接收，发送成功本身不代表已接收。"
+                                          ? guideText("rtp.overview.app.045")
                                           : isMqttSn
-                                            ? "本轮验证 QoS 1 端到端收发及真实组播发现，其他原生 QoS 能力未在本轮验收。网关及私有 Broker 使用同一容器，不依赖 MQTT 工作台是否运行。"
+                                            ? guideText("mqtt-sn.overview.app.046")
                                             : isIec104
-                                              ? "三个固定角色用于实验模拟。单点和测量显示启动初值；实时点值以 GI / READ 的实际返回为准。DIRECT 命令仅修改模拟内存，不连接或驱动物理设备。"
+                                              ? guideText("iec104.overview.app.047")
                                               : isTelnet
-                                                ? "使用真实 Telnet 协议栈进行 IAC 协商；实验应用提供 ECHO、INFO、CLOSE，不提供系统登录或 shell。"
+                                                ? guideText("telnet.overview.app.048")
                                                 : isMqtt
-                                                  ? "支持发布 / 订阅与 QoS 0、1、2。当前使用匿名 TCP，不提供 TLS、密码认证、WebSocket 或 SCRAM。"
+                                                  ? guideText("mqtt.overview.app.049")
                                                   : isDns
-                                                    ? "标准模式按配置记录回答 A / AAAA；UDP / TCP 共用 DNS 端口，TLS 使用独立端口。固定场景模式精确回放预设报文。"
+                                                    ? guideText("dns.overview.app.050")
                                                     : legacyApplied
-                                                      ? "旧生效配置保留旧版能力；保存新配置并重启后，切换到上述方法和响应生成规则。"
-                                                      : "/ok、/chunked、/close 按响应设置生成正文，HEAD 无正文；其他固定场景按预设字节和时序响应。"}
+                                                      ? guideText("http.overview.app.051")
+                                                      : guideText("http.overview.app.052")}
                   </p>
                 </div>
                 <div className="instance-actions">
@@ -1578,16 +1575,13 @@ export default function App() {
                   <span>
                     {selected.enabled
                       ? selected.applied_config
-                        ? "已启用 · 管理服务或设备恢复后，使用生效配置恢复运行"
-                        : "已启用 · 首次启动尚未成功，需要显式重试"
-                      : "已禁用 · 不会自动恢复运行"}
+                        ? guideText("shared.overview.app.131")
+                        : guideText("shared.overview.app.132")
+                      : guideText("shared.overview.app.133")}
                   </span>
                 </div>
                 {selected.current_operation && (
-                  <div className="inline-note">
-                    正在执行：{selected.current_operation.kind}
-                    。操作受理与业务成功分别核对。
-                  </div>
+                  <div className="inline-note">{guideText("shared.overview.app.134")}{selected.current_operation.kind}{guideText("shared.overview.app.135")}</div>
                 )}
                 {selected.error && (
                   <div className="inline-error" role="alert">
@@ -1599,21 +1593,21 @@ export default function App() {
               <div className="detail-columns">
                 <section className="panel config-panel">
                   <div className="panel-heading">
-                    <h2>{protocolName} 配置</h2>
+                    <h2>{protocolName}{guideText("shared.configuration.app.136")}</h2>
                     <span className={`draft-label ${dirty ? "dirty" : ""}`}>
                       {dirty
-                        ? "尚未保存"
+                        ? guideText("shared.configuration.app.137")
                         : appliedDiffers
-                          ? "有待应用的配置"
-                          : "已保存"}
+                          ? guideText("shared.configuration.app.138")
+                          : guideText("shared.configuration.app.139")}
                     </span>
                   </div>
                   <form onSubmit={(event) => void save(event)}>
                     {httpSelected && (legacySaved || legacyApplied) && (
                       <div className="migration-note" role="note">
                         {legacySaved
-                          ? "此工作台含旧版固定正文配置。旧运行配置仍保留；编辑草稿初始长度取旧正文的 UTF-8 字节数。保存并重启后使用新的内容生成模式，正文不再保留原文本，POST 不再回显请求正文。"
-                          : "新配置已保存，旧生效配置仍保留固定正文和 POST 回显行为。显式重启后才切换到新的内容生成模式和方法支持。"}
+                          ? guideText("http.configuration.app.140")
+                          : guideText("http.configuration.app.141")}
                       </div>
                     )}
                     {isProfinet ? (
@@ -1780,48 +1774,43 @@ export default function App() {
                           }
                         />
                         <div className="config-meta">
-                          <span>精确按字节计数</span>
+                          <span>{guideText("http.configuration.app.142")}</span>
                           <span>
                             {Number.isFinite(draft.response_length)
                               ? draft.response_length.toLocaleString()
-                              : "—"}{" "}
-                            字节 ·{" "}
+                              : "—"}{" "}{guideText("http.configuration.app.143")}{" "}
                             {draft.response_mode === "fixed"
-                              ? "固定内容"
-                              : "每次随机"}
+                              ? guideText("http.configuration.app.144")
+                              : guideText("http.configuration.app.145")}
                           </span>
                         </div>
                       </>
                     )}
                     <div className="form-footer">
-                      <p>
-                        保存配置不会自动重启。点击“运行”或“重启并应用配置”后生效。
-                      </p>
+                      <p>{guideText("shared.configuration.app.053")}</p>
                       <button
                         className="button primary"
                         disabled={locked || Boolean(environment?.config_error)}
                         type="submit"
                       >
-                        {busy === "save" ? "保存中…" : "保存配置"}
+                        {busy === "save" ? guideText("shared.configuration.app.146") : guideText("shared.configuration.app.147")}
                       </button>
                     </div>
                   </form>
                   {dirty && (
-                    <p className="draft-memory-note">
-                      此草稿会在协议切换时保留；刷新或关闭页面会丢失未保存的修改。
-                    </p>
+                    <p className="draft-memory-note">{guideText("shared.configuration.app.054")}</p>
                   )}
                   <div className="applied-config">
                     <h3>
                       {isProfinet
-                        ? "当前启动参数（native当前另见运行态）"
+                        ? guideText("profinet.configuration.app.148")
                         : isIec101
-                          ? "当前生效双通道参数（软件模拟）"
+                          ? guideText("iec101.configuration.app.149")
                           : isDlt645
-                            ? "当前生效启动参数（非实时表状态）"
+                            ? guideText("dlt645.configuration.app.150")
                             : isIec104
-                              ? "当前生效启动参数（非实时点值）"
-                              : "当前生效参数"}
+                              ? guideText("iec104.configuration.app.151")
+                              : guideText("shared.configuration.app.152")}
                     </h3>
                     {selected.applied_config ? (
                       <dl>
@@ -1832,8 +1821,8 @@ export default function App() {
                             isIgmp ||
                             isMpls ||
                             isProfinet
-                              ? "二层链路配置"
-                              : "绑定地址"}
+                              ? guideText("shared.configuration.app.153")
+                              : guideText("shared.configuration.app.154")}
                           </dt>
                           <dd>
                             {isProfinetConfig(selected.applied_config)
@@ -1863,14 +1852,14 @@ export default function App() {
                             <div>
                               <dt>
                                 {isIec101
-                                  ? "双通道 TCP 端口"
+                                  ? guideText("iec101.configuration.app.155")
                                   : isVxlan || isBfd || isRtp || isRtcp
-                                    ? "UDP 端口"
+                                    ? guideText("shared.configuration.app.156")
                                     : isMqttSn
-                                      ? "主 UDP 端口"
+                                      ? guideText("mqtt-sn.configuration.app.157")
                                       : isDns
-                                        ? "DNS 端口"
-                                        : "TCP 端口"}
+                                        ? guideText("dns.configuration.app.158")
+                                        : guideText("shared.configuration.app.159")}
                               </dt>
                               <dd>
                                 {isIec101Config(selected.applied_config)
@@ -1884,36 +1873,36 @@ export default function App() {
                         <div>
                           <dt>
                             {isProfinet
-                              ? "三节点启动配置（非实时native值）"
+                              ? guideText("profinet.configuration.app.160")
                               : isMpls
-                                ? "MPLS软件角色、标签与目标场景"
+                                ? guideText("mpls.configuration.app.161")
                                 : isIgmp
-                                  ? "内核成员组与固定查询验收profile"
+                                  ? guideText("igmp.configuration.app.162")
                                   : isCustomEthernet
-                                    ? "固定响应与显式请求fixture"
+                                    ? guideText("custom-ethernet.configuration.app.163")
                                     : isArpClient
-                                      ? "请求模式、实验角色与时序"
+                                      ? guideText("arp-client.configuration.app.164")
                                       : isVxlan
-                                        ? "固定 ARP 角色、VNI 与目标场景"
+                                        ? guideText("vxlan.configuration.app.165")
                                         : isBfd
-                                          ? "固定对端、时序与场景"
+                                          ? guideText("bfd.configuration.app.166")
                                           : isIec101
-                                            ? "固定格式与遥信配置"
+                                            ? guideText("iec101.configuration.app.167")
                                             : isDlt645
-                                              ? "软件电表启动配置与限制"
+                                              ? guideText("dlt645.configuration.app.168")
                                               : isRtp || isRtcp
-                                                ? "数据报容量与接收范围"
+                                                ? guideText("shared.configuration.app.169")
                                                 : isMqttSn
-                                                  ? "网关发现与私有 Broker"
+                                                  ? guideText("mqtt-sn.configuration.app.170")
                                                   : isIec104
-                                                    ? "启动点配置与映射"
+                                                    ? guideText("iec104.configuration.app.171")
                                                     : isTelnet
-                                                      ? "实验应用与限制"
+                                                      ? guideText("telnet.configuration.app.172")
                                                       : isDns
-                                                        ? "启用传输"
+                                                        ? guideText("dns.configuration.app.173")
                                                         : isMqtt
-                                                          ? "连接与报文限制"
-                                                          : "响应配置"}
+                                                          ? guideText("mqtt.configuration.app.174")
+                                                          : guideText("shared.configuration.app.175")}
                           </dt>
                           <dd className="applied-body">
                             {isProfinetConfig(selected.applied_config)
@@ -1979,11 +1968,11 @@ export default function App() {
                                                       : isTelnetConfig(
                                                             selected.applied_config,
                                                           )
-                                                        ? `最多 ${selected.applied_config.max_connections} 个连接 · 输入行最大 ${selected.applied_config.max_line_bytes.toLocaleString()} 字节（去掉 CRLF） · 欢迎语 ${JSON.stringify(selected.applied_config.banner)}`
+                                                        ? `${guideText("shared.configuration.app.176")}${selected.applied_config.max_connections}${guideText("shared.configuration.app.177")}${selected.applied_config.max_line_bytes.toLocaleString()}${guideText("shared.configuration.app.178")}${JSON.stringify(selected.applied_config.banner)}`
                                                         : isMqttConfig(
                                                               selected.applied_config,
                                                             )
-                                                          ? `最多 ${selected.applied_config.max_connections} 个连接 · 完整报文最大 ${selected.applied_config.max_packet_size.toLocaleString()} 字节`
+                                                          ? `${guideText("shared.configuration.app.179")}${selected.applied_config.max_connections}${guideText("shared.configuration.app.180")}${selected.applied_config.max_packet_size.toLocaleString()}${guideText("shared.configuration.app.181")}`
                                                           : isDnsConfig(
                                                                 selected.applied_config,
                                                               )
@@ -2003,13 +1992,13 @@ export default function App() {
                                                             : isLegacyConfig(
                                                                   selected.applied_config,
                                                                 )
-                                                              ? `旧版固定正文 ${new TextEncoder().encode(selected.applied_config.response_body).length.toLocaleString()} 字节（POST 回显）`
-                                                              : `${selected.applied_config.response_length.toLocaleString()} 字节 · ${selected.applied_config.response_mode === "fixed" ? "固定内容" : "每次随机"}`}
+                                                              ? `${guideText("shared.configuration.app.182")}${new TextEncoder().encode(selected.applied_config.response_body).length.toLocaleString()}${guideText("shared.configuration.app.183")}`
+                                                              : `${selected.applied_config.response_length.toLocaleString()}${guideText("shared.configuration.app.186")}${selected.applied_config.response_mode === "fixed" ? guideText("shared.configuration.app.184") : guideText("shared.configuration.app.185")}`}
                           </dd>
                         </div>
                         {isMqttSnConfig(selected.applied_config) && (
                           <div>
-                            <dt>预定义主题</dt>
+                            <dt>{guideText("shared.configuration.app.187")}</dt>
                             <dd>
                               <ul className="dns-applied-records">
                                 {selected.applied_config.predefined_topics.map(
@@ -2027,7 +2016,7 @@ export default function App() {
                         )}
                         {isDnsConfig(selected.applied_config) && (
                           <div>
-                            <dt>生效记录</dt>
+                            <dt>{guideText("shared.configuration.app.188")}</dt>
                             <dd>
                               <ul className="dns-applied-records">
                                 {selected.applied_config.records.map((r, i) => (
@@ -2035,7 +2024,7 @@ export default function App() {
                                     <code>
                                       {r.name} {r.record_type} {r.value}
                                     </code>
-                                    <span>TTL {r.ttl} 秒</span>
+                                    <span>TTL {r.ttl}{guideText("shared.configuration.app.189")}</span>
                                   </li>
                                 ))}
                               </ul>
@@ -2043,14 +2032,14 @@ export default function App() {
                           </div>
                         )}
                         <div>
-                          <dt>容器</dt>
+                          <dt>{guideText("shared.configuration.app.190")}</dt>
                           <dd title={selected.container_id || ""}>
-                            {selected.container_id?.slice(0, 12) || "未运行"}
+                            {selected.container_id?.slice(0, 12) || guideText("shared.configuration.app.191")}
                           </dd>
                         </div>
                       </dl>
                     ) : (
-                      <p>首次成功启动后显示。</p>
+                      <p>{guideText("shared.configuration.app.055")}</p>
                     )}
                   </div>
                 </section>
@@ -2058,16 +2047,16 @@ export default function App() {
                 <section className="panel log-panel">
                   <div className="panel-heading">
                     <div className="log-title">
-                      <h2>实时日志</h2>
+                      <h2>{guideText("shared.runtime.app.192")}</h2>
                       <span
                         className={`stream-dot ${logConnected && !paused ? "connected" : ""}`}
                       />
                       <span className="stream-status">
                         {paused
-                          ? "已暂停跟随"
+                          ? guideText("shared.runtime.app.193")
                           : logConnected
-                            ? "正在跟随"
-                            : "等待连接"}
+                            ? guideText("shared.runtime.app.194")
+                            : guideText("shared.runtime.app.195")}
                       </span>
                     </div>
                     <div className="log-tools">
@@ -2112,23 +2101,21 @@ export default function App() {
                     </div>
                   </div>
                   <div className="log-meta">
-                    <span>来源：Docker stdout / stderr</span>
-                    <span>最近 200 行</span>
+                    <span>{guideText("shared.runtime.app.196")}</span>
+                    <span>{guideText("shared.runtime.app.197")}</span>
                   </div>
                   <pre
                     className="log-content"
                     ref={logRef}
                     tabIndex={0}
-                    aria-label={`${protocolName} 服务日志`}
+                    aria-label={`${protocolName}${guideText("shared.runtime.app.198")}`}
                   >
                     {logLines.length
                       ? logLines.join("\n")
-                      : `等待 ${protocolName} 服务日志…\n启动 ${protocolName} 服务后，在此查看请求与响应事件。`}
+                      : `${guideText("shared.runtime.app.199")}${protocolName}${guideText("shared.runtime.app.200")}${protocolName}${guideText("shared.runtime.app.201")}`}
                   </pre>
                   <div className="log-footer">
-                    <span>
-                      日志为有界快照，收发预览可能截断；原始长度见日志字段。
-                    </span>
+                    <span>{guideText("shared.runtime.app.202")}</span>
                   </div>
                 </section>
               </div>
@@ -2198,14 +2185,12 @@ export default function App() {
               )}
               <section className="panel connection-panel">
                 <div className="panel-heading">
-                  <h2>连接与验证</h2>
-                  <span className="muted">内置测试与手动接入</span>
+                  <h2>{guideText("shared.connection.app.203")}</h2>
+                  <span className="muted">{guideText("shared.connection.app.204")}</span>
                 </div>
                 {profinetSelected ? (
                   <>
-                    <p className="test-config-notice">
-                      ALL仅三节点只读24项，不自动执行Set/Signal。可选临时写会清对应NV，须按baseline恢复current/NV/OS，容器清理不等于恢复完成；外部并发改变时拒覆盖。Signal为真实软件灯三次1Hz闪烁，不是物理LED。client90秒、写入保留30秒恢复预算；三节点始终并发。
-                    </p>
+                    <p className="test-config-notice">{guideText("profinet.connection.app.056")}</p>
                     <ProtocolClientTests
                       key={profinetSelected.id}
                       instance={profinetSelected}
@@ -2225,9 +2210,7 @@ export default function App() {
                   </>
                 ) : mplsSelected ? (
                   <>
-                    <p className="test-config-notice">
-                      当前applied场景：每case两轮，ALL8项/计划8请求，不自动轮换14场景。normal响应、故障执行、silent与拒绝证据分别核对；short13的TX错误明确不可用，不能无结果假绿。client30秒/每阶段3秒绝对期限，manager45秒。
-                    </p>
+                    <p className="test-config-notice">{guideText("mpls.connection.app.057")}</p>
                     <ProtocolClientTests
                       key={mplsSelected.id}
                       instance={mplsSelected}
@@ -2247,14 +2230,10 @@ export default function App() {
                   </>
                 ) : igmpSelected ? (
                   <>
-                    <p className="test-config-notice">
-                      General覆盖全部测试时applied组，Group-specific只取ordered第一组，两轮各12秒窗口。ALL计划4检查组；Query/Report实际数和测试前候选报告独立统计。含保守暖机/清理的client总90秒（manager105秒），不IP重join、不修改force以制造成功。
-                    </p>
+                    <p className="test-config-notice">{guideText("igmp.connection.app.058")}</p>
                     {igmpSelected.applied_config &&
                       !igmpBuiltinConfigured(igmpSelected.applied_config) && (
-                        <p className="test-error">
-                          当前生效host配置peer_interface=null：内置查询不可用，请使用下面外部客户端模板；不会猜测peer接口或自动SSH。
-                        </p>
+                        <p className="test-error">{guideText("igmp.connection.app.059")}</p>
                       )}
                     <ProtocolClientTests
                       key={igmpSelected.id}
@@ -2280,9 +2259,7 @@ export default function App() {
                   </>
                 ) : customEthernetSelected ? (
                   <>
-                    <p className="test-config-notice">
-                      当前生效显式fixture：ROUNDTRIP两组各1次，REPEAT两组各3次；ALL共4组检查/8次实际交换。任意BPF可能不匹配，不自动生成新filter/请求或轮换release配置。
-                    </p>
+                    <p className="test-config-notice">{guideText("custom-ethernet.connection.app.060")}</p>
                     <ProtocolClientTests
                       key={customEthernetSelected.id}
                       instance={customEthernetSelected}
@@ -2303,15 +2280,12 @@ export default function App() {
                         config={arpClientSelected.applied_config}
                       />
                     )}
-                    <p className="test-config-notice">
-                      当前已生效 mode / scenario
-                      的4案例各2轮（ALL8），不自动轮换15组合、重置pending或改目标计时器。负向MAPPING仍注入完整规范回应并证明拒绝；TIMEOUT才证明无可归属回应的真实期限。query_id仅本地关联，没有wire事务ID、响应ACK或认证；迟到相同回应仍存在歧义。
-                    </p>
+                    <p className="test-config-notice">{guideText("arp-client.connection.app.061")}</p>
                     <p className="field-help">
                       {arpClientSelected.applied_config?.link.mode ===
                       "host-interface"
-                        ? "host内置测试只读按server_mac找本机唯一不同的真实Ethernet接口，无匹配/多匹配/同接口会明确不可用；实际还需真实L2路径。异机反向peer须显式选择自己的接口，Web不会自动SSH。"
-                        : "反向peer只在受管internal网络临时运行，以真实另一veth的incoming验证；不会永久生成假对端，也不直达物理LAN。"}
+                        ? guideText("arp-client.connection.app.062")
+                        : guideText("arp-client.connection.app.063")}
                     </p>
                     <ProtocolClientTests
                       key={arpClientSelected.id}
@@ -2327,14 +2301,7 @@ export default function App() {
                   </>
                 ) : vxlanSelected ? (
                   <>
-                    <p className="test-config-notice">
-                      ALL
-                      为当前生效模式四案例各两轮（8项），不会自动切换11模式。每个请求使用新鲜填充与完整哈希关联只读因果事件；Reply
-                      不回显 nonce，不把静态字节、sendto 或观察器 HTTP
-                      成功单独当作通过。测试要求固定对端 IP
-                      已属于执行主机，固定接收端口可独占；不会自动在 CLI
-                      所在异机执行或伪造地址。
-                    </p>
+                    <p className="test-config-notice">{guideText("vxlan.connection.app.064")}</p>
                     <ProtocolClientTests
                       key={vxlanSelected.id}
                       instance={vxlanSelected}
@@ -2349,12 +2316,7 @@ export default function App() {
                   </>
                 ) : bfdSelected ? (
                   <>
-                    <p className="test-config-notice">
-                      仅测试当前生效模式，每次两个新鲜会话轮次；不会切换或代测其他模式。测试要求对端
-                      IP 已属于执行主机，且该地址 UDP 3784 无其他主站占用；LAN
-                      对端在远机时，本机测试会明确拒绝，不自动配置 IP 或
-                      SSH。故障验证同时核对实际接收报文与私有只读场景证据。
-                    </p>
+                    <p className="test-config-notice">{guideText("bfd.connection.app.065")}</p>
                     <ProtocolClientTests
                       key={bfdSelected.id}
                       instance={bfdSelected}
@@ -2434,7 +2396,7 @@ export default function App() {
                     caseLabels={iec104CaseLabels}
                     pathLabel="固定站点"
                     describeConfig={(config) =>
-                      `${config.bind_ip}:${config.port} · 最多 ${config.max_connections} 个连接 · ${iec104StartupDescription(config)}`
+                      `${config.bind_ip}:${config.port}${guideText("iec104.verification.app.205")}${config.max_connections}${guideText("iec104.verification.app.206")}${iec104StartupDescription(config)}`
                     }
                   />
                 ) : telnetSelected ? (
@@ -2447,7 +2409,7 @@ export default function App() {
                     caseLabels={telnetCaseLabels}
                     pathLabel="实验会话"
                     describeConfig={(config) =>
-                      `${config.bind_ip}:${config.port} · 最多 ${config.max_connections} 个连接 · 输入行最大 ${config.max_line_bytes.toLocaleString()} 字节（去掉 CRLF） · 欢迎语 ${JSON.stringify(config.banner)}`
+                      `${config.bind_ip}:${config.port}${guideText("telnet.verification.app.207")}${config.max_connections}${guideText("telnet.verification.app.208")}${config.max_line_bytes.toLocaleString()}${guideText("telnet.verification.app.209")}${JSON.stringify(config.banner)}`
                     }
                   />
                 ) : mqttSelected ? (
@@ -2460,7 +2422,7 @@ export default function App() {
                     caseLabels={mqttCaseLabels}
                     pathLabel="主题前缀"
                     describeConfig={(config) =>
-                      `${config.bind_ip}:${config.port} · 最多 ${config.max_connections} 个连接 · 完整报文最大 ${config.max_packet_size.toLocaleString()} 字节`
+                      `${config.bind_ip}:${config.port}${guideText("mqtt.verification.app.210")}${config.max_connections}${guideText("mqtt.verification.app.211")}${config.max_packet_size.toLocaleString()}${guideText("mqtt.verification.app.212")}`
                     }
                   />
                 ) : dnsSelected ? (
@@ -2479,49 +2441,46 @@ export default function App() {
                   />
                 ) : null}
                 <details className="connection-help">
-                  <summary>
-                    手动接入与{" "}
+                  <summary>{guideText("shared.connection.app.213")}{" "}
                     {isProfinet
-                      ? "三节点外部工具 / 实际host-veth接入"
+                      ? guideText("profinet.connection.app.214")
                       : isMpls
-                        ? "MPLS 单标签二层客户端"
+                        ? guideText("mpls.connection.app.215")
                         : isIgmp
-                          ? "IGMP Query与专属kernel VXLAN helper"
+                          ? guideText("igmp.connection.app.216")
                           : isCustomEthernet
-                            ? "Custom Ethernet 主动二层客户端"
+                            ? guideText("custom-ethernet.connection.app.217")
                             : isArpClient
-                              ? "ARP-client 反向二层工具"
+                              ? guideText("arp-client.connection.app.218")
                               : isVxlan
-                                ? "VXLAN 当前模式 ARP 客户端"
+                                ? guideText("vxlan.connection.app.219")
                                 : isBfd
-                                  ? "BFD 当前模式客户端"
+                                  ? guideText("bfd.connection.app.220")
                                   : isIec101
-                                    ? "IEC101 双通道与本地串口桥"
+                                    ? guideText("iec101.connection.app.221")
                                     : isDlt645
-                                      ? "DL/T645 软件表客户端"
+                                      ? guideText("dlt645.connection.app.222")
                                       : isRtcp
-                                        ? "RTCP 发送与接收观察"
+                                        ? guideText("rtcp.connection.app.223")
                                         : isRtp
-                                          ? "RTP 发送与接收观察"
+                                          ? guideText("rtp.connection.app.224")
                                           : isMqttSn
-                                            ? "MQTT-SN 客户端"
+                                            ? guideText("mqtt-sn.connection.app.225")
                                             : isIec104
-                                              ? "IEC104 客户端"
+                                              ? guideText("iec104.connection.app.226")
                                               : isTelnet
-                                                ? "Telnet 客户端"
+                                                ? guideText("telnet.connection.app.227")
                                                 : isDns
                                                   ? "dig"
                                                   : isMqtt
-                                                    ? "MQTT 客户端"
-                                                    : "curl"}{" "}
-                    命令
-                  </summary>
+                                                    ? guideText("mqtt.connection.app.228")
+                                                    : "curl"}{" "}{guideText("shared.connection.app.229")}</summary>
                   <div className="connection-content">
                     <div className="endpoint">
                       <span>
                         {isIec101
-                          ? "single 入口 · 1/1/1/1"
-                          : `${protocolName} 入口`}
+                          ? guideText("iec101.connection.app.230")
+                          : `${protocolName}${guideText("shared.connection.app.231")}`}
                       </span>
                       <code>
                         {profinetSelected
@@ -2558,42 +2517,37 @@ export default function App() {
                       </code>
                       <p>
                         {isProfinet
-                          ? "DCP/PTCP走实际数据二层，无应用端口/URL；私有management观察不是协议ACK。实际data网络/host-veth和三MAC目标见下，不猜eth1、不SSH改旧手测环境；已有store优先于启动初值。"
+                          ? guideText("profinet.connection.app.066")
                           : isMpls
-                            ? "没有应用TCP/UDP端口或URL；真实8847单标签输入、0800普通IPv4输出。私有observer不是协议ACK，角色IP不配置OS；外部客户端接口必须在其本机显式选择。"
+                            ? guideText("mpls.connection.app.067")
                             : isIgmp
-                              ? "IGMP是IPv4协议号2，无应用TCP/UDP端口或URL。Report发往成员组，不是Query源的单播ACK；VXLAN UDP仅是承载。实际sourceIP/MAC取运行态，外部peer接口在其本机明确选择，Web不自动SSH。"
+                              ? guideText("igmp.connection.app.068")
                               : isCustomEthernet
-                                ? "这是被动二层固定响应端，没有应用TCP/UDP端口或IP URL。私有observer只读，不是协议回应；实际接口身份与报文源覆盖分开。外部客户端显式使用其本机接口。"
+                                ? guideText("custom-ethernet.connection.app.069")
                                 : isArpClient
-                                  ? "这是二层主动请求端，没有ARP应用TCP/UDP端口或IP URL。role IP不配置到网卡；私有observer不是协议应答/ACK接口。反向命令中的接口是执行peer主机的实际接口。"
+                                  ? guideText("arp-client.connection.app.070")
                                   : isVxlan
-                                    ? "UDP固定回程：对端须监听配置的 peer_port；回复源为目标 source_port，不是反射 Request 的源端口。"
+                                    ? guideText("vxlan.connection.app.071")
                                     : isBfd
-                                      ? "固定控制端口3784；目标接口与异机客户端接口须各自在对应主机核对。"
-                                      : "绑定 0.0.0.0 时，请使用目标设备实际可达的 IP。"}
+                                      ? guideText("bfd.connection.app.072")
+                                      : guideText("shared.connection.app.073")}
                       </p>
                     </div>
                     {isDns && effectiveConfig && isDnsConfig(effectiveConfig) && effectiveConfig.tls_enabled && (
                       <div className="endpoint">
-                        <span>DNS over TLS 入口</span>
+                        <span>{guideText("dns.connection.app.232")}</span>
                         <code>{effectiveConfig.bind_ip}:{effectiveConfig.tls_port ?? 1853}</code>
-                        <p>客户端使用实验室证书 lab.crt 校验服务端，证书名称为 protocol-target-lab.test。</p>
+                        <p>{guideText("dns.connection.app.074")}</p>
                       </div>
                     )}
                     {isIec101 && (
                       <div className="endpoint">
-                        <span>double 入口 · 2/2/2/3</span>
+                        <span>{guideText("iec101.connection.app.233")}</span>
                         <code>
                           {connection?.endpoints?.double ||
                             `tcp://${effectiveIp?.bind_ip}:${effectiveSecondPort}`}
                         </code>
-                        <p>
-                          在实际测试主机本地执行串口桥命令；Web 不会自动 SSH
-                          或启动其他主机上的 helper。稳定路径为
-                          /run/protocol-target-lab/serial/iec101-a 与
-                          iec101-b。桥接占用通道期间请先停止桥接，再运行内置客户端测试。
-                        </p>
+                        <p>{guideText("iec101.connection.app.075")}</p>
                       </div>
                     )}
                     <div className="command-list">
@@ -2601,59 +2555,59 @@ export default function App() {
                         connection?.commands ||
                         (isProfinet
                           ? [
-                              "等待管理服务提供真实source snapshot与外部工具argv；停止态不虚构设备命令。",
+                              guideText("profinet.connection.app.234"),
                             ]
                           : isMpls
                             ? [
-                                "等待管理服务提供同镜像二层客户端与私有观察说明；不自动执行。",
+                                guideText("mpls.connection.app.235"),
                               ]
                             : isIgmp
                               ? [
-                                  "等待管理服务提供真实Query客户端与typed helper命令；不自动执行。",
+                                  guideText("igmp.connection.app.236"),
                                 ]
                               : isCustomEthernet
                                 ? [
-                                    "等待管理服务提供真实二层客户端和私有观察通道说明；不自动SSH。",
+                                    guideText("custom-ethernet.connection.app.237"),
                                   ]
                                 : isArpClient
                                   ? [
-                                      "等待管理服务提供反向peer与私有观察通道说明；不自动SSH。",
+                                      guideText("arp-client.connection.app.238"),
                                     ]
                                   : isVxlan
-                                    ? ["等待管理服务提供 VXLAN 接入命令。"]
+                                    ? [guideText("vxlan.connection.app.239")]
                                     : isBfd
-                                      ? ["等待管理服务提供 BFD 接入命令。"]
+                                      ? [guideText("bfd.connection.app.240")]
                                       : isIec101
                                         ? [
-                                            "等待管理服务提供 IEC101 双通道接入命令。",
+                                            guideText("iec101.connection.app.241"),
                                           ]
                                         : isDlt645
                                           ? [
-                                              "等待管理服务提供 DL/T645 接入命令。",
+                                              guideText("dlt645.connection.app.242"),
                                             ]
                                           : isRtcp
                                             ? [
-                                                "等待管理服务提供 RTCP 接入命令。",
+                                                guideText("rtcp.connection.app.243"),
                                               ]
                                             : isRtp
                                               ? [
-                                                  "等待管理服务提供 RTP 接入命令。",
+                                                  guideText("rtp.connection.app.244"),
                                                 ]
                                               : isMqttSn
                                                 ? [
-                                                    "等待管理服务提供 MQTT-SN 接入命令。",
+                                                    guideText("mqtt-sn.connection.app.245"),
                                                   ]
                                                 : isIec104
                                                   ? [
-                                                      "等待管理服务提供 IEC104 接入命令。",
+                                                      guideText("iec104.connection.app.246"),
                                                     ]
                                                   : isTelnet
                                                     ? [
-                                                        "等待管理服务提供 TELNET 接入命令。",
+                                                        guideText("telnet.connection.app.247"),
                                                       ]
                                                     : isMqtt
                                                       ? [
-                                                          "等待管理服务提供 MQTT 接入命令。",
+                                                          guideText("mqtt.connection.app.248"),
                                                         ]
                                                       : isDns
                                                         ? dnsConnectionCommands(dnsSelected?.applied_config || dnsSelected?.config || dnsDefaults)
@@ -2667,7 +2621,7 @@ export default function App() {
                           <code>{command}</code>
                           <button
                             className="icon-button"
-                            aria-label={`复制命令 ${index + 1}`}
+                            aria-label={`${guideText("shared.connection.app.249")}${index + 1}`}
                             title="复制命令"
                             onClick={() => void copy(command)}
                           >
@@ -2717,86 +2671,79 @@ export default function App() {
               </div>
               <h2>
                 {loading
-                  ? "正在读取协议工作台"
-                  : `${selectedProtocol?.name || "HTTP"} 工作台不可用`}
+                  ? guideText("shared.overview.app.250")
+                  : `${selectedProtocol?.name || "HTTP"}${guideText("shared.overview.app.251")}`}
               </h2>
               <p>
                 {selectedProtocol?.error ||
                   environment?.config_error ||
                   (loading
-                    ? "正在核对配置与运行资源。"
+                    ? guideText("shared.connection.app.076")
                     : selected && !knownWorkspace
-                      ? "当前配置类型与协议不匹配，或此界面尚未支持该协议的配置；请检查管理服务与前端版本。"
-                      : "无法取得协议工作台配置，请查看管理服务诊断。")}
+                      ? guideText("shared.connection.app.077")
+                      : guideText("shared.connection.app.078"))}
               </p>
               <div className="supported-paths">
                 {isProfinet ? (
                   <>
                     <code>PROFINET · native DCP + PTCP-N/F</code>
-                    <span>
-                      三个并发MAC节点 · 软件LED与时间戳 ·
-                      初值不覆盖已有native存储
-                    </span>
+                    <span>{guideText("profinet.overview.app.252")}</span>
                   </>
                 ) : isMpls ? (
                   <>
-                    <code>MPLS · 单标签 IPv4 / ICMP 软件目标</code>
-                    <span>
-                      真实二层输入/输出 · 无应用端口 · 不是通用LSR/LER
-                    </span>
+                    <code>{guideText("mpls.overview.app.253")}</code>
+                    <span>{guideText("mpls.overview.app.254")}</span>
                   </>
                 ) : isIgmp ? (
                   <>
-                    <code>IGMP · 持续Linux内核成员</code>
-                    <span>
-                      真实Query/Report · 无应用端口或ACK · helper仅新专属设备
-                    </span>
+                    <code>{guideText("igmp.overview.app.255")}</code>
+                    <span>{guideText("igmp.overview.app.256")}</span>
                   </>
                 ) : isCustomEthernet ? (
                   <>
-                    <code>Custom Ethernet · 被动固定响应</code>
-                    <span>独立内核BPF / 原始帧与构造载荷 · 无应用端口</span>
+                    <code>{guideText("custom-ethernet.overview.app.257")}</code>
+                    <span>{guideText("custom-ethernet.overview.app.258")}</span>
                   </>
                 ) : isArpClient ? (
                   <>
-                    <code>ARP-client · 主动二层请求</code>
-                    <span>受管bridge / 现有Ethernet接口 · 无IP/端口伪装</span>
+                    <code>{guideText("arp-client.overview.app.259")}</code>
+                    <span>{guideText("arp-client.overview.app.260")}</span>
                   </>
                 ) : isVxlan ? (
                   <>
-                    <code>VXLAN · IPv4 单播 ARP</code>
-                    <span>固定回程 · 因果请求 / 回复 · 无虚构 Up</span>
+                    <code>{guideText("vxlan.overview.app.261")}</code>
+                    <span>{guideText("vxlan.overview.app.262")}</span>
                   </>
                 ) : isBfd ? (
                   <>
-                    <code>BFD · IPv4 单跳异步</code>
-                    <span>固定对端 · 自主会话 · UDP3784</span>
+                    <code>{guideText("bfd.overview.app.263")}</code>
+                    <span>{guideText("bfd.overview.app.264")}</span>
                   </>
                 ) : isIec101 ? (
                   <>
-                    <code>IEC101 · 原生双通道</code>
+                    <code>{guideText("iec101.overview.app.265")}</code>
                     <span>single 1/1/1/1 · double 2/2/2/3</span>
                   </>
                 ) : isDlt645 ? (
                   <>
-                    <code>DL/T645-2007 · TCP 软件表</code>
-                    <span>固定 profile · 核心 ALL 只读</span>
+                    <code>{guideText("dlt645.overview.app.266")}</code>
+                    <span>{guideText("dlt645.overview.app.267")}</span>
                   </>
                 ) : isRtcp ? (
                   <>
                     <code>RTCPv2 · SR+SDES</code>
-                    <span>独立接收证据 · 不发送 RR / ACK</span>
+                    <span>{guideText("rtcp.overview.app.268")}</span>
                   </>
                 ) : isRtp ? (
                   <>
-                    <code>RTPv2 · UDP 接收</code>
-                    <span>私有接收证据 · 不发送 RTP ACK</span>
+                    <code>{guideText("rtp.overview.app.269")}</code>
+                    <span>{guideText("rtp.overview.app.270")}</span>
                   </>
                 ) : isMqttSn ? (
                   <>
                     <code>UDP</code>
-                    <code>QoS 1（本轮验收）</code>
-                    <code>组播 GWINFO</code>
+                    <code>{guideText("mqtt-sn.overview.app.271")}</code>
+                    <code>{guideText("mqtt-sn.overview.app.272")}</code>
                   </>
                 ) : isIec104 ? (
                   <>
@@ -2830,7 +2777,7 @@ export default function App() {
                     <code>/ok</code>
                     <code>/chunked</code>
                     <code>/close</code>
-                    <span>{methods.join(" · ")} · HTTPS · 固定场景</span>
+                    <span>{methods.join(" · ")}{guideText("http.overview.app.273")}</span>
                   </>
                 ) : null}
               </div>
@@ -2839,10 +2786,7 @@ export default function App() {
         </div>
         <footer className="page-footer">
           <span>Protocol Target Lab</span>
-          <span>
-            管理服务停止后，被测容器可以继续运行。整体停止请使用 plabctl
-            stop-all。
-          </span>
+          <span>{guideText("shared.connection.app.274")}</span>
         </footer>
       </main>
     </div>

@@ -1,3 +1,4 @@
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 import { validIpv4 } from "./dns-config.ts";
 export const arpClientModes = [
   "whois",
@@ -47,21 +48,21 @@ export const arpClientDefaults: ArpClientConfig = {
   timeout_ms: 1000,
   retries: 0,
 };
-export const arpClientModeLabels: Record<ArpClientMode, string> = {
-  whois: "ARP 查询（主动 Request）",
-  "response-fuzz": "ARP 响应插件测试（仍主动请求）",
-  rarp: "RARP 获取实验分配地址",
-  inarp: "InARP 查询已知 MAC 的协议地址",
-};
-export const arpClientScenarioLabels: Record<ArpClientScenario, string> = {
-  normal: "正常请求",
-  "wrong-target-ip": "错误目标 IP（预期无映射）",
-  "wrong-target-mac": "错误目标 MAC（预期无映射）",
-  "unknown-tha": "未知 RARP THA（预期无映射）",
-  "short-arp": "37 字节请求意图（预期无映射）",
-  "nonzero-rarp-proto": "非零 RARP 协议字段（正向）",
-  "nonzero-whois-tha": "非零 ARP 请求 THA（正向）",
-};
+export const arpClientModeLabels: Record<ArpClientMode, string> = lazyGuidanceLabels(() => ({
+  whois: guideText("arp-client.configuration.arp-client-config.001"),
+  "response-fuzz": guideText("arp-client.configuration.arp-client-config.002"),
+  rarp: guideText("arp-client.configuration.arp-client-config.003"),
+  inarp: guideText("arp-client.configuration.arp-client-config.004"),
+}));
+export const arpClientScenarioLabels: Record<ArpClientScenario, string> = lazyGuidanceLabels(() => ({
+  normal: guideText("arp-client.configuration.arp-client-config.005"),
+  "wrong-target-ip": guideText("arp-client.configuration.arp-client-config.006"),
+  "wrong-target-mac": guideText("arp-client.configuration.arp-client-config.007"),
+  "unknown-tha": guideText("arp-client.configuration.arp-client-config.008"),
+  "short-arp": guideText("arp-client.configuration.arp-client-config.009"),
+  "nonzero-rarp-proto": guideText("arp-client.configuration.arp-client-config.010"),
+  "nonzero-whois-tha": guideText("arp-client.configuration.arp-client-config.011"),
+}));
 export const arpClientAllowedScenarios: Record<
   ArpClientMode,
   readonly ArpClientScenario[]
@@ -84,13 +85,13 @@ export const arpClientCases = [
   "ALL",
 ] as const;
 export type ArpClientCase = (typeof arpClientCases)[number];
-export const arpClientCaseLabels: Record<string, string> = {
-  OBSERVE_REQUEST: "观察实际 incoming 请求（2轮）",
-  MAPPING: "响应与映射策略（2轮）",
-  REJECT_REPLY: "拒绝错误响应（2轮）",
-  TIMEOUT: "真实 pending 期限与静默（2轮）",
-  ALL: "当前生效模式 / 场景全部阶段（8项）",
-};
+export const arpClientCaseLabels: Record<string, string> = lazyGuidanceLabels(() => ({
+  OBSERVE_REQUEST: guideText("arp-client.verification.arp-client-config.012"),
+  MAPPING: guideText("arp-client.verification.arp-client-config.013"),
+  REJECT_REPLY: guideText("arp-client.verification.arp-client-config.014"),
+  TIMEOUT: guideText("arp-client.verification.arp-client-config.015"),
+  ALL: guideText("arp-client.verification.arp-client-config.016"),
+}));
 function object(v: unknown): v is Record<string, unknown> {
   return Boolean(v && typeof v === "object" && !Array.isArray(v));
 }
@@ -177,11 +178,11 @@ function mac(v: string): boolean {
 export function validateArpClientConfig(c: ArpClientConfig): void {
   if (!isArpClientConfig(c))
     throw new Error(
-      "ARP-client 必须含固定 profile、完整12字段和严格 link / request_scenario 对象，不能含 bind_ip、port 或多余字段。",
+      guideText("arp-client.configuration.arp-client-config.029"),
     );
   if (!validArpClientPair(c.mode, c.request_scenario.mode))
     throw new Error(
-      "此请求模式与场景不兼容，请明确选择适用场景；不会自动改回 normal。",
+      guideText("arp-client.configuration.arp-client-config.030"),
     );
   if (
     !mac(c.source_mac) ||
@@ -189,29 +190,29 @@ export function validateArpClientConfig(c: ArpClientConfig): void {
     c.source_mac.toLowerCase() === c.server_mac.toLowerCase()
   )
     throw new Error(
-      "目标与反向对端 MAC 必须是两个不同的完整非零单播地址，保存时统一小写。",
+      guideText("arp-client.configuration.arp-client-config.031"),
     );
   if (
     ![c.source_ip, c.server_ip, c.assigned_ip].every(roleIp) ||
     c.source_ip === c.server_ip
   )
     throw new Error(
-      "实验角色 IP 必须是非零单播 IPv4，不能是0/8、组播或全一广播；源 IP 与预期对端 IP 必须不同。",
+      guideText("arp-client.configuration.arp-client-config.032"),
     );
   if (
     c.link.mode === "host-interface" &&
     !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,14}$/.test(c.link.interface)
   )
     throw new Error(
-      "现有接口名须为1～15个 ASCII 字符，以字母、数字或下划线开头，其余只含字母、数字、下划线、点、连字符。",
+      guideText("arp-client.configuration.arp-client-config.033"),
     );
   for (const [key, min, max, label] of [
-    ["interval_ms", 10, 60000, "组间隔"],
-    ["timeout_ms", 10, 60000, "单次响应期限"],
-    ["retries", 0, 10, "额外重试次数"],
+    ["interval_ms", 10, 60000, guideText("arp-client.configuration.arp-client-config.034")],
+    ["timeout_ms", 10, 60000, guideText("arp-client.configuration.arp-client-config.035")],
+    ["retries", 0, 10, guideText("arp-client.configuration.arp-client-config.036")],
   ] as const)
     if (!Number.isInteger(c[key]) || c[key] < min || c[key] > max)
-      throw new Error(`${label}必须为 ${min}～${max} 之间的整数。`);
+      throw new Error(`${label}${guideText("arp-client.configuration.arp-client-config.037")}${min}～${max}${guideText("arp-client.configuration.arp-client-config.038")}`);
 }
 export function normalizeArpClientConfig(c: ArpClientConfig): ArpClientConfig {
   validateArpClientConfig(c);
@@ -265,17 +266,17 @@ export function sameArpClientConfig(
 }
 export function arpClientLinkDescription(c: ArpClientConfig): string {
   return c.link.mode === "docker-bridge"
-    ? "受管隔离内部 bridge · 双真实虚拟网卡"
-    : `现有宿主 Ethernet 接口 ${c.link.interface}（启动时核对真实身份）`;
+    ? guideText("arp-client.configuration.arp-client-config.017")
+    : `${guideText("arp-client.configuration.arp-client-config.018")}${c.link.interface}${guideText("arp-client.configuration.arp-client-config.019")}`;
 }
 export function arpClientDescription(c: ArpClientConfig): string {
-  return `${arpClientLinkDescription(c)} · ${c.mode} / ${c.request_scenario.mode} · 目标 ${c.source_mac.toLowerCase()} / 实验源 ${c.source_ip} · 对端 ${c.server_mac.toLowerCase()} / ${c.server_ip}${c.mode === "rarp" ? ` / 实验分配 ${c.assigned_ip}` : ""} · 间隔 ${c.interval_ms}ms / 期限 ${c.timeout_ms}ms / 额外重试 ${c.retries}`;
+  return `${arpClientLinkDescription(c)} · ${c.mode} / ${c.request_scenario.mode}${guideText("arp-client.configuration.arp-client-config.021")}${c.source_mac.toLowerCase()}${guideText("arp-client.configuration.arp-client-config.022")}${c.source_ip}${guideText("arp-client.configuration.arp-client-config.023")}${c.server_mac.toLowerCase()} / ${c.server_ip}${c.mode === "rarp" ? `${guideText("arp-client.configuration.arp-client-config.020")}${c.assigned_ip}` : ""}${guideText("arp-client.configuration.arp-client-config.024")}${c.interval_ms}${guideText("arp-client.configuration.arp-client-config.025")}${c.timeout_ms}${guideText("arp-client.configuration.arp-client-config.026")}${c.retries}`;
 }
 export function arpClientReportLabel(
   method: string,
   c: ArpClientConfig,
 ): string {
-  return `${c.mode} / ${c.request_scenario.mode} · ${c.link.mode} · ${method === "ALL" ? "全部8项" : arpClientCaseLabels[method] || method}（测试时生效快照）`;
+  return `${c.mode} / ${c.request_scenario.mode} · ${c.link.mode} · ${method === "ALL" ? guideText("arp-client.configuration.arp-client-config.027") : arpClientCaseLabels[method] || method}${guideText("arp-client.configuration.arp-client-config.028")}`;
 }
 export type ArpClientBudget = {
   testable: boolean;
@@ -291,7 +292,7 @@ export function arpClientBudget(
 ): ArpClientBudget {
   validateArpClientConfig(c);
   if (!arpClientCases.includes(method))
-    throw new Error("不支持的 ARP-client 测试案例。");
+    throw new Error(guideText("arp-client.configuration.arp-client-config.039"));
   const I = c.interval_ms,
     T = c.timeout_ms,
     W = I + T,
@@ -307,11 +308,11 @@ export function arpClientBudget(
     max_phase_ms = Math.max(...selected);
   const reason =
     T < 250
-      ? "响应期限小于250ms，缺少有界反向应答与取证窗口。"
+      ? guideText("arp-client.configuration.arp-client-config.040")
       : max_phase_ms > 4000
-        ? "所选案例的阶段预算超过4秒。"
+        ? guideText("arp-client.configuration.arp-client-config.041")
         : total_ms > 30000
-          ? "所选测试总预算超过30秒。"
+          ? guideText("arp-client.configuration.arp-client-config.042")
           : null;
   return {
     testable: reason === null,

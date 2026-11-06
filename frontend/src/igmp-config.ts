@@ -1,3 +1,4 @@
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 import { validIpv4 } from "./dns-config.ts";
 export type IgmpBridgeLink = { mode: "docker-bridge" };
 export type IgmpHostLink = {
@@ -141,7 +142,7 @@ function ipNumber(v: string) {
 export function validateIgmpConfig(c: IgmpConfig): void {
   if (!isIgmpConfig(c))
     throw new Error(
-      "IGMP必须为严格4字段、完整link分支及固定query profile（v2/MRT100），不能含应用port、bind_ip或多余字段。",
+      guideText("igmp.configuration.igmp-config.019"),
     );
   if (
     c.groups.length < 1 ||
@@ -150,20 +151,20 @@ export function validateIgmpConfig(c: IgmpConfig): void {
     c.groups.some((g) => !validIpv4(g) || !g.startsWith("239."))
   )
     throw new Error(
-      "成员组须为1～16个不同的标准239/8 IPv4字面地址；顺序保留，Group-specific只验证第一组。",
+      guideText("igmp.configuration.igmp-config.020"),
     );
   const l = c.link;
   if (l.mode === "host-interface") {
     if (!iface(l.interface) || !unicastIp(l.interface_ip))
       throw new Error(
-        "填写目标实际接口名（1～15字符）和非零单播IPv4；启动要求UP Ethernet且恰好一个实际primary地址匹配，不接受secondary歧义。",
+        guideText("igmp.configuration.igmp-config.021"),
       );
     if (
       l.peer_interface !== null &&
       (!iface(l.peer_interface) || l.peer_interface === l.interface)
     )
       throw new Error(
-        "内置测试端须显式指定不同的有效本机接口名；留空为null，仅外部客户端，不猜测peer接口。",
+        guideText("igmp.configuration.igmp-config.022"),
       );
   }
   if (l.mode === "owned-vxlan") {
@@ -174,7 +175,7 @@ export function validateIgmpConfig(c: IgmpConfig): void {
       l.local_outer_ip === l.peer_outer_ip
     )
       throw new Error(
-        "VXLAN外层需有效本机接口及两个不同的非零单播IPv4；本地IP实际归属/路由由只读预检核对。",
+        guideText("igmp.configuration.igmp-config.023"),
       );
     if (
       !integer(l.vni, 1, 16777215) ||
@@ -182,7 +183,7 @@ export function validateIgmpConfig(c: IgmpConfig): void {
       !integer(l.mtu, 576, 9000)
     )
       throw new Error(
-        "VNI须1～16777215、承载UDP1024～65535、MTU576～9000；启动另核对MTU≤实际underlay MTU-50。",
+        guideText("igmp.configuration.igmp-config.024"),
       );
     const parts = l.local_inner_cidr.split("/"),
       prefix = Number(parts[1]);
@@ -193,7 +194,7 @@ export function validateIgmpConfig(c: IgmpConfig): void {
       !unicastIp(l.peer_inner_ip)
     )
       throw new Error(
-        "内层需标准本地IPv4/CIDR（/16～/30）及同网段peer IPv4，不使用示例代替实际参数。",
+        guideText("igmp.configuration.igmp-config.025"),
       );
     const local = ipNumber(parts[0]),
       peer = ipNumber(l.peer_inner_ip),
@@ -210,14 +211,14 @@ export function validateIgmpConfig(c: IgmpConfig): void {
       )
     )
       throw new Error(
-        "内层两端须为同前缀两个不同的可用主机地址，不能是网络/广播地址或外层地址。实际其他地址/路由冲突由启动预检检查。",
+        guideText("igmp.configuration.igmp-config.026"),
       );
     if (
       !mac(l.local_inner_mac) ||
       !mac(l.peer_inner_mac) ||
       l.local_inner_mac.toLowerCase() === l.peer_inner_mac.toLowerCase()
     )
-      throw new Error("VXLAN内层MAC须为两个不同的非零单播6字节地址。");
+      throw new Error(guideText("igmp.configuration.igmp-config.027"));
   }
 }
 export function normalizeIgmpConfig(c: IgmpConfig): IgmpConfig {
@@ -277,25 +278,25 @@ export function changeIgmpLink(
           });
   return { config: { ...c, link: structuredClone(link) }, cache: nextCache };
 }
-export const igmpCaseLabels = {
-  GENERAL_QUERY: "General Query（全部组，2轮）",
-  GROUP_QUERY: "Group-specific（仅首组，2轮）",
-  ALL: "当前成员查询验证（4检查组）",
-};
+export const igmpCaseLabels = lazyGuidanceLabels(() => ({
+  GENERAL_QUERY: guideText("igmp.verification.igmp-config.001"),
+  GROUP_QUERY: guideText("igmp.verification.igmp-config.002"),
+  ALL: guideText("igmp.verification.igmp-config.003"),
+}));
 export function igmpLinkDescription(c: IgmpConfig): string {
   const l = c.link;
   return l.mode === "docker-bridge"
-    ? "受管隔离bridge · 实际endpoint接口/IP/MAC"
+    ? guideText("igmp.configuration.igmp-config.004")
     : l.mode === "host-interface"
-      ? `现有接口 ${l.interface} / 实际primary ${l.interface_ip} · ${l.peer_interface ? `本机peer接口 ${l.peer_interface}` : "仅外部客户端"}`
-      : `专属kernel VXLAN · VNI ${l.vni} · 承载UDP ${l.udp_port}（非IGMP端口） · ${l.local_inner_cidr}`;
+      ? `${guideText("igmp.configuration.igmp-config.007")}${l.interface}${guideText("igmp.configuration.igmp-config.008")}${l.interface_ip} · ${l.peer_interface ? `${guideText("igmp.configuration.igmp-config.005")}${l.peer_interface}` : guideText("igmp.configuration.igmp-config.006")}`
+      : `${guideText("igmp.configuration.igmp-config.009")}${l.vni}${guideText("igmp.configuration.igmp-config.010")}${l.udp_port}${guideText("igmp.configuration.igmp-config.011")}${l.local_inner_cidr}`;
 }
 export function igmpDescription(c: IgmpConfig): string {
-  return `${igmpLinkDescription(c)} · ${c.groups.length}成员组 [${c.groups.join(", ")}] · v2 Query/MRT100（10秒），Group-specific仅首组 ${c.groups[0]}`;
+  return `${igmpLinkDescription(c)} · ${c.groups.length}${guideText("igmp.configuration.igmp-config.012")}${c.groups.join(", ")}${guideText("igmp.configuration.igmp-config.013")}${c.groups[0]}`;
 }
 export function igmpReportLabel(method: string, snapshot: unknown): string {
   if (!isIgmpConfig(snapshot)) return method;
-  return `${method === "ALL" ? "计划4检查组" : method === "GENERAL_QUERY" ? "General两轮/全部成员组" : "Group-specific两轮/仅首组"} · ${snapshot.groups.length}组 / 首组${snapshot.groups[0]} · ${snapshot.link.mode}（测试时生效快照）`;
+  return `${method === "ALL" ? guideText("igmp.configuration.igmp-config.014") : method === "GENERAL_QUERY" ? guideText("igmp.configuration.igmp-config.015") : guideText("igmp.configuration.igmp-config.016")} · ${snapshot.groups.length}${guideText("igmp.configuration.igmp-config.017")}${snapshot.groups[0]} · ${snapshot.link.mode}${guideText("igmp.configuration.igmp-config.018")}`;
 }
 
 export function igmpBuiltinConfigured(c: IgmpConfig): boolean {

@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import useRuntimeSnapshot from "./useRuntimeSnapshot";
 import { runtimeHeartbeatAge, type RuntimeTarget } from "./runtime-status";
 import {
@@ -42,12 +43,10 @@ export default function ProfinetRuntimePanel(target: RuntimeTarget) {
   return (
     <section className="panel" aria-label="PROFINET 三节点只读运行态">
       <div className="panel-heading">
-        <h2>PROFINET 三节点只读运行态</h2>
-        <span className="muted">约每2秒采样 · 不主动发业务包</span>
+        <h2>{guideText("profinet.runtime.profinetruntimepanel.043")}</h2>
+        <span className="muted">{guideText("profinet.runtime.profinetruntimepanel.044")}</span>
       </div>
-      <p>
-        本地三节点就绪不等于PLC连接、硬件同步或DCP系统应用成功。native当前、NV内存、存储文件与实际OS分别观察，源改变或失联时不沿用旧状态。
-      </p>
+      <p>{guideText("profinet.runtime.profinetruntimepanel.001")}</p>
       {error && (
         <div className="test-error" role="alert">
           {error}
@@ -56,15 +55,15 @@ export default function ProfinetRuntimePanel(target: RuntimeTarget) {
       {!r ? (
         <p role="status">
           {target.disconnected
-            ? "管理服务失联，真实状态待确认。"
+            ? guideText("profinet.runtime.profinetruntimepanel.002")
             : target.status !== "running"
-              ? "服务未运行，三节点运行态不可用；保留native-store不等于节点仍运行。"
+              ? guideText("profinet.runtime.profinetruntimepanel.003")
               : snapshotExpired && snapshot?.available
-                ? "运行态样本过期，不沿用旧就绪/站名/IP。"
+                ? guideText("profinet.runtime.profinetruntimepanel.004")
                 : snapshot?.reason ||
                   (snapshot
-                    ? "运行态来源或schema不匹配，请核对版本。"
-                    : "正在读取三个真实节点及native状态…")}
+                    ? guideText("profinet.runtime.profinetruntimepanel.005")
+                    : guideText("profinet.runtime.profinetruntimepanel.006"))}
         </p>
       ) : (
         <div className="applied-config">
@@ -78,7 +77,7 @@ export default function ProfinetRuntimePanel(target: RuntimeTarget) {
               </dd>
             </div>
             <div>
-              <dt>主循环 / native tick年龄（保守估计）</dt>
+              <dt>{guideText("profinet.runtime.profinetruntimepanel.045")}</dt>
               <dd>
                 {Number.isFinite(age) ? Math.ceil(age) + "ms" : "未知"} /{" "}
                 {Number.isFinite(nativeAge)
@@ -94,10 +93,10 @@ export default function ProfinetRuntimePanel(target: RuntimeTarget) {
             ))}
           </dl>
           <section aria-label="DCP native当前与实际应用">
-            <h3>DCP · 原生 p-net 当前与实际应用</h3>
+            <h3>{guideText("profinet.runtime.profinetruntimepanel.046")}</h3>
             <dl>
               <div>
-                <dt>native子进程 / 版本</dt>
+                <dt>{guideText("profinet.runtime.profinetruntimepanel.047")}</dt>
                 <dd>
                   {r.components.dcp?.ready ? "ready" : "未确认ready"} · PID{" "}
                   {r.components.dcp?.pid ?? "未知"} / start_ticks{" "}
@@ -106,15 +105,15 @@ export default function ProfinetRuntimePanel(target: RuntimeTarget) {
                 </dd>
               </div>
               <div>
-                <dt>native当前重复采样值</dt>
+                <dt>{guideText("profinet.runtime.profinetruntimepanel.048")}</dt>
                 <dd>{profinetNativeText(r.components.dcp?.current)}</dd>
               </div>
               <div>
-                <dt>native NV内存</dt>
+                <dt>{guideText("profinet.runtime.profinetruntimepanel.049")}</dt>
                 <dd>{profinetNativeText(r.components.dcp?.nonvolatile)}</dd>
               </div>
               <div>
-                <dt>native样本稳定性</dt>
+                <dt>{guideText("profinet.runtime.profinetruntimepanel.050")}</dt>
                 <dd>
                   {r.components.dcp?.snapshot_stable === true
                     ? "重复稳定采样（不是与第三方RX线程的事务锁）"
@@ -136,25 +135,19 @@ export default function ProfinetRuntimePanel(target: RuntimeTarget) {
               </div>
             </dl>
             {r.network_apply?.sequence === null && (
-              <p className="field-help">
-                尚未观察到 native
-                应用回调（sequence=null）；当前IP/路由是否匹配以实际OS读回为准，不伪造回调序号。
-              </p>
+              <p className="field-help">{guideText("profinet.runtime.profinetruntimepanel.007")}</p>
             )}
-            <p className="field-help">
-              初始化参数仅新store使用。native ACK已返回、native
-              Get新值与OS成功是不同证据；临时Set会清对应NV，不能当作Web保存语义。这里不修改hostname或宿主接口。
-            </p>
+            <p className="field-help">{guideText("profinet.runtime.profinetruntimepanel.008")}</p>
             {r.network_apply && (
               <details open={!!r.network_apply.error}>
-                <summary>callback意图与实际IP/routes（只读）</summary>
+                <summary>{guideText("profinet.runtime.profinetruntimepanel.051")}</summary>
                 <pre className="protocol-wire">
                   {boundedWireSummary(r.network_apply).text}
                 </pre>
               </details>
             )}
             <details>
-              <summary>native固定身份 / 二进制来源</summary>
+              <summary>{guideText("profinet.runtime.profinetruntimepanel.052")}</summary>
               <pre className="protocol-wire">
                 {
                   boundedWireSummary({
@@ -168,38 +161,28 @@ export default function ProfinetRuntimePanel(target: RuntimeTarget) {
             </details>
           </section>
           <section aria-label="PROFINET native持久存储">
-            <h3>native持久存储（与当前/NV内存分开）</h3>
+            <h3>{guideText("profinet.runtime.profinetruntimepanel.053")}</h3>
             {r.storage === null ? (
-              <p>尚未观察存储状态，不能当作新空store或已保存。</p>
+              <p>{guideText("profinet.runtime.profinetruntimepanel.009")}</p>
             ) : (
               <>
-                <p>
-                  writer lock：{r.storage.writer_locked ? "已持有" : "未确认"}；
-                  {r.storage.initialized
-                    ? "已有初始化存储，启动参数不覆盖它"
-                    : "尚未标记初始化"}
-                  ；校验：{r.storage.validation}。
-                </p>
-                <p>
-                  NV内存与文件语义：
-                  {r.storage.native_nonvolatile_matches_saved === true
-                    ? "当前观察一致"
+                <p>{guideText("profinet.runtime.profinetruntimepanel.010")}{r.storage.writer_locked ? guideText("profinet.runtime.profinetruntimepanel.011") : guideText("profinet.runtime.profinetruntimepanel.012")}{guideText("profinet.runtime.profinetruntimepanel.013")}{r.storage.initialized
+                    ? guideText("profinet.runtime.profinetruntimepanel.014")
+                    : guideText("profinet.runtime.profinetruntimepanel.015")}{guideText("profinet.runtime.profinetruntimepanel.016")}{r.storage.validation}{guideText("profinet.runtime.profinetruntimepanel.017")}</p>
+                <p>{guideText("profinet.runtime.profinetruntimepanel.018")}{r.storage.native_nonvolatile_matches_saved === true
+                    ? guideText("profinet.runtime.profinetruntimepanel.019")
                     : r.storage.native_nonvolatile_matches_saved === false
-                      ? "不一致 / 可能保存待完成，不能称永久保存成功"
-                      : "未知"}
-                  。停止、管理程序重启和普通升级保留store。
-                </p>
+                      ? guideText("profinet.runtime.profinetruntimepanel.020")
+                      : guideText("profinet.runtime.profinetruntimepanel.021")}{guideText("profinet.runtime.profinetruntimepanel.022")}</p>
                 {r.storage.error && (
                   <div className="test-error">{r.storage.error}</div>
                 )}
                 <details>
-                  <summary>存储归属、文件校验与保存层次</summary>
+                  <summary>{guideText("profinet.runtime.profinetruntimepanel.054")}</summary>
                   <pre className="protocol-wire">
                     {boundedWireSummary(r.storage).text}
                   </pre>
-                  <p>
-                    native-save观察不证明掉电/fsync耐久性；文件存在不等于native当前值，临时文件状态也不能自动清空或重启掩盖。
-                  </p>
+                  <p>{guideText("profinet.runtime.profinetruntimepanel.023")}</p>
                 </details>
               </>
             )}
@@ -219,21 +202,17 @@ export default function ProfinetRuntimePanel(target: RuntimeTarget) {
                     : "PTCP-F（Delay FF41+FF42）"}
                 </h3>
                 <p>
-                  {node?.ready ? "节点ready" : "节点未确认ready"} ·{" "}
-                  {node?.mode ?? "模式未知"} / {node?.scenario ?? "场景未知"} ·
-                  pending Sync {node?.pending ?? "未知"}（不是已同步）；packet
-                  socket {node?.packet_socket_inode ?? "未知"}
+                  {node?.ready ? guideText("profinet.runtime.profinetruntimepanel.024") : guideText("profinet.runtime.profinetruntimepanel.025")}{guideText("profinet.runtime.profinetruntimepanel.026")}{" "}
+                  {node?.mode ?? guideText("profinet.runtime.profinetruntimepanel.027")}{guideText("profinet.runtime.profinetruntimepanel.028")}{node?.scenario ?? guideText("profinet.runtime.profinetruntimepanel.029")}{guideText("profinet.runtime.profinetruntimepanel.030")}{node?.pending ?? guideText("profinet.runtime.profinetruntimepanel.031")}{guideText("profinet.runtime.profinetruntimepanel.032")}{node?.packet_socket_inode ?? guideText("profinet.runtime.profinetruntimepanel.033")}
                 </p>
-                <p>
-                  两节点都接纳单步Sync、Sync+FU和Announce，只有真实处理事件，无线上ACK；软件时戳不调整系统时钟，也不证明硬件同步精度。
-                </p>
+                <p>{guideText("profinet.runtime.profinetruntimepanel.034")}</p>
                 <pre className="protocol-wire">
                   {node?.counters
                     ? boundedWireSummary(node.counters).text
                     : "计数未提供，不补0"}
                 </pre>
                 <details>
-                  <summary>最近实际请求 / 处理输出（当前boot历史）</summary>
+                  <summary>{guideText("profinet.runtime.profinetruntimepanel.055")}</summary>
                   <pre className="protocol-wire">
                     {
                       boundedWireSummary({
@@ -248,29 +227,21 @@ export default function ProfinetRuntimePanel(target: RuntimeTarget) {
             );
           })}
           <section aria-label="PROFINET 软件LED与被动捕获">
-            <h3>软件Signal LED与被动捕获</h3>
-            <p>
-              软件LED：
-              {r.signal?.state === true
-                ? "亮"
+            <h3>{guideText("profinet.runtime.profinetruntimepanel.056")}</h3>
+            <p>{guideText("profinet.runtime.profinetruntimepanel.035")}{r.signal?.state === true
+                ? guideText("profinet.runtime.profinetruntimepanel.036")
                 : r.signal?.state === false
-                  ? "灭"
-                  : "未知"}{" "}
-              · 实际转换 {r.signal?.transitions ?? "未知"}{" "}
-              次；不是物理GPIO/LED。DCP
-              Signal测试必须真实三次1Hz闪烁，不压缩时钟。
-            </p>
+                  ? guideText("profinet.runtime.profinetruntimepanel.037")
+                  : guideText("profinet.runtime.profinetruntimepanel.038")}{" "}{guideText("profinet.runtime.profinetruntimepanel.039")}{r.signal?.transitions ?? guideText("profinet.runtime.profinetruntimepanel.040")}{" "}{guideText("profinet.runtime.profinetruntimepanel.041")}</p>
             <details>
-              <summary>实际软件LED历史 / 被动capture</summary>
+              <summary>{guideText("profinet.runtime.profinetruntimepanel.057")}</summary>
               <pre className="protocol-wire">
                 {
                   boundedWireSummary({ signal: r.signal, capture: r.capture })
                     .text
                 }
               </pre>
-              <p>
-                被动namespace捕获没有native发包PID归属；进程/FD/不可变二进制证明与实际线上bytes分层。received不自动等于accepted，TX提交不等于peer实收。
-              </p>
+              <p>{guideText("profinet.runtime.profinetruntimepanel.042")}</p>
             </details>
           </section>
           <details>

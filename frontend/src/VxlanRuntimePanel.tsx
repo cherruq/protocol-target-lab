@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import { runtimeHeartbeatAge, type RuntimeTarget } from "./runtime-status";
 import useRuntimeSnapshot from "./useRuntimeSnapshot";
 import { currentVxlanRuntime } from "./vxlan-runtime";
@@ -17,13 +18,10 @@ export default function VxlanRuntimePanel(target: RuntimeTarget) {
   return (
     <section className="panel" aria-label="VXLAN 只读运行态">
       <div className="panel-heading">
-        <h2>VXLAN 只读运行态</h2>
-        <span className="muted">约每2秒更新 · 不发送 ARP 探测</span>
+        <h2>{guideText("vxlan.runtime.vxlanruntimepanel.008")}</h2>
+        <span className="muted">{guideText("vxlan.runtime.vxlanruntimepanel.009")}</span>
       </div>
-      <p>
-        只读核对受管源容器的绑定、主循环与因果计数。VXLAN / UDP
-        无会话连接状态，此处不生成隧道 Up 或伪造对端。
-      </p>
+      <p>{guideText("vxlan.runtime.vxlanruntimepanel.001")}</p>
       {error && (
         <div className="test-error" role="alert">
           {error}
@@ -32,13 +30,13 @@ export default function VxlanRuntimePanel(target: RuntimeTarget) {
       {!runtime ? (
         <p role="status">
           {target.disconnected
-            ? "管理服务失联，运行态待确认。"
+            ? guideText("vxlan.runtime.vxlanruntimepanel.002")
             : target.status !== "running"
-              ? "服务未运行，实时接收状态不可用。"
+              ? guideText("vxlan.runtime.vxlanruntimepanel.003")
               : snapshotExpired && snapshot?.available
-                ? "运行态样本已过期，当前状态待重新核对。"
+                ? guideText("vxlan.runtime.vxlanruntimepanel.004")
                 : snapshot?.reason ||
-                  (snapshot ? "实时状态不可用。" : "正在读取真实接收状态…")}
+                  (snapshot ? guideText("vxlan.runtime.vxlanruntimepanel.005") : guideText("vxlan.runtime.vxlanruntimepanel.006"))}
         </p>
       ) : (
         <div className="applied-config">
@@ -52,13 +50,13 @@ export default function VxlanRuntimePanel(target: RuntimeTarget) {
               </dd>
             </div>
             <div>
-              <dt>主循环心跳距今（保守估计）</dt>
+              <dt>{guideText("vxlan.runtime.vxlanruntimepanel.010")}</dt>
               <dd>
                 {Number.isFinite(age) ? `${Math.ceil(age)} ms` : "待确认"}
               </dd>
             </div>
             <div>
-              <dt>接收 / 固定源端口</dt>
+              <dt>{guideText("vxlan.runtime.vxlanruntimepanel.011")}</dt>
               <dd>
                 {runtime.receiver.bind_ip}:{runtime.receiver.port} /{" "}
                 {runtime.receiver.source_port}
@@ -71,7 +69,7 @@ export default function VxlanRuntimePanel(target: RuntimeTarget) {
               </dd>
             </div>
             <div>
-              <dt>配置场景 / VNI / inner 大小</dt>
+              <dt>{guideText("vxlan.runtime.vxlanruntimepanel.012")}</dt>
               <dd>
                 {vxlanModeLabels[runtime.scenario.mode as VxlanMode] ||
                   runtime.scenario.mode}{" "}
@@ -79,7 +77,7 @@ export default function VxlanRuntimePanel(target: RuntimeTarget) {
               </dd>
             </div>
             <div>
-              <dt>最近合法 Request 距今</dt>
+              <dt>{guideText("vxlan.runtime.vxlanruntimepanel.013")}</dt>
               <dd>
                 {runtime.last_valid_request_age_ms === null
                   ? "尚未收到合法 Request"
@@ -87,36 +85,33 @@ export default function VxlanRuntimePanel(target: RuntimeTarget) {
               </dd>
             </div>
             <div>
-              <dt>接收 / 合法 / 拒绝</dt>
+              <dt>{guideText("vxlan.runtime.vxlanruntimepanel.014")}</dt>
               <dd>
                 {runtime.counters.received} / {runtime.counters.accepted} /{" "}
                 {runtime.counters.rejected}
               </dd>
             </div>
             <div>
-              <dt>实际发送 / 正常 Reply / 抑制</dt>
+              <dt>{guideText("vxlan.runtime.vxlanruntimepanel.015")}</dt>
               <dd>
                 {runtime.counters.tx_actual} / {runtime.counters.normal_replies}{" "}
                 / {runtime.counters.suppressed}
               </dd>
             </div>
             <div>
-              <dt>下个请求 / 事件 ID</dt>
+              <dt>{guideText("vxlan.runtime.vxlanruntimepanel.016")}</dt>
               <dd>
                 {runtime.next_request_id} / {runtime.next_event_id}
               </dd>
             </div>
             <div>
-              <dt>事件淘汰 / 日志丢弃</dt>
+              <dt>{guideText("vxlan.runtime.vxlanruntimepanel.017")}</dt>
               <dd>
                 {runtime.cache_evictions} / {runtime.counters.log_dropped}
               </dd>
             </div>
           </dl>
-          <p className="field-help">
-            实际发送仅代表成功提交本地
-            socket；静默须有同一请求的合法接收与抑制记录。完整因果证据、真实接收字节与哈希在客户端报告中核对。
-          </p>
+          <p className="field-help">{guideText("vxlan.runtime.vxlanruntimepanel.007")}</p>
         </div>
       )}
     </section>

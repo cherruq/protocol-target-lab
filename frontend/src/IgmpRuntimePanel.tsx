@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import { runtimeHeartbeatAge, type RuntimeTarget } from "./runtime-status";
 import useRuntimeSnapshot from "./useRuntimeSnapshot";
 import {
@@ -44,12 +45,10 @@ export default function IgmpRuntimePanel(target: RuntimeTarget) {
   return (
     <section className="panel" aria-label="IGMP 内核成员只读运行态">
       <div className="panel-heading">
-        <h2>IGMP 内核成员只读运行态</h2>
-        <span className="muted">约每2秒采样 · 不发Query/Report</span>
+        <h2>{guideText("igmp.runtime.igmpruntimepanel.014")}</h2>
+        <span className="muted">{guideText("igmp.runtime.igmpruntimepanel.015")}</span>
       </div>
-      <p>
-        成员引用保持与实际查询验收分别显示。Report由实际Linux内核发出；本页不创建假peer、不手写Report或ACK，不提供连接Up。
-      </p>
+      <p>{guideText("igmp.runtime.igmpruntimepanel.001")}</p>
       {error && (
         <div className="test-error" role="alert">
           {error}
@@ -58,15 +57,15 @@ export default function IgmpRuntimePanel(target: RuntimeTarget) {
       {!r ? (
         <p role="status">
           {target.disconnected
-            ? "管理服务失联，内核成员状态待确认。"
+            ? guideText("igmp.runtime.igmpruntimepanel.002")
             : target.status !== "running"
-              ? "服务未运行，本工作台成员状态不可用；不据此宣称整个共享宿主已离组。"
+              ? guideText("igmp.runtime.igmpruntimepanel.003")
               : snapshotExpired && snapshot?.available
-                ? "样本过期，不能沿用旧成员就绪或报告证据。"
+                ? guideText("igmp.runtime.igmpruntimepanel.004")
                 : snapshot?.reason ||
                   (snapshot
-                    ? "运行态来源或格式不匹配。"
-                    : "正在读取真实内核与成员引用…")}
+                    ? guideText("igmp.runtime.igmpruntimepanel.005")
+                    : guideText("igmp.runtime.igmpruntimepanel.006"))}
         </p>
       ) : (
         <div className="applied-config">
@@ -76,33 +75,30 @@ export default function IgmpRuntimePanel(target: RuntimeTarget) {
               <dd>
                 {fresh
                   ? "内核成员引用已保持 · 真实接口 / socket / 主循环"
-                  : "成员引用或主循环时效待确认"}
-                ，不等于本轮Query已验证
-              </dd>
+                  : "成员引用或主循环时效待确认"}{guideText("igmp.runtime.igmpruntimepanel.016")}</dd>
             </div>
             <div>
-              <dt>主循环心跳距今（保守估计）</dt>
+              <dt>{guideText("igmp.runtime.igmpruntimepanel.017")}</dt>
               <dd>
                 {Number.isFinite(age) ? `${Math.ceil(age)} ms` : "待确认"}
               </dd>
             </div>
             <div>
-              <dt>真实kernel来源 / 版本</dt>
+              <dt>{guideText("igmp.runtime.igmpruntimepanel.018")}</dt>
               <dd>
                 {r.kernel.origin}
                 <br />
-                {r.kernel.release}（容器使用宿主内核，不是新guest kernel）
-              </dd>
+                {r.kernel.release}{guideText("igmp.runtime.igmpruntimepanel.019")}</dd>
             </div>
             <div>
-              <dt>实际network namespace</dt>
+              <dt>{guideText("igmp.runtime.igmpruntimepanel.020")}</dt>
               <dd>
                 device {r.kernel.network_namespace.device} / inode{" "}
                 {r.kernel.network_namespace.inode}
               </dd>
             </div>
             <div>
-              <dt>真实接口 / IPv4 / MAC</dt>
+              <dt>{guideText("igmp.runtime.igmpruntimepanel.021")}</dt>
               <dd>
                 {r.interface.name} · ifindex {r.interface.ifindex} ·{" "}
                 {r.interface.primary_ipv4}/{r.interface.prefixlen}
@@ -120,29 +116,26 @@ export default function IgmpRuntimePanel(target: RuntimeTarget) {
               </dd>
             </div>
             <div>
-              <dt>join时 if force / all force</dt>
+              <dt>{guideText("igmp.runtime.igmpruntimepanel.022")}</dt>
               <dd>
                 {r.parameters.at_join.interface_force} /{" "}
-                {r.parameters.at_join.all_force}（已有host接口只读）
-              </dd>
+                {r.parameters.at_join.all_force}{guideText("igmp.runtime.igmpruntimepanel.023")}</dd>
             </div>
             <div>
-              <dt>sysctl QRV（join / 当前）</dt>
+              <dt>{guideText("igmp.runtime.igmpruntimepanel.024")}</dt>
               <dd>
                 {r.parameters.sysctl_qrv_at_join} /{" "}
-                {r.parameters.current.sysctl_qrv}；不是未导出的实际learned
-                mr_qrv
-              </dd>
+                {r.parameters.current.sysctl_qrv}{guideText("igmp.runtime.igmpruntimepanel.025")}</dd>
             </div>
             <div>
-              <dt>join时QRV保守上界</dt>
+              <dt>{guideText("igmp.runtime.igmpruntimepanel.026")}</dt>
               <dd>
                 {r.parameters.qrv_upper_bound_at_join} ·{" "}
                 {r.parameters.qrv_upper_bound_reason}
               </dd>
             </div>
             <div>
-              <dt>v2 / v3 unsolicited间隔（join / 当前）</dt>
+              <dt>{guideText("igmp.runtime.igmpruntimepanel.027")}</dt>
               <dd>
                 {r.parameters.at_join.v2_unsolicited_interval_ms} /{" "}
                 {r.parameters.at_join.v3_unsolicited_interval_ms} ms →{" "}
@@ -151,12 +144,10 @@ export default function IgmpRuntimePanel(target: RuntimeTarget) {
               </dd>
             </div>
             <div>
-              <dt>保守startup窗口 / 剩余暖机上界估计</dt>
+              <dt>{guideText("igmp.runtime.igmpruntimepanel.028")}</dt>
               <dd>
                 {(r.parameters.startup_upper_ms / 1000).toFixed(1)}秒 /{" "}
-                {warmup === null ? "待确认" : `${(warmup / 1000).toFixed(1)}秒`}
-                ；含每period1000ms和首发2000ms裕度，不是实际定时器测量
-              </dd>
+                {warmup === null ? "待确认" : `${(warmup / 1000).toFixed(1)}秒`}{guideText("igmp.runtime.igmpruntimepanel.029")}</dd>
             </div>
             <div>
               <dt>查询因果前置条件</dt>
@@ -168,7 +159,7 @@ export default function IgmpRuntimePanel(target: RuntimeTarget) {
               </dd>
             </div>
             <div>
-              <dt>sticky参数变化 / 其他引用</dt>
+              <dt>{guideText("igmp.runtime.igmpruntimepanel.030")}</dt>
               <dd>
                 {r.parameters.detected_parameter_changes
                   ? "已检测参数改变"
@@ -176,41 +167,32 @@ export default function IgmpRuntimePanel(target: RuntimeTarget) {
                 /{" "}
                 {r.membership.other_refs_detected
                   ? "已检测其他或缺失引用"
-                  : "未检测其他引用"}
-                ；不自动重join清标记
-              </dd>
+                  : "未检测其他引用"}{guideText("igmp.runtime.igmpruntimepanel.031")}</dd>
             </div>
             <div>
-              <dt>持有成员socket / AF_PACKET socket</dt>
+              <dt>{guideText("igmp.runtime.igmpruntimepanel.032")}</dt>
               <dd>
-                inode {r.membership.udp_socket_inode} / {r.packet_socket_inode}
-                。成员UDP的私有临时端口只用于归属证明，不是应用服务入口。
-              </dd>
+                inode {r.membership.udp_socket_inode} / {r.packet_socket_inode}{guideText("igmp.runtime.igmpruntimepanel.033")}</dd>
             </div>
           </dl>
           {r.link_mode === "owned-vxlan" && (
             <section aria-label="IGMP专属VXLAN实际归属">
-              <h3>专属kernel VXLAN归属</h3>
+              <h3>{guideText("igmp.runtime.igmpruntimepanel.034")}</h3>
               {owned ? (
                 <>
                   <dl>
                     <div>
-                      <dt>root helper实际核验</dt>
-                      <dd>
-                        ready / matches_requested · receipt阶段 {owned.phase} ·
-                        与成员进程实际接口一致
-                      </dd>
+                      <dt>{guideText("igmp.runtime.igmpruntimepanel.035")}</dt>
+                      <dd>{guideText("igmp.runtime.igmpruntimepanel.036")}{owned.phase}{guideText("igmp.runtime.igmpruntimepanel.037")}</dd>
                     </div>
                     <div>
-                      <dt>
-                        owner UUID / 设备原子标记ID（IFLA_GROUP，非组播组）
-                      </dt>
+                      <dt>{guideText("igmp.runtime.igmpruntimepanel.038")}</dt>
                       <dd>
                         {owned.ownerId} / {owned.atomicGroup}
                       </dd>
                     </div>
                     <div>
-                      <dt>实际接口 / ifindex / IPv4 / MAC</dt>
+                      <dt>{guideText("igmp.runtime.igmpruntimepanel.039")}</dt>
                       <dd>
                         {owned.name} / {owned.ifindex} / {owned.primaryIpv4}/
                         {owned.prefixlen} / {owned.mac} · MTU {owned.mtu}
@@ -221,47 +203,34 @@ export default function IgmpRuntimePanel(target: RuntimeTarget) {
                       <dd className="applied-body">{owned.alias}</dd>
                     </div>
                     <div>
-                      <dt>link-only SHA256（不含成员groups）</dt>
+                      <dt>{guideText("igmp.runtime.igmpruntimepanel.040")}</dt>
                       <dd className="applied-body">{owned.linkSha256}</dd>
                     </div>
                   </dl>
-                  <p className="field-help">
-                    创建时使用IFLA_GROUP归属标记及MAC/MTU/core，alias在可信marked
-                    DOWN阶段补写并回读。接管/删除需receipt、实际属性与namespace一致，仅管理本工作台新设备。
-                  </p>
+                  <p className="field-help">{guideText("igmp.runtime.igmpruntimepanel.007")}</p>
                 </>
               ) : (
-                <p className="test-error">
-                  专属helper归属尚未核对或与当前成员接口不一致；不会把任意receipt对象当作已验证资源。原生kernel成员观察独立展示。
-                </p>
+                <p className="test-error">{guideText("igmp.runtime.igmpruntimepanel.008")}</p>
               )}
             </section>
           )}
-          <h3>当前boot持有组引用（采样）</h3>
+          <h3>{guideText("igmp.runtime.igmpruntimepanel.041")}</h3>
           <dl>
             {r.membership.groups.map((g) => (
               <div key={g.group}>
                 <dt>{g.group}</dt>
                 <dd>
-                  join年龄样本 {(g.joined_age_ms / 1000).toFixed(1)}秒 · kernel
-                  refs {g.current_kernel_refs} · join前其他refs{" "}
-                  {g.preexisting_other_refs} · 当前其他refs {g.other_refs}
+                  join年龄样本 {(g.joined_age_ms / 1000).toFixed(1)}{guideText("igmp.runtime.igmpruntimepanel.042")}{g.current_kernel_refs}{guideText("igmp.runtime.igmpruntimepanel.043")}{" "}
+                  {g.preexisting_other_refs}{guideText("igmp.runtime.igmpruntimepanel.044")}{g.other_refs}
                 </dd>
               </div>
             ))}
           </dl>
-          <p className="field-help">
-            停止仅释放本工作台IP_DROP_MEMBERSHIP/FD引用；host其他应用仍可能持有该组，不能宣称整个主机已离组。
-          </p>
+          <p className="field-help">{guideText("igmp.runtime.igmpruntimepanel.009")}</p>
           {warmup !== null && (
-            <p className="field-help">
-              按当前暖机保守估计：单案例2轮预算上界
-              {((warmup + 34000) / 1000).toFixed(1)}秒，ALL上界
-              {((warmup + 58000) / 1000).toFixed(1)}
-              秒；90秒client上限由服务端发起前再次核对，不缩短MRT或重新join。
-            </p>
+            <p className="field-help">{guideText("igmp.runtime.igmpruntimepanel.010")}{((warmup + 34000) / 1000).toFixed(1)}{guideText("igmp.runtime.igmpruntimepanel.011")}{((warmup + 58000) / 1000).toFixed(1)}{guideText("igmp.runtime.igmpruntimepanel.012")}</p>
           )}
-          <h3>实际捕获累计（含启动/外部查询，不是当前test通过数）</h3>
+          <h3>{guideText("igmp.runtime.igmpruntimepanel.045")}</h3>
           <dl>
             <div>
               <dt>incoming Query / native Report outgoing</dt>
@@ -277,30 +246,27 @@ export default function IgmpRuntimePanel(target: RuntimeTarget) {
               </dd>
             </div>
             <div>
-              <dt>其他incoming Report / 忽略 / 捕获拒绝 / 日志丢弃</dt>
+              <dt>{guideText("igmp.runtime.igmpruntimepanel.046")}</dt>
               <dd>
                 {r.counters.reports_in} / {r.counters.ignored} /{" "}
                 {r.counters.rejected_capture} / {r.counters.log_dropped}
               </dd>
             </div>
           </dl>
-          <h3>最近实际incoming Query（当前boot历史）</h3>
+          <h3>{guideText("igmp.runtime.igmpruntimepanel.047")}</h3>
           <pre className="protocol-wire">
             {r.last_query
               ? boundedWireSummary(r.last_query).text
               : "尚无实际Query记录，不从成员ready推造请求。"}
           </pre>
-          <h3>最近内核Report（当前boot历史）</h3>
+          <h3>{guideText("igmp.runtime.igmpruntimepanel.048")}</h3>
           <p>{igmpNativeReportDescription(r.last_report)}</p>
           <pre className="protocol-wire">
             {r.last_report
               ? boundedWireSummary(r.last_report).text
               : "尚无实际Report记录。"}
           </pre>
-          <p className="field-help">
-            近期历史不自动归因于某次测试：启动报告、外部Query、报告抑制可能影响关联。最终测试需源Query/cursor/native
-            Report与peer实际收包证据；没有wire事务ID或单播ACK。原长、SHA、截断和实际版本以记录为准。
-          </p>
+          <p className="field-help">{guideText("igmp.runtime.igmpruntimepanel.013")}</p>
         </div>
       )}
     </section>

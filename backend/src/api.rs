@@ -77,6 +77,11 @@ pub fn router(manager: Shared) -> Router {
                 )
             }),
         )
+        .route(
+            "/api/descriptions",
+            get(|| async { Json(crate::descriptions::catalog()) }),
+        )
+        .route("/api/protocols/{id}/description", get(description))
         .route("/api/protocols", get(protocols))
         .route("/api/protocols/{id}/schema", get(schema))
         .route("/api/instances", get(list))
@@ -106,6 +111,64 @@ async fn protocols(State(m): State<Shared>) -> Json<Value> {
         if protocol=="http" {descriptor["supported_methods"]=json!(crate::model::HTTP_METHODS);} else if protocol=="dns" {descriptor["supported_transports"]=json!(["UDP","TCP","TLS"]);} else if protocol=="mqtt" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_versions"]=json!(["3.1.1","5.0"]);descriptor["supported_qos"]=json!([0,1,2]);} else if protocol=="profinet" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["wire_profiles"]=json!(["pnet-dcp-ptcp-lab-v1"]);descriptor["supported_features"]=json!(["native DCP persistent store","three concurrent actual MAC nodes","software PTCP N/F and eleven finite FU scenarios","same-image disposable client and external tools"]);} else if protocol=="mpls" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["wire_profiles"]=json!(["mpls-single-label-ipv4-icmp-echo"]);descriptor["supported_features"]=json!(["single-label8847 request to plain0800 ICMP Echo reply","fourteen finite output scenarios","same-image disposable actual L2 client; short13TX may be unavailable"]);} else if protocol=="igmp" {descriptor["supported_transports"]=json!(["IGMP"]);descriptor["wire_profiles"]=json!(["linux-kernel-igmp-v2"]);descriptor["supported_features"]=json!(["persistent native kernel membership","actual General/Group Query verification","owned bridge, existing interface or owned kernel VXLAN"]);} else if protocol=="custom-ethernet" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["wire_profiles"]=json!(["ethernet-fixed-response"]);descriptor["supported_features"]=json!(["live libpcap cBPF kernel attach/readback","fixed payload or opaque raw response","single8021q VLAN/AUXDATA","persistent repeated response","owned software L2 or existing host interface"]);} else if protocol=="arp-client" {descriptor["supported_transports"]=json!(["ETHERNET"]);descriptor["supported_features"]=json!(["active ARP/RARP/InARP requester","four modes and fifteen legal scenario pairs","same-image inverse responder","owned software L2 or existing host interface"]);} else if protocol=="vxlan" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["wire_profiles"]=json!(["vxlan-ipv4-arp"]);descriptor["supported_features"]=json!(["Ethernet/IPv4 ARP Request-to-Reply","eleven configured target scenarios","fixed peer receive port","fresh causal receive/send observation"]);} else if protocol=="bfd" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["single-hop TTL255/interface validation","Down/Init/Up","Poll/Final","normal/poll/quiet/wrong-your/ttl254/short target modes"]);} else if protocol=="iec101" {descriptor["supported_transports"]=json!(["TCP byte stream via software PTY"]);descriptor["supported_features"]=json!(["simultaneous single/double address channels","RESET/STATUS","CLASS2","GI ACT_CON/data/ACT_TERM","FCB duplicate handling"]);} else if protocol=="dlt645" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["wire_profiles"]=json!(["dlt645-2007-tcp"]);descriptor["software_function_classes"]=json!(["11","13","14","15","16","08","17","18","19","1A","1C","1D","03 reject/fixture"]);descriptor["crypto_verified"]=json!(false);} else if protocol=="rtcp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["packet_profiles"]=json!(["sr-sdes"]);descriptor["rtcp_reply_expected"]=json!(false);} else if protocol=="rtp" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["supported_features"]=json!(["RTPv2 header/CSRC/extension/padding","fresh receive observation"]);descriptor["rtp_reply_expected"]=json!(false);} else if protocol=="mqtt-sn" {descriptor["supported_transports"]=json!(["UDP"]);descriptor["validated_qos"]=json!([1]);descriptor["validated_features"]=json!(["CONNECT/reconnect","REGISTER/PUBLISH","predefined topics","multicast GWINFO","independent MQTT broker delivery"]);} else if protocol=="iec104" {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["STARTDT","STOPDT","TESTFR","GI","READ","C_SC_NA_1 DIRECT"]);} else {descriptor["supported_transports"]=json!(["TCP"]);descriptor["supported_features"]=json!(["IAC","TTYPE","NAWS","TSPEED","XDISPLOC","NEW_ENVIRON"]);}
         descriptor
     })))
+}
+/// Description reads metadata and existing observations only; it never starts a worker or a test.
+async fn description(
+    State(m): State<Shared>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    if !crate::model::PROTOCOLS.contains(&id.as_str()) {
+        return Err(ApiError(
+            StatusCode::NOT_FOUND,
+            "protocol not implemented".into(),
+        ));
+    }
+    let config_schema = schema(Path(id.clone())).await?.0;
+    let (workspace, configuration_error) = {
+        let d = m.data.lock().await;
+        if d.config_error.is_some() {
+            (None, d.config_error.clone())
+        } else {
+            (
+                d.doc
+                    .instances
+                    .iter()
+                    .find(|i| i.protocol_id == id)
+                    .map(|i| i.view()),
+                None,
+            )
+        }
+    };
+    let mut connection = json!({"available":false,"reason":"工作台尚未初始化或配置不可用。"});
+    let mut verification = connection.clone();
+    if let Some(instance) = &workspace
+        && let Some(instance_id) = instance["id"].as_str()
+    {
+        connection = match tokio::time::timeout(
+            Duration::from_secs(5),
+            connection_info(State(m.clone()), Path(instance_id.into())),
+        )
+        .await
+        {
+            Ok(Ok(Json(v))) => v,
+            Ok(Err(e)) => json!({"available":false,"reason":e.1}),
+            Err(_) => {
+                json!({"available":false,"reason":"当前接入信息读取超时；静态说明仍可用。"})
+            }
+        };
+        verification = match tests(State(m.clone()), Path(instance_id.into())).await {
+            Ok(Json(v)) => v,
+            Err(e) => json!({"available":false,"reason":e.1}),
+        };
+    }
+    Ok(Json(
+        json!({"schema_version":1,"manager_version":env!("CARGO_PKG_VERSION"),"protocol_id":id,"language":"zh-CN",
+        "sections":crate::descriptions::sections(&id),
+        "configuration":{"schema":config_schema,"saved":workspace.as_ref().map(|w|&w["config"]),"applied":workspace.as_ref().map(|w|&w["applied_config"]),"error":configuration_error},
+        "connection":connection,"verification":verification,"workspace":workspace,
+        "commands":{"describe":["plabctl","describe",id],"schema":["plabctl","schema",id],"configuration":["plabctl","config","get",id],"connection":["plabctl","connection-info",id],"tests":["plabctl","tests","list",id]},
+        "notes":["说明、schema、接入和验证信息均由同一管理服务提供。","保存配置与当前生效配置分别列出；读取此命令不会保存、启停或执行客户端测试。","静态说明列出支持范围和各分支，实际可用测试以verification.cases/paths及当前生效配置为准。"]}),
+    ))
 }
 async fn schema(Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
     match id.as_str() {
@@ -305,22 +368,19 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
     if matches!(config, ProtocolConfig::Mqtt(_)) {
         let labels = crate::mqtt::CASES
             .iter()
+            .filter(|case| **case != "ALL")
             .map(|case| {
                 (
                     (*case).to_string(),
-                    if *case == "ALL" {
-                        "全部版本与 QoS".to_string()
-                    } else {
-                        format!(
-                            "MQTT {} · QoS {}",
-                            if case.starts_with("MQTT311") {
-                                "3.1.1"
-                            } else {
-                                "5.0"
-                            },
-                            case.chars().last().unwrap()
-                        )
-                    }
+                    format!(
+                        "MQTT {} · QoS {}",
+                        if case.starts_with("MQTT311") {
+                            "3.1.1"
+                        } else {
+                            "5.0"
+                        },
+                        case.chars().last().unwrap()
+                    )
                     .into(),
                 )
             })
@@ -329,27 +389,24 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
         result["path_label"] = "主题前缀".into();
     }
     if let ProtocolConfig::Igmp(c) = config {
-        result["case_labels"] = json!({"GENERAL_QUERY":"General Query：全部配置组（2轮）","GROUP_QUERY":"Group Query：首个配置组（2轮）","ALL":"两类查询（4组检查）"});
         result["path_label"] = "内核成员".into();
         result["test_budget"] = json!({"available":true,"budget":{"client_total_ms":crate::igmp::CLIENT_BUDGET_MS,"manager_total_ms":crate::igmp::MANAGER_BUDGET_MS,"manager_execution_ms":crate::igmp::EXECUTION_BUDGET_MS,"cleanup_reserve_ms":crate::igmp::CLEANUP_BUDGET_MS,"round_ms":12000,"rounds":c.rounds("ALL")?,"expected_general_reports":c.groups.len()*2,"expected_group_reports":2},"notes":["Actual runtime warmup and other references are checked before creating the peer","Query and Report counts differ with multiple groups"]});
     }
     if let ProtocolConfig::Profinet(c) = config {
-        result["case_labels"] = json!({"ALL":"全部只读验证（24项）","DCP_READ":"DCP原生读取（14项）","PTCP_N_DELAY":"PTCP无FollowUp延迟","PTCP_F_DELAY":"PTCP带FollowUp延迟","PTCP_SYNC":"单步Sync（双节点）","PTCP_SYNC_FOLLOW_UP":"Sync/FollowUp（双节点）","PTCP_ANNOUNCE":"Announce（双节点）","DCP_WRITE_STATION_TEMP":"临时名称写入与恢复","DCP_WRITE_IP_TEMP":"临时IP写入与恢复","DCP_SIGNAL":"软件LED三次闪烁"});
         result["path_label"] = "三节点套件".into();
         result["test_budget"] = json!({"available":true,"budget":c.test_budget("ALL")?,"client_total_ms":crate::profinet::CLIENT_BUDGET_MS,"manager_total_ms":crate::profinet::MANAGER_BUDGET_MS});
     }
     if let ProtocolConfig::Mpls(c) = config {
-        result["case_labels"] = json!({"ECHO":"当前响应场景（2轮）","TC_TTL":"TC/TTL边界（2轮）","PADDING":"载荷与以太填充（2轮）","INVALID_REQUEST":"拒绝错误标签/过期TTL（2轮）","ALL":"全部四类（8组检查）"});
         result["path_label"] = json!("单标签Echo");
         result["test_budget"] = json!({"available":true,"budget":c.test_budget("ALL")?});
     }
     if let ProtocolConfig::CustomEthernet(c) = config {
-        result["case_labels"] = json!({"ROUNDTRIP":"固定帧往返（2组）","REPEAT":"持续重复收发（2组、6次交换）","ALL":"当前请求帧验证（4组、8次交换）"});
         result["path_label"] = "显式请求帧".into();
         result["test_budget"] = json!({"available":true,"budget":c.test_budget("ALL")?});
     }
     if let ProtocolConfig::ArpClient(c) = config {
-        result["case_labels"] = json!({"OBSERVE_REQUEST":"实际主动请求","MAPPING":"映射或负请求拒绝","REJECT_REPLY":"错误应答拒绝","TIMEOUT":"真实请求超时","ALL":format!("当前 {}/{} 完整验证（8项）",c.mode.name(),c.request_scenario.mode())});
+        result["target_mode"] = c.mode.name().into();
+        result["target_scenario"] = c.request_scenario.mode().into();
         result["path_label"] = "反向应答端".into();
         result["test_budget"] = match c.test_budget("ALL") {
             Ok(b) => json!({"available":true,"budget":b}),
@@ -357,40 +414,44 @@ async fn tests(State(m): State<Shared>, Path(id): Path<String>) -> Result<Json<V
         };
     }
     if let ProtocolConfig::Vxlan(c) = config {
-        result["case_labels"] = json!({"ARP":"合法 ARP 与精确应答","RESERVED_BITS":"忽略保留位","REQUEST_THA":"忽略请求目标 MAC","INVALID_REQUEST":"拒绝错误 VNI 与目标 IP","ALL":format!("当前 {} 场景完整验证（8项）",c.scenario.mode())});
+        result["target_scenario"] = c.scenario.mode().into();
         result["path_label"] = "内层请求".into();
     }
     if let ProtocolConfig::Bfd(c) = config {
-        result["case_labels"] = json!({"NORMAL":"正常会话与周期收发","POLL":"目标 Poll 与真实 Final","QUIET":"目标静默、检测与恢复","WRONG_YOUR":"目标错误 Your 与恢复","TTL254":"目标实际 TTL254 与恢复","SHORT":"目标短报文与恢复","ALL":format!("当前 {} 场景完整验证（2轮）",c.scenario.mode())});
+        result["target_scenario"] = c.scenario.mode().into();
         result["path_label"] = "会话".into();
     }
     if matches!(config, ProtocolConfig::Iec101(_)) {
-        result["case_labels"] = json!({"RESET_STATUS":"复位与链路状态","CLASS2":"实际遥信与地址","GI":"总召确认、遥信与结束","STREAM":"增量分帧与重复 FCB","ALL":"全部双通道测试"});
         result["path_label"] = "通道".into();
     }
     if matches!(config, ProtocolConfig::Dlt645(_)) {
-        result["case_labels"] = json!({"READ_ADDRESS":"当前表地址","READ_DATA":"当前数据与 BCD","STREAM":"增量分帧与唤醒","ERROR_RESPONSE":"异常应答与恢复","WRITE_PERIOD":"写周期并恢复当前值","SECURITY_FIXTURE":"固定 fixture 传输（非认证）","ALL":"全部只读核心测试"});
         result["path_label"] = "电表".into();
     }
     if matches!(config, ProtocolConfig::Rtcp(_)) {
-        result["case_labels"] = json!({"SR_SDES":"发送报告与 CNAME","REPORT_BLOCKS":"报告块与原始字节","SDES_ITEMS":"SDES 项与未知类型","PADDING":"末子包填充","ALL":"全部测试"});
         result["path_label"] = "会话".into();
     }
     if matches!(config, ProtocolConfig::Rtp(_)) {
-        result["case_labels"] = json!({"BASIC":"基本头与实际载荷","CSRC_EXTENSION":"CSRC 与扩展头","PADDING":"填充剥离","SEQUENCE":"序号回绕与重复接收","ALL":"全部测试"});
         result["path_label"] = "数据流".into();
     }
     if matches!(config, ProtocolConfig::MqttSn(_)) {
-        result["case_labels"] = json!({"CONNECT":"连接与同 ID 重连","REGISTER_PUBLISH":"注册主题与 QoS1 实际交付","PREDEFINED_PUBLISH":"预定义主题与 QoS1 实际交付","DISCOVERY":"组播发现与网关身份","ALL":"全部测试"});
         result["path_label"] = "注册主题前缀".into();
     }
     if matches!(config, ProtocolConfig::Iec104(_)) {
-        result["case_labels"] = json!({"CONNECT":"连接与 U 帧控制","GI":"总召与结束","READ":"读点与实际值","COMMAND":"模拟单点控制与恢复","ALL":"全部测试"});
         result["path_label"] = "站点".into();
     }
     if matches!(config, ProtocolConfig::Telnet(_)) {
-        result["case_labels"] = json!({"CONNECT":"连接与欢迎","ECHO":"数据回显与 IAC 转义","OPTIONS":"原生协商与会话信息","UNKNOWN_OPTION":"不支持选项拒绝","ALL":"全部测试"});
         result["path_label"] = "会话".into();
+    }
+    let canonical_labels = crate::descriptions::case_labels(config.protocol_id());
+    if let Some(labels) = canonical_labels.as_object()
+        && !labels.is_empty()
+    {
+        let mut combined = result["case_labels"]
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
+        combined.extend(labels.clone());
+        result["case_labels"] = Value::Object(combined);
     }
     Ok(Json(result))
 }

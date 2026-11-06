@@ -1,3 +1,4 @@
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 import { validIpv4 } from "./dns-config.ts";
 
 export type RtcpConfig = {
@@ -12,13 +13,13 @@ export const rtcpDefaults: RtcpConfig = {
   max_packet_size: 2048,
   packet_profile: "sr-sdes",
 };
-export const rtcpCaseLabels: Record<string, string> = {
-  SR_SDES: "SR 与匹配 CNAME",
-  REPORT_BLOCKS: "SR 报告块",
-  SDES_ITEMS: "SDES 项与未知项",
-  PADDING: "末子包填充",
-  ALL: "全部测试",
-};
+export const rtcpCaseLabels: Record<string, string> = lazyGuidanceLabels(() => ({
+  SR_SDES: guideText("rtcp.verification.rtcp-config.001"),
+  REPORT_BLOCKS: guideText("rtcp.verification.rtcp-config.002"),
+  SDES_ITEMS: guideText("rtcp.verification.rtcp-config.003"),
+  PADDING: guideText("rtcp.verification.rtcp-config.004"),
+  ALL: guideText("rtcp.verification.rtcp-config.005"),
+}));
 export function isRtcpConfig(value: unknown): value is RtcpConfig {
   return Boolean(
     value &&
@@ -38,23 +39,23 @@ export function isRtcpConfig(value: unknown): value is RtcpConfig {
 }
 export function validateRtcpConfig(config: RtcpConfig): void {
   if (config.packet_profile !== "sr-sdes")
-    throw new Error("RTCP 必须显式使用本实验固定的 sr-sdes profile。");
+    throw new Error(guideText("rtcp.configuration.rtcp-config.009"));
   if (!validIpv4(config.bind_ip))
-    throw new Error("绑定地址必须是有效 IPv4 地址。");
+    throw new Error(guideText("rtcp.configuration.rtcp-config.010"));
   const first = Number(config.bind_ip.split(".")[0]);
   if ((first >= 224 && first <= 239) || config.bind_ip === "255.255.255.255")
     throw new Error(
-      "绑定地址须为单播 IPv4 地址或 0.0.0.0，不能使用组播或广播地址。",
+      guideText("rtcp.configuration.rtcp-config.011"),
     );
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535)
-    throw new Error("UDP 端口必须是 1～65535 之间的整数。");
+    throw new Error(guideText("rtcp.configuration.rtcp-config.012"));
   if (
     !Number.isInteger(config.max_packet_size) ||
     config.max_packet_size < 64 ||
     config.max_packet_size > 65507
   )
     throw new Error(
-      "最大数据报容量必须是 64～65507 之间的整数字节数，包含完整 compound RTCP 数据报；容量无需四字节对齐。",
+      guideText("rtcp.configuration.rtcp-config.013"),
     );
 }
 export function sameRtcpConfig(a: RtcpConfig, b: RtcpConfig): boolean {
@@ -66,5 +67,5 @@ export function sameRtcpConfig(a: RtcpConfig, b: RtcpConfig): boolean {
   );
 }
 export function rtcpDescription(config: RtcpConfig): string {
-  return `UDP ${config.bind_ip}:${config.port} · 容量 ${config.max_packet_size.toLocaleString()} 字节（四字节对齐报文上限 ${(Math.floor(config.max_packet_size / 4) * 4).toLocaleString()} 字节） · 固定 SR+SDES profile`;
+  return `UDP ${config.bind_ip}:${config.port}${guideText("rtcp.configuration.rtcp-config.006")}${config.max_packet_size.toLocaleString()}${guideText("rtcp.configuration.rtcp-config.007")}${(Math.floor(config.max_packet_size / 4) * 4).toLocaleString()}${guideText("rtcp.configuration.rtcp-config.008")}`;
 }

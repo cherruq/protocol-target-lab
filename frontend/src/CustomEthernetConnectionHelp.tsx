@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import {
   quoteShellCommand,
   type ArpConnectionInfo,
@@ -26,14 +27,14 @@ export default function CustomEthernetConnectionHelp({
       style={{ gridColumn: "1 / -1", minWidth: 0 }}
       aria-label="Custom Ethernet 二层接入说明"
     >
-      <strong>真实二层接入与私有只读观察</strong>
+      <strong>{guideText("custom-ethernet.connection.customethernetconnectionhelp.001")}</strong>
       {execution && (
         <dl>
           {Object.entries({
-            role: "测试角色",
-            bridge: "受管隔离链路",
-            host: "现有接口与异机客户端",
-            observer: "私有观察通道",
+            role: guideText("custom-ethernet.connection.customethernetconnectionhelp.002"),
+            bridge: guideText("custom-ethernet.connection.customethernetconnectionhelp.003"),
+            host: guideText("custom-ethernet.connection.customethernetconnectionhelp.004"),
+            observer: guideText("custom-ethernet.connection.customethernetconnectionhelp.005"),
           }).map(
             ([key, label]) =>
               typeof execution[key as keyof typeof execution] === "string" && (
@@ -54,12 +55,8 @@ export default function CustomEthernetConnectionHelp({
       ) : null}
       {external ? (
         <>
-          <h3>外部同镜像主动客户端模板（host-interface）</h3>
-          <p>
-            只展示/复制，Web不会执行。先用
-            <code>plabctl runtime custom-ethernet</code>
-            核对源真实image/boot/runtime，再替换实际客户端本机接口、源镜像ID及所有身份占位；SSH目标是实际目标服务器，不是MAC或虚构协议IP。只读observer不发送协议回应。结束后再次核对源身份。
-          </p>
+          <h3>{guideText("custom-ethernet.connection.customethernetconnectionhelp.006")}</h3>
+          <p>{guideText("custom-ethernet.connection.customethernetconnectionhelp.007")}<code>{guideText("custom-ethernet.connection.customethernetconnectionhelp.008")}</code>{guideText("custom-ethernet.connection.customethernetconnectionhelp.009")}</p>
           {external.requires?.length ? (
             <ul>
               {external.requires.map((s, i) => (
@@ -68,8 +65,8 @@ export default function CustomEthernetConnectionHelp({
             </ul>
           ) : null}
           {[
-            [forward, "复制只读转发模板"],
-            [peer, "复制外部以太网客户端模板"],
+            [forward, guideText("custom-ethernet.connection.customethernetconnectionhelp.010")],
+            [peer, guideText("custom-ethernet.connection.customethernetconnectionhelp.011")],
           ].map(([s, label]) => (
             <div key={label} className="command">
               {s ? (
@@ -84,7 +81,7 @@ export default function CustomEthernetConnectionHelp({
                   </button>
                 </>
               ) : (
-                <p>模板参数不可用，请核对管理服务版本。</p>
+                <p>{guideText("custom-ethernet.connection.customethernetconnectionhelp.012")}</p>
               )}
             </div>
           ))}
@@ -97,14 +94,9 @@ export default function CustomEthernetConnectionHelp({
           ) : null}
         </>
       ) : (
-        <p>
-          受管bridge使用上方内置客户端，临时peer进入当前exact owned
-          network。没有虚构host命令，不自动SSH、不创建VLAN设备或配置宿主网卡。
-        </p>
+        <p>{guideText("custom-ethernet.connection.customethernetconnectionhelp.013")}</p>
       )}
-      <p>
-        源是被动固定响应端，客户端主动发送当前显式fixture；不透明BPF可能不匹配。没有应用TCP/UDP端口、连接Up或标准事务ID/ACK。软件VLAN/AUXDATA证据与物理线上标签分别记录。
-      </p>
+      <p>{guideText("custom-ethernet.connection.customethernetconnectionhelp.014")}</p>
     </section>
   );
 }

@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import type { ProtocolTestRun } from "./protocol-tests.ts";
 import { isMplsConfig, type MplsConfig } from "./mpls-config.ts";
 /** Additional MPLS-only result sanity: zero exit or an empty report never establishes protocol success. */
@@ -6,7 +7,7 @@ export function mplsResultProblem(
 ): string | null {
   if (run.status !== "passed") return null;
   if (!isMplsConfig(run.applied_config))
-    return "MPLS配置快照不匹配，不能确认通过，请核对管理服务版本。";
+    return guideText("mpls.overview.mpls-tests.001");
   const expected =
     run.method === "ALL"
       ? 8
@@ -37,7 +38,7 @@ export function mplsResultProblem(
     r.error ||
     (r.exit_code !== undefined && r.exit_code !== 0)
   )
-    return "MPLS结果不完整或互相矛盾，不能确认通过：ALL须8项、单案例须2项实际检查，实际请求/响应数须与该快照场景一致；exit0或空结果不代表协议成功。请下载原始报告核对。";
+    return guideText("mpls.overview.mpls-tests.002");
   return null;
 }
 

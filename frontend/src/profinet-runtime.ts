@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import type { RuntimeEnvelope } from "./runtime-status.ts";
 import {
   isProfinetIpSuite,
@@ -290,8 +291,8 @@ export function currentProfinetRuntime(
 }
 export function profinetNativeText(v: ProfinetNativeValue | null | undefined) {
   return v
-    ? `站名 ${v.station_name === "" ? "（空名 / 未配置）" : v.station_name} · IP ${v.ip_suite.ip} / mask ${v.ip_suite.netmask} / gateway ${v.ip_suite.gateway}`
-    : "未观察 / 未提供；不从初始化参数或文件回填";
+    ? `${guideText("profinet.overview.profinet-runtime.002")}${v.station_name === "" ? guideText("profinet.overview.profinet-runtime.001") : v.station_name} · IP ${v.ip_suite.ip} / mask ${v.ip_suite.netmask} / gateway ${v.ip_suite.gateway}`
+    : guideText("profinet.overview.profinet-runtime.003");
 }
 /** Local process/interface readiness only; never native state application, persistence, sync or peer delivery. */
 export function profinetAllLocalReady(

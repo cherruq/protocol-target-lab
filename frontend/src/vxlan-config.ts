@@ -1,3 +1,4 @@
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 import { validIpv4 } from "./dns-config.ts";
 
 export const vxlanModes = [
@@ -44,26 +45,26 @@ export const vxlanDefaults: VxlanConfig = {
   reply_padding: 0,
   scenario: { mode: "normal" },
 };
-export const vxlanModeLabels: Record<VxlanMode, string> = {
-  normal: "正常 ARP Reply",
-  silent: "合法请求后静默",
-  "wrong-vni": "错误 VNI",
-  "clear-i": "清除 I 位",
-  "wrong-eth-dst": "错误 Ethernet 目的 MAC",
-  "wrong-sha": "错误 ARP SHA",
-  "wrong-spa": "错误 ARP SPA",
-  "wrong-tha": "错误 ARP THA",
-  "wrong-tpa": "错误 ARP TPA",
-  "short-header": "7 字节短 VXLAN 头",
-  "short-arp": "49 字节短 ARP 回复",
-};
-export const vxlanCaseLabels: Record<string, string> = {
-  ARP: "广播 / 单播 ARP 请求",
-  RESERVED_BITS: "保留位容忍与规范回复",
-  REQUEST_THA: "忽略请求 THA",
-  INVALID_REQUEST: "无效请求拒绝与无回复",
-  ALL: "当前生效模式四案例 × 两轮（8项）",
-};
+export const vxlanModeLabels: Record<VxlanMode, string> = lazyGuidanceLabels(() => ({
+  normal: guideText("vxlan.configuration.vxlan-config.001"),
+  silent: guideText("vxlan.configuration.vxlan-config.002"),
+  "wrong-vni": guideText("vxlan.configuration.vxlan-config.003"),
+  "clear-i": guideText("vxlan.configuration.vxlan-config.004"),
+  "wrong-eth-dst": guideText("vxlan.configuration.vxlan-config.005"),
+  "wrong-sha": guideText("vxlan.configuration.vxlan-config.006"),
+  "wrong-spa": guideText("vxlan.configuration.vxlan-config.007"),
+  "wrong-tha": guideText("vxlan.configuration.vxlan-config.008"),
+  "wrong-tpa": guideText("vxlan.configuration.vxlan-config.009"),
+  "short-header": guideText("vxlan.configuration.vxlan-config.010"),
+  "short-arp": guideText("vxlan.configuration.vxlan-config.011"),
+}));
+export const vxlanCaseLabels: Record<string, string> = lazyGuidanceLabels(() => ({
+  ARP: guideText("vxlan.verification.vxlan-config.012"),
+  RESERVED_BITS: guideText("vxlan.verification.vxlan-config.013"),
+  REQUEST_THA: guideText("vxlan.verification.vxlan-config.014"),
+  INVALID_REQUEST: guideText("vxlan.verification.vxlan-config.015"),
+  ALL: guideText("vxlan.verification.vxlan-config.016"),
+}));
 function object(v: unknown): v is Record<string, unknown> {
   return Boolean(v && typeof v === "object" && !Array.isArray(v));
 }
@@ -128,11 +129,11 @@ function mac(value: string): boolean {
 export function validateVxlanConfig(c: VxlanConfig): void {
   if (!isVxlanConfig(c))
     throw new Error(
-      "VXLAN 必须含固定 profile、完整13字段、合法补齐值和唯一 mode 场景；不能含额外字段。",
+      guideText("vxlan.configuration.vxlan-config.021"),
     );
   if (!unicast(c.bind_ip) || !unicast(c.peer_ip))
     throw new Error(
-      "外层绑定与对端地址须为明确单播 IPv4，不能为通配、组播或广播地址。",
+      guideText("vxlan.configuration.vxlan-config.022"),
     );
   if (
     !unicast(c.inner_ip) ||
@@ -140,25 +141,25 @@ export function validateVxlanConfig(c: VxlanConfig): void {
     c.inner_ip === c.requester_ip
   )
     throw new Error(
-      "内层目标 IP 须为非零单播；请求者可用 0.0.0.0 进行 ARP probe，但两者不能相同。",
+      guideText("vxlan.configuration.vxlan-config.023"),
     );
   for (const [key, low, high, label] of [
-    ["port", 1, 65535, "目标接收端口"],
-    ["peer_port", 1, 65535, "固定对端接收端口"],
-    ["source_port", 49152, 65535, "目标源端口"],
+    ["port", 1, 65535, guideText("vxlan.configuration.vxlan-config.024")],
+    ["peer_port", 1, 65535, guideText("vxlan.configuration.vxlan-config.025")],
+    ["source_port", 49152, 65535, guideText("vxlan.configuration.vxlan-config.026")],
     ["vni", 0, 16777215, "VNI"],
   ] as const) {
     if (!Number.isInteger(c[key]) || c[key] < low || c[key] > high)
-      throw new Error(`${label}须为 ${low}～${high} 之间的整数。`);
+      throw new Error(`${label}${guideText("vxlan.configuration.vxlan-config.027")}${low}～${high}${guideText("vxlan.configuration.vxlan-config.028")}`);
   }
   if (c.port === c.source_port)
-    throw new Error("目标接收端口与目标源端口必须不同。");
+    throw new Error(guideText("vxlan.configuration.vxlan-config.029"));
   if (
     c.bind_ip === c.peer_ip &&
     (c.peer_port === c.port || c.peer_port === c.source_port)
   )
     throw new Error(
-      "外层 IP 相同时，目标接收、目标源和对端接收三个端口必须互不相同。",
+      guideText("vxlan.configuration.vxlan-config.030"),
     );
   if (
     !mac(c.inner_mac) ||
@@ -166,7 +167,7 @@ export function validateVxlanConfig(c: VxlanConfig): void {
     c.inner_mac.toLowerCase() === c.requester_mac.toLowerCase()
   )
     throw new Error(
-      "目标与请求者 MAC 须为两个不同的非零单播地址，使用六组完整十六进制字节；保存时规范为小写。",
+      guideText("vxlan.configuration.vxlan-config.031"),
     );
 }
 /** Canonicalization matches manager save/hash semantics; no other address or field is rewritten. */
@@ -197,10 +198,10 @@ export function sameVxlanConfig(a: VxlanConfig, b: VxlanConfig): boolean {
   );
 }
 export function vxlanDescription(c: VxlanConfig): string {
-  return `UDP ${c.bind_ip}:${c.port} → ${c.peer_ip}:${c.peer_port} · 固定源端口 ${c.source_port} · VNI ${c.vni} · 目标 ${c.inner_ip}/${c.inner_mac.toLowerCase()} · 请求者 ${c.requester_ip}/${c.requester_mac.toLowerCase()} · inner ${42 + c.reply_padding}B / UDP ${50 + c.reply_padding}B · ${vxlanModeLabels[c.scenario.mode]}`;
+  return `UDP ${c.bind_ip}:${c.port} → ${c.peer_ip}:${c.peer_port}${guideText("vxlan.configuration.vxlan-config.017")}${c.source_port} · VNI ${c.vni}${guideText("vxlan.configuration.vxlan-config.018")}${c.inner_ip}/${c.inner_mac.toLowerCase()}${guideText("vxlan.configuration.vxlan-config.019")}${c.requester_ip}/${c.requester_mac.toLowerCase()} · inner ${42 + c.reply_padding}B / UDP ${50 + c.reply_padding}B · ${vxlanModeLabels[c.scenario.mode]}`;
 }
 export function vxlanReportLabel(method: string, c: VxlanConfig): string {
   return method === "ALL"
-    ? `${c.scenario.mode} 场景完整验证（8项 · 测试时生效快照）`
+    ? `${c.scenario.mode}${guideText("vxlan.configuration.vxlan-config.020")}`
     : vxlanCaseLabels[method] || method;
 }

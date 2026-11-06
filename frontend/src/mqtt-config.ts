@@ -1,3 +1,4 @@
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 import { validIpv4 } from "./dns-config.ts";
 
 export type MqttConfig = {
@@ -12,15 +13,15 @@ export const mqttDefaults: MqttConfig = {
   max_connections: 32,
   max_packet_size: 1048576,
 };
-export const mqttCaseLabels: Record<string, string> = {
+export const mqttCaseLabels: Record<string, string> = lazyGuidanceLabels(() => ({
   MQTT311_QOS0: "MQTT 3.1.1 · QoS 0",
   MQTT311_QOS1: "MQTT 3.1.1 · QoS 1",
   MQTT311_QOS2: "MQTT 3.1.1 · QoS 2",
   MQTT5_QOS0: "MQTT 5.0 · QoS 0",
   MQTT5_QOS1: "MQTT 5.0 · QoS 1",
   MQTT5_QOS2: "MQTT 5.0 · QoS 2",
-  ALL: "全部测试",
-};
+  ALL: guideText("mqtt.verification.mqtt-config.001"),
+}));
 export function isMqttConfig(value: unknown): value is MqttConfig {
   return Boolean(
     value &&
@@ -31,27 +32,27 @@ export function isMqttConfig(value: unknown): value is MqttConfig {
 }
 export function validateMqttConfig(config: MqttConfig): void {
   if (!validIpv4(config.bind_ip))
-    throw new Error("绑定地址必须是有效 IPv4 地址。");
+    throw new Error(guideText("mqtt.configuration.mqtt-config.002"));
   const first = Number(config.bind_ip.split(".")[0]);
   if ((first >= 224 && first <= 239) || config.bind_ip === "255.255.255.255")
     throw new Error(
-      "绑定地址须为单播 IPv4 地址或 0.0.0.0，不能使用组播或广播地址。",
+      guideText("mqtt.configuration.mqtt-config.003"),
     );
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535)
-    throw new Error("端口必须是 1～65535 之间的整数。");
+    throw new Error(guideText("mqtt.configuration.mqtt-config.004"));
   if (
     !Number.isInteger(config.max_connections) ||
     config.max_connections < 1 ||
     config.max_connections > 128
   )
-    throw new Error("最大连接数必须是 1～128 之间的整数。");
+    throw new Error(guideText("mqtt.configuration.mqtt-config.005"));
   if (
     !Number.isInteger(config.max_packet_size) ||
     config.max_packet_size < 128 ||
     config.max_packet_size > 1048576
   )
     throw new Error(
-      "最大报文必须是 128～1048576 之间的整数字节数，按完整 MQTT 报文计数。",
+      guideText("mqtt.configuration.mqtt-config.006"),
     );
 }
 export function sameMqttConfig(a: MqttConfig, b: MqttConfig): boolean {

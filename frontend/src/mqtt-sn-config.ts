@@ -1,3 +1,4 @@
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 import { validIpv4 } from "./dns-config.ts";
 
 export type PredefinedTopic = { topic_id: number; topic: string };
@@ -21,13 +22,13 @@ export const mqttSnDefaults: MqttSnConfig = {
   broker_port: 28897,
   predefined_topics: [{ topic_id: 1, topic: "plab/predefined" }],
 };
-export const mqttSnCaseLabels: Record<string, string> = {
-  CONNECT: "连接与会话",
-  REGISTER_PUBLISH: "注册主题与 QoS 1 交付",
-  PREDEFINED_PUBLISH: "预定义主题 QoS 1 交付",
-  DISCOVERY: "组播发现与 GWINFO",
-  ALL: "全部测试",
-};
+export const mqttSnCaseLabels: Record<string, string> = lazyGuidanceLabels(() => ({
+  CONNECT: guideText("mqtt-sn.verification.mqtt-sn-config.001"),
+  REGISTER_PUBLISH: guideText("mqtt-sn.verification.mqtt-sn-config.002"),
+  PREDEFINED_PUBLISH: guideText("mqtt-sn.verification.mqtt-sn-config.003"),
+  DISCOVERY: guideText("mqtt-sn.verification.mqtt-sn-config.004"),
+  ALL: guideText("mqtt-sn.verification.mqtt-sn-config.005"),
+}));
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -52,40 +53,40 @@ export function isMqttSnConfig(value: unknown): value is MqttSnConfig {
 }
 export function validateMqttSnConfig(config: MqttSnConfig): void {
   if (config.bind_ip !== "0.0.0.0")
-    throw new Error("MQTT-SN 原生网关固定绑定 0.0.0.0，不能选择其他地址。");
+    throw new Error(guideText("mqtt-sn.configuration.mqtt-sn-config.010"));
   if (config.broker_host !== "127.0.0.1")
     throw new Error(
-      "同容器私有 Broker 固定使用 127.0.0.1，不能连接外部 Broker。",
+      guideText("mqtt-sn.configuration.mqtt-sn-config.011"),
     );
   for (const [name, value] of [
-    ["主 UDP 端口", config.port],
-    ["发现 UDP 端口", config.discovery_port],
-    ["私有 Broker TCP 端口", config.broker_port],
+    [guideText("mqtt-sn.configuration.mqtt-sn-config.012"), config.port],
+    [guideText("mqtt-sn.configuration.mqtt-sn-config.013"), config.discovery_port],
+    [guideText("mqtt-sn.configuration.mqtt-sn-config.014"), config.broker_port],
   ] as const) {
     if (!Number.isInteger(value) || value < 1 || value > 65535)
-      throw new Error(`${name}必须是 1～65535 之间的整数。`);
+      throw new Error(`${name}${guideText("mqtt-sn.configuration.mqtt-sn-config.015")}`);
   }
   if (config.port === config.discovery_port)
-    throw new Error("MQTT-SN 主 UDP 端口与发现 UDP 端口必须不同。");
+    throw new Error(guideText("mqtt-sn.configuration.mqtt-sn-config.016"));
   if (
     !validIpv4(config.discovery_group) ||
     Number(config.discovery_group.split(".")[0]) < 224 ||
     Number(config.discovery_group.split(".")[0]) > 239
   )
     throw new Error(
-      "发现组地址必须是 IPv4 组播地址（224.0.0.0～239.255.255.255）。",
+      guideText("mqtt-sn.configuration.mqtt-sn-config.017"),
     );
   if (
     !Number.isInteger(config.gateway_id) ||
     config.gateway_id < 1 ||
     config.gateway_id > 255
   )
-    throw new Error("网关 ID 必须是 1～255 之间的整数。");
+    throw new Error(guideText("mqtt-sn.configuration.mqtt-sn-config.018"));
   if (
     config.predefined_topics.length < 1 ||
     config.predefined_topics.length > 16
   )
-    throw new Error("请配置 1～16 条预定义主题。");
+    throw new Error(guideText("mqtt-sn.configuration.mqtt-sn-config.019"));
   const ids = new Set<number>();
   const names = new Set<string>();
   for (const [index, item] of config.predefined_topics.entries()) {
@@ -95,22 +96,22 @@ export function validateMqttSnConfig(config: MqttSnConfig): void {
       item.topic_id > 65534
     )
       throw new Error(
-        `第 ${index + 1} 条预定义主题 ID 必须是 1～65534 之间的整数。`,
+        `${guideText("mqtt-sn.configuration.mqtt-sn-config.020")}${index + 1}${guideText("mqtt-sn.configuration.mqtt-sn-config.021")}`,
       );
     if (!/^[\x21-\x7e]{1,128}$/.test(item.topic) || /[,+#]/.test(item.topic))
       throw new Error(
-        `第 ${index + 1} 条主题名须为 1～128 字节可见 ASCII，不能含空白、逗号、+ 或 #。`,
+        `${guideText("mqtt-sn.configuration.mqtt-sn-config.022")}${index + 1}${guideText("mqtt-sn.configuration.mqtt-sn-config.023")}`,
       );
     if (item.topic === "plab/test" || item.topic.startsWith("plab/test/"))
       throw new Error(
-        `第 ${index + 1} 条主题名使用了测试保留命名空间 plab/test，请更换。`,
+        `${guideText("mqtt-sn.configuration.mqtt-sn-config.024")}${index + 1}${guideText("mqtt-sn.configuration.mqtt-sn-config.025")}`,
       );
     if (item.topic.startsWith("$"))
       throw new Error(
-        `第 ${index + 1} 条主题名不能以 $ 开头；本实验不提供向 Broker 系统主题发布的能力。`,
+        `${guideText("mqtt-sn.configuration.mqtt-sn-config.026")}${index + 1}${guideText("mqtt-sn.configuration.mqtt-sn-config.027")}`,
       );
     if (ids.has(item.topic_id) || names.has(item.topic))
-      throw new Error("预定义主题 ID 与主题名称均须分别唯一，不能重复。");
+      throw new Error(guideText("mqtt-sn.configuration.mqtt-sn-config.028"));
     ids.add(item.topic_id);
     names.add(item.topic);
   }
@@ -128,5 +129,5 @@ export function sameMqttSnConfig(a: MqttSnConfig, b: MqttSnConfig): boolean {
   );
 }
 export function mqttSnDescription(config: MqttSnConfig): string {
-  return `UDP ${config.bind_ip}:${config.port} · 发现 ${config.discovery_group}:${config.discovery_port} · 网关 ID ${config.gateway_id} · 同容器私有 Broker ${config.broker_host}:${config.broker_port} TCP · ${config.predefined_topics.length} 条预定义主题`;
+  return `UDP ${config.bind_ip}:${config.port}${guideText("mqtt-sn.configuration.mqtt-sn-config.006")}${config.discovery_group}:${config.discovery_port}${guideText("mqtt-sn.configuration.mqtt-sn-config.007")}${config.gateway_id}${guideText("mqtt-sn.configuration.mqtt-sn-config.008")}${config.broker_host}:${config.broker_port} TCP · ${config.predefined_topics.length}${guideText("mqtt-sn.configuration.mqtt-sn-config.009")}`;
 }

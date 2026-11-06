@@ -1,3 +1,4 @@
+import { guideText, lazyGuidanceLabels } from "./protocol-description.ts";
 import { validIpv4 } from "./dns-config.ts";
 export const profinetNScenarios = [
   "good",
@@ -58,31 +59,31 @@ export const profinetDefaults: ProfinetConfig = {
     truncated_follow_up_size: 37,
   },
 };
-export const profinetScenarioLabels: Record<ProfinetFScenario, string> = {
-  good: "正常输出",
-  "wrong-seq": "错误序号",
-  "missing-follow-up": "缺少Delay FollowUp",
-  "bad-tlv": "错误TLV长度",
-  "wrong-port": "错误RequestorPort",
-  "old-seq-first": "先发旧序号再发当前序号",
-  "truncated-follow-up": "截断Delay FollowUp",
-  "follow-up-reserved": "FollowUp保留位非零",
-  "follow-up-padding": "FollowUp头部padding非零",
-  "follow-up-duplicate-port": "FollowUp重复端口块",
-  "follow-up-bad-end": "FollowUp错误End块",
-};
-export const profinetCaseLabels = {
-  DCP_READ: "DCP识别与读取（7类×2轮）",
-  PTCP_N_DELAY: "PTCP-N Delay无FU（2轮）",
-  PTCP_F_DELAY: "PTCP-F Delay有FU（2轮）",
-  PTCP_SYNC: "两PTCP节点单步Sync接纳（2轮）",
-  PTCP_SYNC_FOLLOW_UP: "两节点Sync / FollowUp配对（2轮）",
-  PTCP_ANNOUNCE: "两节点Announce接纳（2轮）",
-  ALL: "三节点全部只读验证（24项）",
-  DCP_WRITE_STATION_TEMP: "临时写站名并恢复当前/NV/OS",
-  DCP_WRITE_IP_TEMP: "临时写IP并恢复当前/NV/OS",
-  DCP_SIGNAL: "DCP Signal软件LED（2轮）",
-};
+export const profinetScenarioLabels: Record<ProfinetFScenario, string> = lazyGuidanceLabels(() => ({
+  good: guideText("profinet.configuration.profinet-config.001"),
+  "wrong-seq": guideText("profinet.configuration.profinet-config.002"),
+  "missing-follow-up": guideText("profinet.configuration.profinet-config.003"),
+  "bad-tlv": guideText("profinet.configuration.profinet-config.004"),
+  "wrong-port": guideText("profinet.configuration.profinet-config.005"),
+  "old-seq-first": guideText("profinet.configuration.profinet-config.006"),
+  "truncated-follow-up": guideText("profinet.configuration.profinet-config.007"),
+  "follow-up-reserved": guideText("profinet.configuration.profinet-config.008"),
+  "follow-up-padding": guideText("profinet.configuration.profinet-config.009"),
+  "follow-up-duplicate-port": guideText("profinet.configuration.profinet-config.010"),
+  "follow-up-bad-end": guideText("profinet.configuration.profinet-config.011"),
+}));
+export const profinetCaseLabels = lazyGuidanceLabels(() => ({
+  DCP_READ: guideText("profinet.verification.profinet-config.012"),
+  PTCP_N_DELAY: guideText("profinet.verification.profinet-config.013"),
+  PTCP_F_DELAY: guideText("profinet.verification.profinet-config.014"),
+  PTCP_SYNC: guideText("profinet.verification.profinet-config.015"),
+  PTCP_SYNC_FOLLOW_UP: guideText("profinet.verification.profinet-config.016"),
+  PTCP_ANNOUNCE: guideText("profinet.verification.profinet-config.017"),
+  ALL: guideText("profinet.verification.profinet-config.018"),
+  DCP_WRITE_STATION_TEMP: guideText("profinet.verification.profinet-config.019"),
+  DCP_WRITE_IP_TEMP: guideText("profinet.verification.profinet-config.020"),
+  DCP_SIGNAL: guideText("profinet.verification.profinet-config.021"),
+}));
 function object(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
@@ -161,7 +162,7 @@ function unicast(n: number) {
 }
 export function validateProfinetIpSuite(s: ProfinetIpSuite): void {
   if (!isProfinetIpSuite(s) || ![s.ip, s.netmask, s.gateway].every(validIpv4))
-    throw new Error("DCP初始IP/mask/gateway须为完整标准IPv4。");
+    throw new Error(guideText("profinet.configuration.profinet-config.029"));
   const i = ipNumber(s.ip),
     m = ipNumber(s.netmask),
     g = ipNumber(s.gateway);
@@ -169,12 +170,12 @@ export function validateProfinetIpSuite(s: ProfinetIpSuite): void {
   const h = ~m >>> 0;
   if (!unicast(i) || m === 0 || ((h + 1) & h) !== 0)
     throw new Error(
-      "DCP初始IP须非0/8、127/8、组播/保留地址；mask须连续/1～32，或完整全零未配置suite。",
+      guideText("profinet.configuration.profinet-config.030"),
     );
   const host = (i & h) >>> 0;
   if (host === 0 || host === h)
     throw new Error(
-      "DCP初始IP不能为网络/广播地址；非零/31或/32没有native允许的host。",
+      guideText("profinet.configuration.profinet-config.031"),
     );
   if (
     g !== 0 &&
@@ -183,7 +184,7 @@ export function validateProfinetIpSuite(s: ProfinetIpSuite): void {
       (g & h) === 0 ||
       (g & h) >>> 0 === h)
   )
-    throw new Error("DCP gateway须为0.0.0.0或同网段合法host。");
+    throw new Error(guideText("profinet.configuration.profinet-config.032"));
 }
 function mac(v: string) {
   return (
@@ -195,16 +196,16 @@ function mac(v: string) {
 export function validateProfinetConfig(c: ProfinetConfig) {
   if (!isProfinetConfig(c))
     throw new Error(
-      "PROFINET必须包含固定profile、6个完整字段及三个必需节点；不支持host link、单节点开关或多余字段。",
+      guideText("profinet.configuration.profinet-config.033"),
     );
   const macs = [c.test_peer_mac, c.dcp.mac, c.ptcp_n.mac, c.ptcp_f.mac];
   if (!macs.every(mac) || new Set(macs.map((m) => m.toLowerCase())).size !== 4)
     throw new Error(
-      "DCP、PTCP-N/F与默认测试peer须为四个不同非零单播MAC；保存统一小写。",
+      guideText("profinet.configuration.profinet-config.034"),
     );
   if (!validProfinetInitialName(c.dcp.initial_station_name))
     throw new Error(
-      "初始站名须为小写ASCII标签1～63、总长≤240，无空标签/边界连字符/末点，首标签不能为保留port-数字格式，不能是四段纯数字。此限制不用于runtime当前名。",
+      guideText("profinet.configuration.profinet-config.035"),
     );
   validateProfinetIpSuite(c.dcp.initial_ip_suite);
   if (
@@ -213,7 +214,7 @@ export function validateProfinetConfig(c: ProfinetConfig) {
     c.ptcp_f.truncated_follow_up_size > 45
   )
     throw new Error(
-      "PTCP-F截断长度须为16～45整数，非活跃时仍保存；若草稿无效，请选择truncated-follow-up修正。",
+      guideText("profinet.configuration.profinet-config.036"),
     );
 }
 export function normalizeProfinetConfig(c: ProfinetConfig): ProfinetConfig {
@@ -259,13 +260,13 @@ export function sameProfinetConfig(a: ProfinetConfig, b: ProfinetConfig) {
   );
 }
 export function profinetLinkDescription() {
-  return "受管私有 management / data 双网络 · 三个同时真实MAC节点";
+  return guideText("profinet.configuration.profinet-config.022");
 }
 export function profinetDescription(value: unknown) {
-  if (!isProfinetConfig(value)) return "PROFINET配置快照不匹配，请核对版本。";
-  return `三节点同时运行 · DCP ${value.dcp.mac} 初始名${value.dcp.initial_station_name} / ${value.dcp.initial_ip_suite.ip}（仅新存储，不等于当前native值）· PTCP-N ${value.ptcp_n.mac}/${value.ptcp_n.scenario.mode} · PTCP-F ${value.ptcp_f.mac}/${value.ptcp_f.scenario.mode} 截断参数${value.ptcp_f.truncated_follow_up_size}`;
+  if (!isProfinetConfig(value)) return guideText("profinet.configuration.profinet-config.023");
+  return `${guideText("profinet.configuration.profinet-config.024")}${value.dcp.mac}${guideText("profinet.configuration.profinet-config.025")}${value.dcp.initial_station_name} / ${value.dcp.initial_ip_suite.ip}${guideText("profinet.configuration.profinet-config.026")}${value.ptcp_n.mac}/${value.ptcp_n.scenario.mode} · PTCP-F ${value.ptcp_f.mac}/${value.ptcp_f.scenario.mode}${guideText("profinet.configuration.profinet-config.027")}${value.ptcp_f.truncated_follow_up_size}`;
 }
 export function profinetReportLabel(method: string, snapshot: unknown) {
   if (!isProfinetConfig(snapshot)) return method;
-  return `DCP / PTCP-N:${snapshot.ptcp_n.scenario.mode} / PTCP-F:${snapshot.ptcp_f.scenario.mode} · ${profinetCaseLabels[method as keyof typeof profinetCaseLabels] || method}（测试时启动快照，非实时native值）`;
+  return `DCP / PTCP-N:${snapshot.ptcp_n.scenario.mode} / PTCP-F:${snapshot.ptcp_f.scenario.mode} · ${profinetCaseLabels[method as keyof typeof profinetCaseLabels] || method}${guideText("profinet.configuration.profinet-config.028")}`;
 }

@@ -4,6 +4,7 @@ mod bfd;
 mod cli;
 mod custom_ethernet;
 mod custom_l2;
+mod descriptions;
 mod dlt645;
 mod dns;
 mod docker;

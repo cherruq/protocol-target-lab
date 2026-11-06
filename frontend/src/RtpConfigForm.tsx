@@ -1,3 +1,4 @@
+import { guideText } from "./protocol-description.ts";
 import type { RtpConfig } from "./rtp-config";
 
 export default function RtpConfigForm({
@@ -12,9 +13,7 @@ export default function RtpConfigForm({
   return (
     <>
       <div className="field-row">
-        <label htmlFor="rtp-bind">
-          绑定地址
-          <input
+        <label htmlFor="rtp-bind">{guideText("rtp.configuration.rtpconfigform.006")}<input
             id="rtp-bind"
             value={config.bind_ip}
             onChange={(e) => onChange({ ...config, bind_ip: e.target.value })}
@@ -23,13 +22,9 @@ export default function RtpConfigForm({
             autoComplete="off"
             spellCheck={false}
           />
-          <span className="field-help">
-            单播 IPv4；0.0.0.0 表示全部 IPv4 接口。
-          </span>
+          <span className="field-help">{guideText("rtp.configuration.rtpconfigform.001")}</span>
         </label>
-        <label htmlFor="rtp-port">
-          UDP 端口
-          <input
+        <label htmlFor="rtp-port">{guideText("rtp.configuration.rtpconfigform.007")}<input
             id="rtp-port"
             type="number"
             min="1"
@@ -44,9 +39,7 @@ export default function RtpConfigForm({
           />
         </label>
       </div>
-      <label htmlFor="rtp-packet-size">
-        最大数据报容量（字节）
-        <input
+      <label htmlFor="rtp-packet-size">{guideText("rtp.configuration.rtpconfigform.008")}<input
           id="rtp-packet-size"
           type="number"
           min="64"
@@ -66,24 +59,12 @@ export default function RtpConfigForm({
           disabled={disabled}
           required
         />
-        <span className="field-help">
-          64～65507 字节，按完整 UDP 载荷中的 RTP
-          数据报计算，包含头部、CSRC、扩展、载荷和填充。64
-          是可配置的容量下限，并非 RTP 报文最小长度。
-        </span>
+        <span className="field-help">{guideText("rtp.configuration.rtpconfigform.002")}</span>
       </label>
       <div className="response-description">
-        <p>
-          接收并结构解析 RTPv2 UDP
-          数据报，载荷按原始字节记录；不解码或播放媒体，不发送 RTP ACK。
-        </p>
-        <p>
-          内置测试发送真实数据报，并从受管接收容器的私有只读观察器核对新鲜接收记录、实际字段和完整哈希。观察器不对外发布，不提供可编辑地址；UDP
-          发送成功本身不代表目标已接收。
-        </p>
-        <p>
-          序号回绕、重复和来源计数仅表示本次实际观察，不据此保证网络顺序、计算丢包率或抖动。保存配置后需显式运行或重启才会应用。
-        </p>
+        <p>{guideText("rtp.configuration.rtpconfigform.003")}</p>
+        <p>{guideText("rtp.configuration.rtpconfigform.004")}</p>
+        <p>{guideText("rtp.configuration.rtpconfigform.005")}</p>
       </div>
     </>
   );
